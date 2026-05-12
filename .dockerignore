@@ -1,0 +1,10 @@
+.git/
+.omx/
+.venv/
+.pytest_cache/
+__pycache__/
+.coverage
+.DS_Store
+data/
+models/
+*.pyc

@@ -14,7 +14,18 @@ uv run sts2-tas train --dataset data/snapshots.jsonl --model models/ironclad.job
 uv run sts2-tas recommend --model models/ironclad.joblib --snapshot query.json
 ```
 
+## Docker
+
+```bash
+docker build -t sts2-tas:local .
+docker run --rm sts2-tas:local --help
+```
+
+Windows에서는 Docker Desktop의 Linux containers 모드에서 실행하고, screenshot/data/model 폴더를 volume으로 연결합니다. 자세한 명령은 [docs/docker.md](docs/docker.md)를 보세요.
+
 ## Docs
 
 - [docs/README.md](docs/README.md)
 - [docs/architecture.md](docs/architecture.md)
+- [docs/docker.md](docs/docker.md)
+- [docs/v1-gaps.md](docs/v1-gaps.md)

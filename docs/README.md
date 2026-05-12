@@ -1,6 +1,8 @@
 # Documentation Index
 
 - [Architecture](architecture.md): 데이터 흐름, CLI 범위, 모델/인식 제약.
+- [Docker](docker.md): macOS/Linux/Windows Docker 실행법.
+- [v1 gaps](v1-gaps.md): v1에서 구현하지 않은 머신러닝/화면 조작 범위.
 
 ## MVP Scope
 
