@@ -3,9 +3,30 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from typing import Any, Callable
 
 from .recognition import OcrProvider, parse_ocr_screen
 from .schema import RunEpisode
+
+ScreenGrabber = Callable[[], Any]
+
+
+def capture_screen(screenshot_out: Path, *, grabber: ScreenGrabber | None = None) -> Path:
+    try:
+        image = (grabber or _pillow_screen_grabber)()
+        screenshot_out.parent.mkdir(parents=True, exist_ok=True)
+        image.save(screenshot_out)
+    except Exception as error:
+        raise RuntimeError(
+            "live screen capture failed; check OS screen recording permission or use --capture-fixture"
+        ) from error
+    return screenshot_out
+
+
+def _pillow_screen_grabber() -> Any:
+    from PIL import ImageGrab
+
+    return ImageGrab.grab()
 
 
 def backup_save(save_path: Path, backup_dir: Path) -> Path:

@@ -39,14 +39,18 @@ Not implemented:
 Implemented:
 
 - dry-run action planning from parsed options
+- `live-step` fixture or Pillow screen capture into OCR, recommendation/manual choice, and one planned action
 - `--execute` gated input event logging
+- `--input-backend native` execution adapter for local OS input plans
+- option-box center click planning for picks and skip-button clicks
 - explicit save-state backup and restore
 - seed run-loop episode generation
 
 Not implemented:
 
-- platform-native mouse click/keyboard injection adapters
 - window focus management
+- OS permission provisioning for live screen capture
+- Windows native click injection
 - direct game process reset hooks
 - online/co-op or leaderboard automation
 

@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from .automation import JsonlInputController, apply_action, plan_action
+from .automation import JsonlInputController, NativeInputController, apply_action, plan_action
 from .dataset import append_snapshot, load_snapshots, write_snapshots
 from .evaluation import write_evaluation
 from .model import load_model, recommend, save_model, train_model
@@ -18,7 +18,7 @@ from .recognition import (
     detect_screen,
     parse_ocr_screen,
 )
-from .runtime import backup_save, restore_save, run_seed_loop
+from .runtime import backup_save, capture_screen, restore_save, run_seed_loop
 from .schema import ChoiceOption, DecisionChoice, DecisionSnapshot
 
 
@@ -89,10 +89,35 @@ def _parser() -> argparse.ArgumentParser:
     capture_live.add_argument("--gold", type=int, required=True)
     capture_live.set_defaults(handler=_capture_live)
 
+    live_step = subparsers.add_parser("live-step")
+    capture_source = live_step.add_mutually_exclusive_group(required=True)
+    capture_source.add_argument("--capture-fixture", type=Path)
+    capture_source.add_argument("--screenshot-out", type=Path)
+    decision_source = live_step.add_mutually_exclusive_group(required=True)
+    decision_source.add_argument("--choice")
+    decision_source.add_argument("--model", type=Path)
+    live_step.add_argument("--ocr-fixture", type=Path)
+    live_step.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
+    live_step.add_argument("--ocr-language", default="eng+kor")
+    live_step.add_argument("--input-log", type=Path, required=True)
+    live_step.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
+    live_step.add_argument("--execute", action="store_true")
+    live_step.add_argument("--game-version", required=True)
+    live_step.add_argument("--branch", required=True)
+    live_step.add_argument("--character", required=True)
+    live_step.add_argument("--ascension", type=int, required=True)
+    live_step.add_argument("--floor", type=int, required=True)
+    live_step.add_argument("--deck", default="")
+    live_step.add_argument("--relics", default="")
+    live_step.add_argument("--hp", type=int, required=True)
+    live_step.add_argument("--gold", type=int, required=True)
+    live_step.set_defaults(handler=_live_step)
+
     act = subparsers.add_parser("act")
     act.add_argument("--snapshot", type=Path, required=True)
     act.add_argument("--choice", required=True)
     act.add_argument("--input-log", type=Path, required=True)
+    act.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
     act.add_argument("--execute", action="store_true")
     act.set_defaults(handler=_act)
 
@@ -201,31 +226,41 @@ def _parse_screen(args: argparse.Namespace) -> None:
 
 
 def _capture_live(args: argparse.Namespace) -> None:
-    parsed = parse_ocr_screen(args.capture_fixture, _ocr_provider(args))
-    snapshot = DecisionSnapshot(
-        game_version=args.game_version,
-        branch=args.branch,
-        character=args.character,
-        ascension=args.ascension,
-        floor=args.floor,
-        deck=_split_csv(args.deck),
-        relics=_split_csv(args.relics),
-        hp=args.hp,
-        gold=args.gold,
-        options=[option.to_choice_option() for option in parsed.options],
-        chosen=None,
-        skipped=False,
-        screenshot_path=args.capture_fixture,
-    )
+    snapshot = _snapshot_from_screen(args, args.capture_fixture)
     append_snapshot(args.out, snapshot)
+
+
+def _live_step(args: argparse.Namespace) -> None:
+    screenshot_path = args.capture_fixture or capture_screen(args.screenshot_out)
+    snapshot = _snapshot_from_screen(args, screenshot_path)
+    choice = _live_step_choice(args, snapshot)
+    action = plan_action(snapshot, choice, dry_run=not args.execute)
+    if args.input_backend == "native" and not args.execute:
+        raise ValueError("native input backend requires --execute")
+    controller = _input_controller(args) if args.execute else None
+    report = {
+        "choice": _choice_to_dict(choice),
+        "action": apply_action(action, controller),
+        "input_plan": action.input_plan(),
+        "screenshot_path": str(screenshot_path),
+    }
+    print(json.dumps(report, sort_keys=True))
 
 
 def _act(args: argparse.Namespace) -> None:
     snapshot = DecisionSnapshot.from_json(args.snapshot.read_text(encoding="utf-8"))
     action = plan_action(snapshot, _parse_choice(args.choice), dry_run=not args.execute)
-    controller = JsonlInputController(args.input_log) if args.execute else None
+    if args.input_backend == "native" and not args.execute:
+        raise ValueError("native input backend requires --execute")
+    controller = _input_controller(args) if args.execute else None
     report = apply_action(action, controller)
     print(json.dumps(report, sort_keys=True))
+
+
+def _input_controller(args: argparse.Namespace) -> JsonlInputController | NativeInputController:
+    if args.input_backend == "native":
+        return NativeInputController()
+    return JsonlInputController(args.input_log)
 
 
 def _save_state_backup(args: argparse.Namespace) -> None:
@@ -250,6 +285,40 @@ def _evaluate_seeds(args: argparse.Namespace) -> None:
     write_evaluation(args.episodes, args.out)
 
 
+def _snapshot_from_screen(args: argparse.Namespace, screenshot_path: Path) -> DecisionSnapshot:
+    parsed = parse_ocr_screen(screenshot_path, _ocr_provider(args))
+    return DecisionSnapshot(
+        game_version=args.game_version,
+        branch=args.branch,
+        character=args.character,
+        ascension=args.ascension,
+        floor=args.floor,
+        deck=_split_csv(args.deck),
+        relics=_split_csv(args.relics),
+        hp=args.hp,
+        gold=args.gold,
+        options=[option.to_choice_option() for option in parsed.options],
+        chosen=None,
+        skipped=False,
+        screenshot_path=screenshot_path,
+    )
+
+
+def _live_step_choice(args: argparse.Namespace, snapshot: DecisionSnapshot) -> DecisionChoice:
+    if args.choice is not None:
+        choice = _parse_choice(args.choice)
+    else:
+        result = recommend(load_model(args.model), snapshot)
+        option_id = None if result.best.action == "skip" else result.best.option_id
+        choice = DecisionChoice(action=result.best.action, option_id=option_id)
+    _validate_choice(snapshot, choice)
+    return choice
+
+
+def _choice_to_dict(choice: DecisionChoice) -> dict[str, str | None]:
+    return {"action": choice.action, "option_id": choice.option_id}
+
+
 def _parse_choice(choice: str) -> DecisionChoice:
     if choice == "skip":
         return DecisionChoice(action="skip")
@@ -268,14 +337,14 @@ def _options_from_detection(detection: ScreenDetection) -> list[ChoiceOption]:
     if detection.kind is DetectionKind.CARD_REWARD:
         return [
             *[
-                ChoiceOption(id=f"card_{index}", name=f"Card {index}", kind="card", tags=[])
-                for index, _ in enumerate(detection.option_boxes, start=1)
+                ChoiceOption(id=f"card_{index}", name=f"Card {index}", kind="card", tags=[], box=box)
+                for index, box in enumerate(detection.option_boxes, start=1)
             ],
-            ChoiceOption(id="skip", name="Skip", kind="skip", tags=[]),
+            ChoiceOption(id="skip", name="Skip", kind="skip", tags=[], box=detection.skip_box),
         ]
     return [
-        ChoiceOption(id=f"relic_{index}", name=f"Relic {index}", kind="relic", tags=[])
-        for index, _ in enumerate(detection.option_boxes, start=1)
+        ChoiceOption(id=f"relic_{index}", name=f"Relic {index}", kind="relic", tags=[], box=box)
+        for index, box in enumerate(detection.option_boxes, start=1)
     ]
 
 

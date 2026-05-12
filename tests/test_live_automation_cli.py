@@ -41,8 +41,8 @@ def _snapshot(path: Path) -> Path:
                 "hp": 70,
                 "gold": 0,
                 "options": [
-                    {"id": "strike", "name": "Strike", "kind": "card", "tags": []},
-                    {"id": "skip", "name": "Skip", "kind": "skip", "tags": []},
+                    {"id": "strike", "name": "Strike", "kind": "card", "tags": [], "box": [250, 260, 430, 330]},
+                    {"id": "skip", "name": "Skip", "kind": "skip", "tags": [], "box": [880, 930, 1040, 990]},
                 ],
                 "chosen": None,
                 "skipped": False,
@@ -174,7 +174,13 @@ def test_cli_act_dry_run_reports_action_without_input_events(tmp_path: Path, cap
 
     output = json.loads(capsys.readouterr().out)
     assert exit_code == 0
-    assert output == {"dry_run": True, "action": "pick", "option_id": "strike"}
+    assert output == {
+        "dry_run": True,
+        "action": "pick",
+        "option_id": "strike",
+        "target": [250, 260, 430, 330],
+        "input_plan": {"kind": "click", "x": 340, "y": 295},
+    }
     assert not input_log.exists()
 
 
@@ -196,7 +202,12 @@ def test_cli_act_execute_writes_input_event(tmp_path: Path) -> None:
 
     event = json.loads(input_log.read_text(encoding="utf-8").splitlines()[0])
     assert exit_code == 0
-    assert event == {"action": "pick", "option_id": "strike"}
+    assert event == {
+        "action": "pick",
+        "option_id": "strike",
+        "target": [250, 260, 430, 330],
+        "input_plan": {"kind": "click", "x": 340, "y": 295},
+    }
 
 
 def test_cli_save_state_backup_and_restore_round_trip(tmp_path: Path) -> None:

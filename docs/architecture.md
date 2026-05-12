@@ -7,7 +7,8 @@
 3. `sts2-tas label` updates one JSONL row with `pick:<option_id>` or `skip`.
 4. `sts2-tas train` converts labeled snapshots into per-option feature rows and trains a scikit-learn `DictVectorizer + DecisionTreeClassifier` recommender.
 5. `sts2-tas recommend` loads a saved model and ranks the current snapshot options.
-6. `sts2-tas act`, `run-loop`, and `evaluate-seeds` turn parsed options into dry-run input plans and seed-level episode summaries.
+6. `sts2-tas live-step` captures a screenshot or uses `--capture-fixture`, parses OCR options, chooses from `--choice` or `--model`, and applies one dry-run/jsonl/native action.
+7. `sts2-tas act`, `run-loop`, and `evaluate-seeds` turn parsed options into dry-run input plans and seed-level episode summaries.
 
 ## DecisionSnapshot
 
@@ -21,7 +22,7 @@ Card decisions use `pick:<card_id>` or `skip`. Relic decisions use `pick:<relic_
 
 ## Screen Recognition
 
-The recognizer keeps the original deterministic color path for synthetic fixtures and adds an OCR path for live screenshots. The OCR path is:
+The recognizer keeps the original deterministic color path for synthetic fixtures and adds an OCR path for live screenshots. `live-step --screenshot-out` uses Pillow `ImageGrab.grab()` through a small injectable runtime wrapper; tests inject a fake grabber and never capture the real desktop. The OCR path is:
 
 `layout detection -> OCR regions -> English/Korean catalog match -> canonical option id`
 
@@ -35,7 +36,11 @@ Unknown layouts fail instead of creating empty-option training rows. OCR provide
 
 ## Automation And Evaluation
 
-`sts2-tas act` is dry-run by default and reports the planned `pick` or `skip` action as JSON. It writes an input event only with `--execute`.
+`sts2-tas act` is dry-run by default and reports the planned `pick` or `skip` action as JSON, including the target box and click/key input plan when available. It writes an input event only with `--execute` and the default `--input-backend jsonl`.
+
+`sts2-tas live-step` emits JSON with `choice`, `action`, `input_plan`, and `screenshot_path`. `--capture-fixture` keeps tests and fixture runs deterministic; `--screenshot-out` writes the live captured screen before OCR. Live capture failures are reported as permission/setup errors and should be retried only after OS screen-recording permission is granted.
+
+`--input-backend native --execute` sends the same plan through a platform adapter instead of writing JSONL. macOS uses `osascript` System Events, Linux uses `xdotool`, and Windows currently supports only the keypress path through PowerShell SendKeys while click input fails explicitly. Tests inject a subprocess runner so no real OS input is sent.
 
 `save-state backup` and `save-state restore` operate only on the explicit `--save` file and `--backup-dir`. Restore keeps a pre-restore copy before replacing the save file.
 
@@ -45,6 +50,6 @@ Unknown layouts fail instead of creating empty-option training rows. OCR provide
 
 - Target UI assumption: English/Korean UI, single-player local run, OCR-visible card/relic/skip text.
 - StS2 Early Access changes must be handled by storing `game_version` and `branch` in every snapshot.
-- Actual input execution requires `--execute`; default CLI behavior is dry-run.
+- Actual input execution requires `--execute`; default CLI behavior is dry-run and `native` is rejected unless `--execute` is present.
 - Steam/Godot process memory and internal runtime state are not read.
 - Saved model files are loaded with `joblib`; only load trusted local model artifacts.

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from sts2_tas.schema import ChoiceOption, DecisionChoice, DecisionSnapshot
+from sts2_tas.schema import AutomationAction, ChoiceOption, DecisionChoice, DecisionSnapshot
 
 
 def test_snapshot_round_trips_through_json() -> None:
@@ -133,3 +133,16 @@ def test_skip_choice_has_no_option_id() -> None:
     choice = DecisionChoice(action="skip")
 
     assert choice.option_id is None
+
+
+def test_pick_automation_action_requires_target_for_input_plan() -> None:
+    action = AutomationAction(action="pick", option_id="anger", dry_run=False, target=None)
+
+    with pytest.raises(ValueError, match="target"):
+        action.input_plan()
+
+
+def test_skip_automation_action_without_target_uses_escape_input_plan() -> None:
+    action = AutomationAction(action="skip", option_id=None, dry_run=False, target=None)
+
+    assert action.input_plan() == {"kind": "keypress", "key": "escape"}
