@@ -1,8 +1,8 @@
 # StS2 TAS
 
-Slay the Spire 2 화면 인식 기반 TAS 학습 MVP입니다.
+Slay the Spire 2 화면 인식 기반 TAS 학습/자동화 MVP입니다.
 
-현재 범위는 실제 자동 클릭이 아니라 카드 보상/유물 선택 상황을 기록하고, 캐릭터별 supervised 모델로 `pick` 또는 `skip` 추천을 재현 가능하게 만드는 것입니다.
+현재 범위는 카드 보상/유물 선택 상황을 OCR로 파싱하고, 캐릭터별 supervised 모델로 `pick` 또는 `skip` 추천을 재현 가능하게 만들며, 기본 dry-run 자동화와 seed별 평가 로그를 제공합니다. 실제 입력 실행은 `--execute`가 있을 때만 동작합니다.
 
 ## Quick Start
 
@@ -12,6 +12,11 @@ uv run sts2-tas capture --screenshot reward.png --out data/snapshots.jsonl --gam
 uv run sts2-tas label --dataset data/snapshots.jsonl --index 0 --choice pick:card_1
 uv run sts2-tas train --dataset data/snapshots.jsonl --model models/ironclad.joblib --character ironclad
 uv run sts2-tas recommend --model models/ironclad.joblib --snapshot query.json
+uv run sts2-tas parse-screen --screenshot reward.png --ocr-fixture ocr.json --out parsed.json
+uv run sts2-tas parse-screen --screenshot reward.png --ocr-provider tesseract --ocr-language eng+kor --out parsed.json
+uv run sts2-tas act --snapshot query.json --choice pick:strike --input-log inputs.jsonl
+uv run sts2-tas run-loop --seeds 7,8 --capture-fixture reward.png --ocr-fixture ocr.json --episodes-out episodes.jsonl --max-steps 1
+uv run sts2-tas evaluate-seeds --episodes episodes.jsonl --out summary.json
 ```
 
 ## Docker

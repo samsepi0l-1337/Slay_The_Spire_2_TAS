@@ -1,13 +1,13 @@
 # Documentation Index
 
-- [Architecture](architecture.md): 데이터 흐름, CLI 범위, 모델/인식 제약.
+- [Architecture](architecture.md): 데이터 흐름, CLI 범위, OCR/자동화 안전 경계.
 - [Docker](docker.md): macOS/Linux/Windows Docker 실행법.
-- [v1 gaps](v1-gaps.md): v1에서 구현하지 않은 머신러닝/화면 조작 범위.
+- [v1 gaps](v1-gaps.md): 구현된 live vision 범위와 아직 제외한 직접 내부 상태 접근.
 
 ## MVP Scope
 
-- 포함: 화면 fixture 기반 카드 보상/유물 선택 감지, DecisionSnapshot JSONL, 라벨링, scikit-learn 학습, 추천 CLI.
-- 제외: 실제 게임 클릭 실행, 온라인 co-op, Steam Leaderboards 자동화, 강화학습.
+- 포함: 색상 fixture 감지, OCR fixture/Tesseract provider, 영어/한국어 카드·유물 식별, DecisionSnapshot JSONL, 라벨링, scikit-learn 학습, 추천 CLI, dry-run 자동화, save backup/restore, seed episode 평가.
+- 제외: Steam/Godot 내부 상태 직접 읽기, 온라인 co-op, Steam Leaderboards 자동화, neural RL 학습.
 
 ## Verification
 

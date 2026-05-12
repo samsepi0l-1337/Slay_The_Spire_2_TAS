@@ -1,6 +1,6 @@
-# v1 Gaps
+# v1 Status And Gaps
 
-v1 intentionally builds a reproducible data and recommendation pipeline before controlling the game.
+v1 now includes a reproducible data pipeline plus guarded live-vision automation boundaries. The default remains dry-run unless `--execute` is explicitly provided.
 
 ## Machine Learning
 
@@ -9,14 +9,13 @@ Implemented:
 - supervised tabular candidate ranking
 - per-character model training
 - deterministic save/load/recommend flow
+- seed episode JSONL logging
+- win-rate evaluation across seeds
 
 Not implemented:
 
-- OCR for actual card/relic text extraction
-- template matching against the full live game UI
-- reinforcement learning
-- self-play or simulator-driven rollouts
-- win-rate evaluation across seeds
+- neural reinforcement learning
+- simulator-backed self-play
 - automatic patch-to-patch card/relic metadata migration
 
 ## Screen Recognition
@@ -25,24 +24,30 @@ Implemented:
 
 - deterministic color-region detection for stable or synthetic screenshots
 - card reward, skip button, and relic choice layout detection
+- provider-based OCR token parsing
+- English/Korean card, relic, and skip catalog matching
+- resolution-independent reward layout checks
 
 Not implemented:
 
-- robust live-game screen parser
-- multi-resolution UI handling
-- non-English UI parsing
 - animation/frame timing stabilization
+- full-card art/template matching
 - direct Steam or Godot state introspection
 
 ## screen automation
 
+Implemented:
+
+- dry-run action planning from parsed options
+- `--execute` gated input event logging
+- explicit save-state backup and restore
+- seed run-loop episode generation
+
 Not implemented:
 
-- mouse click execution
-- keyboard routing
+- platform-native mouse click/keyboard injection adapters
 - window focus management
-- save-state control
-- run reset loops
+- direct game process reset hooks
 - online/co-op or leaderboard automation
 
-Future screen automation should start behind an explicit `--execute` flag, require local-only single-player mode, and include dry-run logging before any click is sent.
+Future platform-native screen automation must stay behind `--execute`, require local-only single-player mode, and keep dry-run logging before any click or key is sent.

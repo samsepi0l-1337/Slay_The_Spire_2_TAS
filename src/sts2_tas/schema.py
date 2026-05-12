@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 ChoiceKind = Literal["card", "relic", "skip"]
 Action = Literal["pick", "skip"]
+Box = tuple[int, int, int, int]
 
 
 @dataclass(frozen=True)
@@ -106,3 +107,73 @@ class DecisionSnapshot:
     @classmethod
     def from_json(cls, payload: str) -> DecisionSnapshot:
         return cls.from_dict(json.loads(payload))
+
+
+@dataclass(frozen=True)
+class OcrResult:
+    text: str
+    box: Box
+    confidence: float
+
+
+@dataclass(frozen=True)
+class RecognizedOption:
+    id: str
+    name: str
+    kind: ChoiceKind
+    box: Box
+    confidence: float
+    source_text: str
+    tags: list[str]
+
+    def to_choice_option(self) -> ChoiceOption:
+        return ChoiceOption(id=self.id, name=self.name, kind=self.kind, tags=self.tags)
+
+
+@dataclass(frozen=True)
+class ParsedScreen:
+    kind: str
+    options: list[RecognizedOption]
+    screenshot_path: Path
+    resolution: tuple[int, int]
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["screenshot_path"] = str(self.screenshot_path)
+        return data
+
+
+@dataclass(frozen=True)
+class AutomationAction:
+    action: Action
+    option_id: str | None
+    dry_run: bool
+    target: Box | None = None
+
+    def to_event(self) -> dict[str, str | None]:
+        return {"action": self.action, "option_id": self.option_id}
+
+    def to_report(self) -> dict[str, bool | str | None]:
+        return {"dry_run": self.dry_run, "action": self.action, "option_id": self.option_id}
+
+
+@dataclass(frozen=True)
+class RunEpisode:
+    seed: int
+    steps: int
+    choices: list[dict[str, str]]
+    victory: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SeedEvaluation:
+    episodes: int
+    victories: int
+    win_rate: float
+    average_steps: float
+
+    def to_dict(self) -> dict[str, int | float]:
+        return asdict(self)
