@@ -31,6 +31,9 @@
 - synthetic/stable screenshot용 색상 기반 detector가 card reward, relic choice, skip button layout을 구분한다.
 - OCR provider protocol을 통해 fixture OCR과 Tesseract TSV adapter를 같은 parsing 경로로 사용한다.
 - 영어/한국어 alias catalog로 카드, 유물, skip text를 canonical id로 매핑한다.
+- 카드 보상 OCR은 3개 카드와 skip button이 모두 인식될 때만 `card_reward`로 처리한다.
+- 같은 catalog id가 여러 슬롯에 나오면 `strike_1`, `strike_2`처럼 slot-specific id로 분리한다.
+- Tesseract TSV의 단어 row를 line-level compound token으로 합쳐 `Burning Blood`, `Tiny House` 같은 multi-word 항목을 매칭한다.
 - reward layout은 resolution-independent 위치 조건으로 필터링한다.
 - 알 수 없는 layout이나 catalog에 없는 텍스트는 빈 학습 row로 저장하지 않고 실패하거나 무시한다.
 
@@ -65,8 +68,8 @@
 ## Runtime And Evaluation
 
 - `capture_screen()`은 화면 캡처 실패를 OS screen recording permission/setup error로 감싸 보고한다.
-- save backup/restore는 명시된 파일과 backup directory만 조작한다.
-- seed loop는 현재 v1 boundary로, fixture/OCR 기반 episode row를 생성한다.
+- save backup/restore는 명시된 파일과 backup directory만 조작하며, save path hash를 포함한 backup 이름으로 같은 파일명 충돌을 막는다.
+- seed loop는 현재 v1 boundary로, fixture/OCR 기반 episode row를 생성하고 실제 수행한 parsed choice 수를 `steps`로 기록한다.
 - seed evaluation은 victories, win rate, average steps를 계산한다.
 
 ## Docker And Packaging

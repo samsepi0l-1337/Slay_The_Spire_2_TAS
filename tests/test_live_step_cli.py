@@ -19,6 +19,7 @@ def _ocr_fixture(path: Path) -> Path:
             [
                 {"text": "타격", "box": [250, 260, 430, 330], "confidence": 0.99},
                 {"text": "수비", "box": [760, 260, 940, 330], "confidence": 0.99},
+                {"text": "강타", "box": [1270, 260, 1450, 330], "confidence": 0.99},
                 {"text": "넘기기", "box": [880, 930, 1040, 990], "confidence": 0.99},
             ]
         ),

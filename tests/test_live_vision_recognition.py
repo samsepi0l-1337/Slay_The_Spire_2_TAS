@@ -20,6 +20,7 @@ def test_parse_ocr_screen_matches_english_card_catalog(tmp_path: Path) -> None:
         [
             _token("Strike", (250, 260, 430, 330)),
             _token("Defend", (760, 260, 940, 330)),
+            _token("Bash", (1270, 260, 1450, 330)),
             _token("Skip", (880, 930, 1040, 990)),
         ]
     )
@@ -29,6 +30,7 @@ def test_parse_ocr_screen_matches_english_card_catalog(tmp_path: Path) -> None:
     assert [(option.id, option.name, option.kind) for option in parsed.options] == [
         ("strike", "Strike", "card"),
         ("defend", "Defend", "card"),
+        ("bash", "Bash", "card"),
         ("skip", "Skip", "skip"),
     ]
 
@@ -38,6 +40,7 @@ def test_parse_ocr_screen_matches_korean_card_catalog(tmp_path: Path) -> None:
         [
             _token("타격", (250, 260, 430, 330)),
             _token("수비", (760, 260, 940, 330)),
+            _token("강타", (1270, 260, 1450, 330)),
             _token("넘기기", (880, 930, 1040, 990)),
         ]
     )
@@ -47,6 +50,7 @@ def test_parse_ocr_screen_matches_korean_card_catalog(tmp_path: Path) -> None:
     assert [(option.id, option.name, option.kind) for option in parsed.options] == [
         ("strike", "Strike", "card"),
         ("defend", "Defend", "card"),
+        ("bash", "Bash", "card"),
         ("skip", "Skip", "skip"),
     ]
 
@@ -56,13 +60,41 @@ def test_parse_ocr_screen_scales_reward_layout_from_reference_resolution(tmp_pat
         [
             _token("Strike", (125, 130, 215, 165)),
             _token("Defend", (380, 130, 470, 165)),
+            _token("Bash", (635, 130, 725, 165)),
             _token("Skip", (440, 465, 520, 495)),
         ]
     )
 
     parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "half.png", size=(960, 540)), ocr_provider=provider)
 
-    assert [option.id for option in parsed.options] == ["strike", "defend", "skip"]
+    assert [option.id for option in parsed.options] == ["strike", "defend", "bash", "skip"]
+
+
+def test_parse_ocr_screen_rejects_partial_card_reward_ocr(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            _token("Strike", (250, 260, 430, 330)),
+            _token("Skip", (880, 930, 1040, 990)),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="unknown OCR screen layout"):
+        recognition.parse_ocr_screen(_blank_screen(tmp_path / "screen.png"), ocr_provider=provider)
+
+
+def test_parse_ocr_screen_disambiguates_duplicate_card_slots(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            _token("Strike", (250, 260, 430, 330)),
+            _token("Strike", (760, 260, 940, 330)),
+            _token("Strike", (1270, 260, 1450, 330)),
+            _token("Skip", (880, 930, 1040, 990)),
+        ]
+    )
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "screen.png"), ocr_provider=provider)
+
+    assert [option.id for option in parsed.options] == ["strike_1", "strike_2", "strike_3", "skip"]
 
 
 def test_parse_ocr_screen_rejects_unknown_layout(tmp_path: Path) -> None:
@@ -103,8 +135,8 @@ def test_tesseract_provider_parses_cli_tsv(monkeypatch, tmp_path: Path) -> None:
 
         class Result:
             stdout = (
-                "level\tleft\ttop\twidth\theight\tconf\ttext\n"
-                "5\t250\t260\t180\t70\t99.0\tStrike\n"
+                "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+                "5\t1\t1\t1\t1\t1\t250\t260\t180\t70\t99.0\tStrike\n"
             )
 
         return Result()
@@ -123,6 +155,16 @@ def test_tesseract_provider_parses_cli_tsv(monkeypatch, tmp_path: Path) -> None:
         )
     ]
     assert tokens == [_token("Strike", (250, 260, 430, 330))]
+
+
+def test_tesseract_tsv_parser_adds_multiword_line_tokens() -> None:
+    tokens = recognition._tokens_from_tsv(
+        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+        "5\t1\t1\t1\t1\t1\t760\t420\t90\t80\t96.0\tBurning\n"
+        "5\t1\t1\t1\t1\t2\t860\t420\t80\t80\t94.0\tBlood\n"
+    )
+
+    assert recognition.OcrToken("Burning Blood", (760, 420, 940, 500), 0.95) in tokens
 
 
 def test_tesseract_tsv_parser_accepts_empty_output() -> None:

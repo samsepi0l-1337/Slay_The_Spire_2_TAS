@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
 import subprocess
@@ -86,10 +86,11 @@ def parse_ocr_screen(image_path: Path, ocr_provider: OcrProvider) -> ParsedScree
     ]
     non_skip = sorted((option for option in options if option.kind != "skip"), key=lambda option: option.box[0])
     skip = sorted((option for option in options if option.kind == "skip"), key=lambda option: option.box[0])
-    if non_skip and skip:
-        return ParsedScreen(DetectionKind.CARD_REWARD.value, [*non_skip, skip[0]], image_path, (width, height))
+    cards = [option for option in non_skip if option.kind == "card"]
+    if len(cards) == 3 and len(cards) == len(non_skip) and skip:
+        return ParsedScreen(DetectionKind.CARD_REWARD.value, [*_slot_ids(cards), skip[0]], image_path, (width, height))
     if non_skip and all(option.kind == "relic" for option in non_skip):
-        return ParsedScreen(DetectionKind.RELIC_CHOICE.value, non_skip, image_path, (width, height))
+        return ParsedScreen(DetectionKind.RELIC_CHOICE.value, _slot_ids(non_skip), image_path, (width, height))
     raise ValueError(f"unknown OCR screen layout for {image_path}")
 
 
@@ -176,6 +177,21 @@ def _recognized_option(token: OcrToken, resolution: tuple[int, int]) -> Recogniz
     )
 
 
+def _slot_ids(options: list[RecognizedOption]) -> list[RecognizedOption]:
+    counts: dict[str, int] = {}
+    for option in options:
+        counts[option.id] = counts.get(option.id, 0) + 1
+    indexes: dict[str, int] = {}
+    slotted: list[RecognizedOption] = []
+    for option in options:
+        if counts[option.id] == 1:
+            slotted.append(option)
+            continue
+        indexes[option.id] = indexes.get(option.id, 0) + 1
+        slotted.append(replace(option, id=f"{option.id}_{indexes[option.id]}"))
+    return slotted
+
+
 def _catalog_match(text: str) -> CatalogEntry | None:
     normalized = _normalize_text(text)
     for entry in CATALOG:
@@ -205,6 +221,7 @@ def _tokens_from_tsv(payload: str) -> list[OcrToken]:
         return []
     headers = lines[0].split("\t")
     tokens: list[OcrToken] = []
+    line_tokens: dict[tuple[str, str, str, str], list[OcrToken]] = {}
     for line in lines[1:]:
         row = dict(zip(headers, line.split("\t"), strict=False))
         text = row.get("text", "").strip()
@@ -214,11 +231,39 @@ def _tokens_from_tsv(payload: str) -> list[OcrToken]:
             width = int(row["width"])
             height = int(row["height"])
             confidence = float(row["conf"])
-            tokens.append(
-                OcrToken(
-                    text=text,
-                    box=(left, top, left + width, top + height),
-                    confidence=confidence / 100 if confidence > 1 else confidence,
-                )
+            token = OcrToken(
+                text=text,
+                box=(left, top, left + width, top + height),
+                confidence=confidence / 100 if confidence > 1 else confidence,
             )
+            tokens.append(token)
+            key = (
+                row.get("page_num", ""),
+                row.get("block_num", ""),
+                row.get("par_num", ""),
+                row.get("line_num", ""),
+            )
+            if all(key):
+                line_tokens.setdefault(key, []).append(token)
+    tokens.extend(_compound_line_tokens(line_tokens))
     return tokens
+
+
+def _compound_line_tokens(line_tokens: dict[tuple[str, str, str, str], list[OcrToken]]) -> list[OcrToken]:
+    compounds: list[OcrToken] = []
+    for tokens in line_tokens.values():
+        if len(tokens) < 2:
+            continue
+        ordered = sorted(tokens, key=lambda token: token.box[0])
+        left = min(token.box[0] for token in ordered)
+        top = min(token.box[1] for token in ordered)
+        right = max(token.box[2] for token in ordered)
+        bottom = max(token.box[3] for token in ordered)
+        compounds.append(
+            OcrToken(
+                text=" ".join(token.text for token in ordered),
+                box=(left, top, right, bottom),
+                confidence=sum(token.confidence for token in ordered) / len(ordered),
+            )
+        )
+    return compounds

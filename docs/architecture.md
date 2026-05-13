@@ -32,6 +32,8 @@ It currently recognizes:
 - skip button
 - relic choice options
 
+Card rewards require all three card options plus the skip button before the parser returns a `card_reward`; partial OCR fails closed instead of producing an incomplete decision surface. Duplicate catalog ids are made slot-specific, for example `strike_1`, `strike_2`, and `strike_3`, so repeated card names remain selectable. Tesseract TSV word rows are also combined into line-level OCR tokens so multi-word relics such as `Burning Blood` and `Tiny House` can match the catalog.
+
 Unknown layouts fail instead of creating empty-option training rows. OCR providers are pluggable: tests use a JSON/fake provider and live use can route through `--ocr-provider tesseract --ocr-language eng+kor`.
 
 ## Automation And Evaluation
@@ -42,9 +44,9 @@ Unknown layouts fail instead of creating empty-option training rows. OCR provide
 
 `--input-backend native --execute` sends the same plan through a platform adapter instead of writing JSONL. macOS uses `osascript` System Events, Linux uses `xdotool`, and Windows currently supports only the keypress path through PowerShell SendKeys while click input fails explicitly. Tests inject a subprocess runner so no real OS input is sent.
 
-`save-state backup` and `save-state restore` operate only on the explicit `--save` file and `--backup-dir`. Restore keeps a pre-restore copy before replacing the save file.
+`save-state backup` and `save-state restore` operate only on the explicit `--save` file and `--backup-dir`. Backup names include a stable hash of the save path so saves with the same file name in different directories do not overwrite each other. Restore keeps a pre-restore copy before replacing the save file.
 
-`run-loop` is a first live-loop boundary: it consumes seed lists, a capture fixture, OCR tokens, and a max step count, then records JSONL episodes. `evaluate-seeds` summarizes episode count, victories, win rate, and average steps.
+`run-loop` is a first live-loop boundary: it consumes seed lists, a capture fixture, OCR tokens, and a max step count, then records JSONL episodes. In this fixture-only boundary it performs one parsed choice per seed and records the actual executed step count instead of pretending all `--max-steps` were consumed. `evaluate-seeds` summarizes episode count, victories, win rate, and average steps.
 
 ## Constraints
 

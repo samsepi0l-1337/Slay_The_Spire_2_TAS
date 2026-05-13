@@ -19,6 +19,7 @@ def _ocr_fixture(path: Path) -> Path:
             [
                 {"text": "타격", "box": [250, 260, 430, 330], "confidence": 0.99},
                 {"text": "수비", "box": [760, 260, 940, 330], "confidence": 0.99},
+                {"text": "강타", "box": [1270, 260, 1450, 330], "confidence": 0.99},
                 {"text": "넘기기", "box": [880, 930, 1040, 990], "confidence": 0.99},
             ]
         ),
@@ -71,7 +72,7 @@ def test_cli_parse_screen_writes_catalog_matched_options(tmp_path: Path) -> None
 
     parsed = json.loads(output.read_text(encoding="utf-8"))
     assert exit_code == 0
-    assert [option["id"] for option in parsed["options"]] == ["strike", "defend", "skip"]
+    assert [option["id"] for option in parsed["options"]] == ["strike", "defend", "bash", "skip"]
 
 
 def test_cli_parse_screen_can_use_tesseract_provider(monkeypatch, tmp_path: Path) -> None:
@@ -85,6 +86,8 @@ def test_cli_parse_screen_can_use_tesseract_provider(monkeypatch, tmp_path: Path
         def recognize(self, image_path: Path):
             return [
                 cli.OcrToken(text="Strike", box=(250, 260, 430, 330), confidence=0.99),
+                cli.OcrToken(text="Defend", box=(760, 260, 940, 330), confidence=0.99),
+                cli.OcrToken(text="Bash", box=(1270, 260, 1450, 330), confidence=0.99),
                 cli.OcrToken(text="Skip", box=(880, 930, 1040, 990), confidence=0.99),
             ]
 
@@ -107,7 +110,7 @@ def test_cli_parse_screen_can_use_tesseract_provider(monkeypatch, tmp_path: Path
     parsed = json.loads(output.read_text(encoding="utf-8"))
     assert exit_code == 0
     assert languages == ["eng+kor"]
-    assert [option["id"] for option in parsed["options"]] == ["strike", "skip"]
+    assert [option["id"] for option in parsed["options"]] == ["strike", "defend", "bash", "skip"]
 
 
 def test_cli_parse_screen_requires_fixture_for_fixture_provider(tmp_path: Path) -> None:
@@ -154,7 +157,7 @@ def test_cli_capture_live_appends_parsed_snapshot(tmp_path: Path) -> None:
 
     snapshot = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
     assert exit_code == 0
-    assert [option["id"] for option in snapshot["options"]] == ["strike", "defend", "skip"]
+    assert [option["id"] for option in snapshot["options"]] == ["strike", "defend", "bash", "skip"]
 
 
 def test_cli_act_dry_run_reports_action_without_input_events(tmp_path: Path, capsys) -> None:
@@ -225,6 +228,40 @@ def test_cli_save_state_backup_and_restore_round_trip(tmp_path: Path) -> None:
     assert save_file.read_text(encoding="utf-8") == "before"
 
 
+def test_save_state_backups_do_not_collide_for_same_file_names(tmp_path: Path) -> None:
+    first_save = tmp_path / "first" / "autosave.sav"
+    second_save = tmp_path / "second" / "autosave.sav"
+    first_save.parent.mkdir()
+    second_save.parent.mkdir()
+    first_save.write_text("first", encoding="utf-8")
+    second_save.write_text("second", encoding="utf-8")
+    backup_dir = tmp_path / "backups"
+
+    first_backup = runtime.backup_save(first_save, backup_dir)
+    second_backup = runtime.backup_save(second_save, backup_dir)
+    first_save.write_text("changed-first", encoding="utf-8")
+    second_save.write_text("changed-second", encoding="utf-8")
+    runtime.restore_save(first_save, backup_dir)
+    runtime.restore_save(second_save, backup_dir)
+
+    assert first_backup != second_backup
+    assert first_save.read_text(encoding="utf-8") == "first"
+    assert second_save.read_text(encoding="utf-8") == "second"
+
+
+def test_save_state_restore_accepts_legacy_file_name_backup(tmp_path: Path) -> None:
+    save_file = tmp_path / "runs" / "autosave.sav"
+    save_file.parent.mkdir()
+    save_file.write_text("after", encoding="utf-8")
+    backup_dir = tmp_path / "backups"
+    backup_dir.mkdir()
+    (backup_dir / "autosave.sav").write_text("before", encoding="utf-8")
+
+    runtime.restore_save(save_file, backup_dir)
+
+    assert save_file.read_text(encoding="utf-8") == "before"
+
+
 def test_cli_run_loop_records_seed_episode(tmp_path: Path) -> None:
     episodes = tmp_path / "episodes.jsonl"
 
@@ -247,6 +284,31 @@ def test_cli_run_loop_records_seed_episode(tmp_path: Path) -> None:
     episode = json.loads(episodes.read_text(encoding="utf-8").splitlines()[0])
     assert exit_code == 0
     assert episode["seed"] == 7
+    assert episode["steps"] == 1
+    assert episode["choices"] == [{"action": "pick", "option_id": "strike"}]
+
+
+def test_cli_run_loop_records_actual_executed_steps_when_max_steps_is_higher(tmp_path: Path) -> None:
+    episodes = tmp_path / "episodes.jsonl"
+
+    exit_code = cli.main(
+        [
+            "run-loop",
+            "--seeds",
+            "7",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture",
+            str(_ocr_fixture(tmp_path / "ocr.json")),
+            "--episodes-out",
+            str(episodes),
+            "--max-steps",
+            "3",
+        ]
+    )
+
+    episode = json.loads(episodes.read_text(encoding="utf-8").splitlines()[0])
+    assert exit_code == 0
     assert episode["steps"] == 1
     assert episode["choices"] == [{"action": "pick", "option_id": "strike"}]
 
