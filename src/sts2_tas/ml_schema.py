@@ -31,6 +31,8 @@ class GameStep:
     def __post_init__(self) -> None:
         if not self.actions:
             raise ValueError("game steps require at least one action candidate")
+        if not any(action.legal for action in self.actions):
+            raise ValueError("game steps require at least one legal action candidate")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -60,73 +62,3 @@ class GameStep:
     @classmethod
     def from_json(cls, payload: str) -> GameStep:
         return cls.from_dict(json.loads(payload))
-
-    @classmethod
-    def from_legacy_snapshot(cls, snapshot: Any, catalog_version: str) -> GameStep:
-        actions = [_action_from_legacy_option(option) for option in snapshot.options]
-        return cls(
-            state=StructuredGameState(
-                game_version=snapshot.game_version,
-                branch=snapshot.branch,
-                catalog_version=catalog_version,
-                character=snapshot.character,
-                ascension=snapshot.ascension,
-                floor=snapshot.floor,
-                decision_context=_legacy_decision_context(snapshot.options),
-                player=PlayerState(hp=snapshot.hp, max_hp=max(snapshot.hp, 1), block=0, energy=0, turn=0),
-                cards=[
-                    CardInstance(
-                        instance_id=f"deck-{index}-{card_id}",
-                        card_id=card_id,
-                        zone="deck",
-                        upgraded=False,
-                        base_cost=None,
-                        current_cost=None,
-                        type="unknown",
-                        rarity="unknown",
-                        tags=[],
-                    )
-                    for index, card_id in enumerate(snapshot.deck)
-                ],
-                relics=[
-                    RelicState(relic_id=relic_id, obtained_order=index)
-                    for index, relic_id in enumerate(snapshot.relics)
-                ],
-            ),
-            actions=actions,
-            chosen_action_id=_legacy_chosen_action_id(snapshot, actions),
-            outcome=None,
-            observation=ObservationQuality(
-                source_type="legacy",
-                ocr_confidence=1.0,
-                missing_fields=[],
-                unknown_tokens=[],
-                game_version=snapshot.game_version,
-                branch=snapshot.branch,
-                catalog_version=catalog_version,
-            ),
-            screenshot_path=snapshot.screenshot_path,
-        )
-
-
-def _legacy_decision_context(options: list[Any]) -> str:
-    if any(option.kind == "card" for option in options):
-        return "card_reward"
-    if any(option.kind == "relic" for option in options):
-        return "relic_reward"
-    return "unknown"
-
-
-def _action_from_legacy_option(option: Any) -> ActionCandidate:
-    if option.kind == "skip":
-        return ActionCandidate(action_type="skip_reward", option_id=option.id, legal=True)
-    return ActionCandidate(action_type=f"pick_{option.kind}", option_id=option.id, legal=True)
-
-
-def _legacy_chosen_action_id(snapshot: Any, actions: list[ActionCandidate]) -> str | None:
-    if snapshot.chosen is None:
-        return None
-    if snapshot.chosen.action == "pick":
-        return snapshot.chosen.option_id
-    skip = next((action for action in actions if action.action_type == "skip_reward"), None)
-    return skip.identity if skip is not None else "skip"

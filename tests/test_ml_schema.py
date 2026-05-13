@@ -5,9 +5,6 @@ import pytest
 from sts2_tas.schema import (
     ActionCandidate,
     CardInstance,
-    ChoiceOption,
-    DecisionChoice,
-    DecisionSnapshot,
     GameStep,
     MonsterState,
     ObservationQuality,
@@ -18,6 +15,8 @@ from sts2_tas.schema import (
     StepOutcome,
     StructuredGameState,
 )
+from sts2_tas.capture_state import CapturedGameState
+from sts2_tas.step_factory import _action_type, _card_type, _state_with_reward_cards
 
 
 def _game_step() -> GameStep:
@@ -134,41 +133,23 @@ def test_game_step_round_trips_new_entity_state() -> None:
     assert decoded.observation.unknown_tokens == ["new_card"]
 
 
-def test_legacy_snapshot_migrates_to_reward_game_step() -> None:
-    snapshot = DecisionSnapshot(
-        game_version="0.105.1",
-        branch="beta",
-        character="ironclad",
-        ascension=2,
-        floor=3,
-        deck=["strike", "defend"],
-        relics=["burning_blood"],
-        hp=70,
-        gold=99,
-        options=[
-            ChoiceOption(id="anger", name="Anger", kind="card", tags=["attack"]),
-            ChoiceOption(id="skip", name="Skip", kind="skip", tags=[]),
-        ],
-        chosen=DecisionChoice(action="pick", option_id="anger"),
-        skipped=False,
-        screenshot_path=Path("reward.png"),
-    )
-
-    step = GameStep.from_legacy_snapshot(snapshot, catalog_version="test-catalog")
-
-    assert step.state.decision_context == "card_reward"
-    assert [card.card_id for card in step.state.cards] == ["strike", "defend"]
-    assert [relic.relic_id for relic in step.state.relics] == ["burning_blood"]
-    assert [action.option_id for action in step.actions] == ["anger", "skip"]
-    assert step.chosen_action_id == "anger"
-    assert step.observation.catalog_version == "test-catalog"
-
-
 def test_game_step_rejects_empty_actions() -> None:
     with pytest.raises(ValueError, match="at least one action"):
         GameStep(
             state=_game_step().state,
             actions=[],
+            chosen_action_id=None,
+            outcome=None,
+            observation=_game_step().observation,
+            screenshot_path=Path("fixture.png"),
+        )
+
+
+def test_game_step_rejects_all_illegal_actions() -> None:
+    with pytest.raises(ValueError, match="legal action"):
+        GameStep(
+            state=_game_step().state,
+            actions=[ActionCandidate(action_type="pick_card", option_id="anger", legal=False)],
             chosen_action_id=None,
             outcome=None,
             observation=_game_step().observation,
@@ -215,59 +196,24 @@ def test_ml_entity_validation(factory, message: str) -> None:
         factory()
 
 
-def test_legacy_snapshot_migrates_relic_and_unknown_contexts() -> None:
-    relic_snapshot = DecisionSnapshot(
-        game_version="0.105.1",
-        branch="beta",
-        character="ironclad",
-        ascension=0,
-        floor=1,
-        deck=[],
+def test_step_factory_action_type_rejects_unknown_kind() -> None:
+    assert _action_type("relic") == "pick_relic"
+    assert _card_type(["attack"]) == "attack"
+    assert _card_type([]) == "unknown"
+    with pytest.raises(ValueError, match="unsupported"):
+        _action_type("boss")
+
+
+def test_step_factory_keeps_state_when_no_reward_cards() -> None:
+    captured = CapturedGameState(
+        player=PlayerState(hp=1, max_hp=1, block=0, energy=0, turn=0),
+        cards=[],
         relics=[],
-        hp=1,
-        gold=0,
-        options=[ChoiceOption(id="relic_1", name="Relic", kind="relic", tags=[])],
-        chosen=None,
-        skipped=False,
-        screenshot_path=Path("relic.png"),
-    )
-    relic_skip_without_option = DecisionSnapshot(
-        game_version="0.105.1",
-        branch="beta",
-        character="ironclad",
-        ascension=0,
-        floor=1,
-        deck=[],
-        relics=[],
-        hp=1,
-        gold=0,
-        options=[ChoiceOption(id="relic_1", name="Relic", kind="relic", tags=[])],
-        chosen=DecisionChoice(action="skip"),
-        skipped=True,
-        screenshot_path=Path("relic-skip.png"),
-    )
-    unknown_snapshot = DecisionSnapshot(
-        game_version="0.105.1",
-        branch="beta",
-        character="ironclad",
-        ascension=0,
-        floor=1,
-        deck=[],
-        relics=[],
-        hp=1,
-        gold=0,
-        options=[ChoiceOption(id="skip", name="Skip", kind="skip", tags=[])],
-        chosen=DecisionChoice(action="skip"),
-        skipped=True,
-        screenshot_path=Path("unknown.png"),
+        potions=[],
+        monsters=[],
+        path_candidates=[],
+        missing_fields=[],
+        unknown_tokens=[],
     )
 
-    relic_step = GameStep.from_legacy_snapshot(relic_snapshot, catalog_version="test")
-    relic_skip_step = GameStep.from_legacy_snapshot(relic_skip_without_option, catalog_version="test")
-    unknown_step = GameStep.from_legacy_snapshot(unknown_snapshot, catalog_version="test")
-
-    assert relic_step.state.decision_context == "relic_reward"
-    assert relic_step.chosen_action_id is None
-    assert relic_skip_step.chosen_action_id == "skip"
-    assert unknown_step.state.decision_context == "unknown"
-    assert unknown_step.chosen_action_id == "skip"
+    assert _state_with_reward_cards(captured, []) is captured

@@ -7,9 +7,6 @@ from sts2_tas.encoding import NUMERIC_FEATURE_DIM, TOKEN_TYPE_IDS, encode_game_s
 from sts2_tas.model import load_model, recommend, save_model, train_torch_model
 from sts2_tas.schema import (
     ActionCandidate,
-    ChoiceOption,
-    DecisionChoice,
-    DecisionSnapshot,
     GameStep,
     ObservationQuality,
     PlayerState,
@@ -40,33 +37,12 @@ def _step(chosen: str, victory: bool) -> GameStep:
         chosen_action_id=chosen,
         outcome=StepOutcome(victory=victory, floor_reached=2, hp_remaining=70 if victory else 10),
         observation=ObservationQuality(
-            source_type="legacy",
+            source_type="screen",
             ocr_confidence=1.0,
             game_version="0.105.1",
             branch="beta",
             catalog_version="test-catalog",
         ),
-        screenshot_path=Path("fixture.png"),
-    )
-
-
-def _snapshot() -> DecisionSnapshot:
-    return DecisionSnapshot(
-        game_version="0.105.1",
-        branch="beta",
-        character="ironclad",
-        ascension=0,
-        floor=1,
-        deck=["strike"],
-        relics=[],
-        hp=70,
-        gold=0,
-        options=[
-            ChoiceOption(id="anger", name="Anger", kind="card", tags=[]),
-            ChoiceOption(id="skip", name="Skip", kind="skip", tags=[]),
-        ],
-        chosen=DecisionChoice(action="pick", option_id="anger"),
-        skipped=False,
         screenshot_path=Path("fixture.png"),
     )
 
@@ -108,7 +84,7 @@ def test_torch_model_save_load_preserves_recommendation(tmp_path: Path) -> None:
 
     save_model(model, path)
     loaded = load_model(path)
-    result = recommend(loaded, _snapshot())
+    result = recommend(loaded, _step("anger", True))
 
-    assert result.best.option_id in {"anger", "skip"}
+    assert result.best.action_id in {"anger", "skip"}
     assert len(result.candidates) == 2

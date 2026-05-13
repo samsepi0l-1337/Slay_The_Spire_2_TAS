@@ -29,6 +29,12 @@ def load_game_steps(path: Path) -> list[GameStep]:
     return [GameStep.from_json(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def append_game_step(path: Path, step: GameStep) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as file:
+        file.write(step.to_json() + "\n")
+
+
 def write_game_steps(path: Path, steps: Iterable[GameStep]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:

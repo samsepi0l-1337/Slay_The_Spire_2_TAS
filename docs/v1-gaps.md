@@ -6,8 +6,6 @@ v1 now includes a reproducible data pipeline plus guarded live-vision automation
 
 Implemented:
 
-- supervised tabular candidate ranking
-- legacy snapshot to `GameStep` migration
 - PyTorch entity/action behavior-cloning ranker with value head
 - legal action masking for torch policy logits
 - per-character model training

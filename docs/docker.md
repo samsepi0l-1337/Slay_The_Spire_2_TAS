@@ -24,7 +24,7 @@ docker run --rm -v "${PWD}:/workspace" sts2-tas:local --help
 ```powershell
 docker run --rm -v "${PWD}:/workspace" sts2-tas:local capture `
   --screenshot data/reward.png `
-  --out data/snapshots.jsonl `
+  --out data/steps.jsonl `
   --game-version 0.105.1 `
   --branch beta `
   --character ironclad `
@@ -46,4 +46,4 @@ Generated datasets and models should stay outside the image:
 
 - `data/*.jsonl`
 - `data/*.png`
-- `models/*.joblib`
+- `models/*.pt`

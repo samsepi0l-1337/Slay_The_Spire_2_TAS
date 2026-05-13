@@ -188,4 +188,5 @@ def _action_numeric(action: ActionCandidate) -> list[float]:
         _bool(action.path_node_id is not None),
         _bool(action.shop_item_id is not None),
         _bool(action.event_option_id is not None),
+        _bool(action.screen_box is not None),
     ]

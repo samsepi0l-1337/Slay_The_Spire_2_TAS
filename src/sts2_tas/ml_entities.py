@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+Box = tuple[int, int, int, int]
+
 ResourceValue = int | str | bool
 
 
@@ -232,6 +234,7 @@ class ActionCandidate:
     path_node_id: str | None = None
     shop_item_id: str | None = None
     event_option_id: str | None = None
+    screen_box: Box | None = None
     legal: bool = True
 
     def __post_init__(self) -> None:
@@ -269,6 +272,7 @@ class ActionCandidate:
             path_node_id=data.get("path_node_id"),
             shop_item_id=data.get("shop_item_id"),
             event_option_id=data.get("event_option_id"),
+            screen_box=tuple(data["screen_box"]) if data.get("screen_box") is not None else None,  # type: ignore[arg-type]
             legal=bool(data.get("legal", True)),
         )
 

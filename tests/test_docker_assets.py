@@ -54,19 +54,11 @@ def test_docs_explain_windows_docker_and_v1_gaps() -> None:
     assert "PYTHONPATH=src" in readme
     assert "--no-editable" in readme
     assert (
-        'live-step --screenshot-out live.png --ocr-provider tesseract --choice pick:strike '
-        '--input-log inputs.jsonl --target-process "Slay the Spire 2" '
-        "--input-backend native --execute"
+        'live-step --screenshot-out live.png --ocr-provider tesseract --choice pick_card:strike '
+        "--input-log inputs.jsonl"
     ) in readme
-    assert (
-        'act --snapshot window-relative-query.json --choice pick:strike --input-log inputs.jsonl '
-        '--target-process "Slay the Spire 2" --input-backend native --execute'
-    ) in readme
+    assert '--target-process "Slay the Spire 2" --input-backend native --execute' in readme
     assert (
         'live-step --screenshot-out ... --target-process "Slay the Spire 2" '
-        "--input-backend native --execute"
-    ) in architecture_doc
-    assert (
-        'act --snapshot ... --target-process "Slay the Spire 2" '
         "--input-backend native --execute"
     ) in architecture_doc

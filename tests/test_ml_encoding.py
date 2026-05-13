@@ -6,12 +6,14 @@ from sts2_tas.catalog import EntityCatalog
 from sts2_tas.encoding import TOKEN_TYPE_IDS, _pad_numeric, encode_game_step
 from sts2_tas.schema import (
     ActionCandidate,
+    CardInstance,
     GameStep,
     MonsterState,
     ObservationQuality,
     PathCandidate,
     PlayerState,
     PotionState,
+    RelicState,
     StepOutcome,
     StructuredGameState,
 )
@@ -38,7 +40,7 @@ def _step(chosen: str = "anger") -> GameStep:
         chosen_action_id=chosen,
         outcome=StepOutcome(victory=True, floor_reached=2, hp_remaining=70),
         observation=ObservationQuality(
-            source_type="legacy",
+            source_type="screen",
             ocr_confidence=1.0,
             game_version="0.105.1",
             branch="beta",
@@ -99,6 +101,21 @@ def test_encoding_covers_optional_entity_groups_and_error_paths() -> None:
             floor=1,
             decision_context="combat",
             player=PlayerState(hp=70, max_hp=80, block=0, energy=3, turn=1),
+            cards=[
+                CardInstance(
+                    "deck-strike",
+                    "strike",
+                    "deck",
+                    True,
+                    None,
+                    None,
+                    "attack",
+                    "basic",
+                    ["attack"],
+                    retain=True,
+                )
+            ],
+            relics=[RelicState("burning_blood", 0, counter=None, cooldown=None, activated_this_combat=True)],
             potions=[PotionState("fire_potion", 0, True, True)],
             monsters=[MonsterState("jaw_worm", 0, 10, 40, 0, "attack", 7, 1, [], [])],
             path_candidates=[PathCandidate("n1", "elite", 1, 1, 0, 0, 0, 5, True)],
@@ -106,7 +123,7 @@ def test_encoding_covers_optional_entity_groups_and_error_paths() -> None:
         actions=[ActionCandidate(action_type="end_turn", legal=True)],
         chosen_action_id="end_turn",
         outcome=None,
-        observation=ObservationQuality("legacy", 1.0, "0.105.1", "beta", "test-catalog"),
+        observation=ObservationQuality("screen", 1.0, "0.105.1", "beta", "test-catalog"),
         screenshot_path=Path("fixture.png"),
     )
     catalog = EntityCatalog.from_steps([full_step], version="test-catalog")
@@ -114,6 +131,8 @@ def test_encoding_covers_optional_entity_groups_and_error_paths() -> None:
     encoded = encode_game_step(full_step, catalog)
 
     assert encoded.outcome_value == 0.0
+    assert TOKEN_TYPE_IDS["CARD"] in encoded.token_types
+    assert TOKEN_TYPE_IDS["RELIC"] in encoded.token_types
     assert TOKEN_TYPE_IDS["POTION"] in encoded.token_types
     assert TOKEN_TYPE_IDS["MONSTER"] in encoded.token_types
     assert TOKEN_TYPE_IDS["PATH"] in encoded.token_types
@@ -133,7 +152,10 @@ def test_encoding_covers_optional_entity_groups_and_error_paths() -> None:
         encode_game_step(
             GameStep(
                 full_step.state,
-                [ActionCandidate(action_type="end_turn", legal=False)],
+                [
+                    ActionCandidate(action_type="end_turn", legal=False),
+                    ActionCandidate(action_type="skip_reward", option_id="skip", legal=True),
+                ],
                 "end_turn",
                 None,
                 full_step.observation,
@@ -164,7 +186,7 @@ def test_encoding_keeps_targeted_combat_actions_distinct() -> None:
         actions=[first, second],
         chosen_action_id=second.identity,
         outcome=None,
-        observation=ObservationQuality("legacy", 1.0, "0.105.1", "beta", "test-catalog"),
+        observation=ObservationQuality("screen", 1.0, "0.105.1", "beta", "test-catalog"),
         screenshot_path=Path("fixture.png"),
     )
     catalog = EntityCatalog.from_steps([step], version="test-catalog")
