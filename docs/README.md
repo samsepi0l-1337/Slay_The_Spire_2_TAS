@@ -2,6 +2,7 @@
 
 - [Architecture](architecture.md): 데이터 흐름, CLI 범위, live-step 캡처/추천/입력 안전 경계.
 - [Docker](docker.md): macOS/Linux/Windows Docker 실행법.
+- [Implemented work](implemented-work.md): 현재 구현된 CLI, schema, recognition, ML, automation, runtime, verification 범위.
 - [v1 gaps](v1-gaps.md): 구현된 live vision 범위와 아직 제외한 직접 내부 상태 접근.
 
 ## MVP Scope
