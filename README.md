@@ -41,6 +41,17 @@ docker run --rm sts2-tas:local --help
 
 Windows에서는 Docker Desktop의 Linux containers 모드에서 실행하고, screenshot/data/model 폴더를 volume으로 연결합니다. 자세한 명령은 [docs/docker.md](docs/docker.md)를 보세요.
 
+## Windows Executable
+
+Windows 실행 파일은 Windows runner 또는 Windows PowerShell에서 `scripts/build-windows-exe.ps1`로 빌드합니다.
+
+```powershell
+.\scripts\build-windows-exe.ps1
+.\dist\sts2-tas.exe --help
+```
+
+GitHub Actions의 `Build Windows Executable` workflow도 같은 스크립트를 실행하고, `sts2-tas-windows-x64` artifact로 `dist/sts2-tas.exe`를 업로드합니다. 이 `.exe`는 CLI와 model/recommend 경로를 실행하는 패키지이며, Windows native click injection은 아직 지원하지 않습니다.
+
 ## Docs
 
 - [docs/README.md](docs/README.md)

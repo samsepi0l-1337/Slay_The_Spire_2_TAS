@@ -4,6 +4,7 @@
 - [Docker](docker.md): macOS/Linux/Windows Docker 실행법.
 - [Implemented work](implemented-work.md): 현재 구현된 CLI, schema, recognition, ML, automation, runtime, verification 범위.
 - [v1 gaps](v1-gaps.md): 구현된 live vision 범위와 아직 제외한 직접 내부 상태 접근.
+- Windows executable: `scripts/build-windows-exe.ps1`과 `.github/workflows/windows-exe.yml`이 `dist/sts2-tas.exe` / `sts2-tas-windows-x64` artifact를 만든다.
 
 ## MVP Scope
 

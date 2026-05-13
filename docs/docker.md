@@ -47,3 +47,14 @@ Generated datasets and models should stay outside the image:
 - `data/*.jsonl`
 - `data/*.png`
 - `models/*.pt`
+
+## Windows Executable
+
+Docker is not required when you only need a local Windows CLI executable. On Windows PowerShell, run:
+
+```powershell
+.\scripts\build-windows-exe.ps1
+.\dist\sts2-tas.exe --help
+```
+
+The same build runs in GitHub Actions under `Build Windows Executable` and uploads `dist/sts2-tas.exe` as the `sts2-tas-windows-x64` artifact.

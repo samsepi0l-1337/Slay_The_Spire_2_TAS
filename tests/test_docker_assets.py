@@ -49,8 +49,12 @@ def test_docs_explain_windows_docker_and_v1_gaps() -> None:
     assert "window focus management" not in gaps_doc
     assert "Docker" in index
     assert "v1 gaps" in index
+    assert "Windows executable" in index
     assert "PYTHONPATH=src" in index
     assert "--no-editable" in index
+    assert "scripts/build-windows-exe.ps1" in readme
+    assert "sts2-tas-windows-x64" in readme
+    assert "dist/sts2-tas.exe" in readme
     assert "PYTHONPATH=src" in readme
     assert "--no-editable" in readme
     assert (

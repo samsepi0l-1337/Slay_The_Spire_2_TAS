@@ -85,6 +85,8 @@
 ## Docker And Packaging
 
 - Dockerfile은 CLI 실행 이미지를 만든다.
+- `scripts/build-windows-exe.ps1`은 Windows PowerShell에서 PyInstaller one-file console executable을 `dist/sts2-tas.exe`로 만든다.
+- `.github/workflows/windows-exe.yml`은 Windows runner에서 exe smoke test 후 `sts2-tas-windows-x64` artifact를 업로드한다.
 - `.dockerignore`는 local state와 generated output을 제외한다.
 - README와 docker docs는 macOS/Linux/Windows 실행 경계를 설명한다.
 - Python package entrypoint는 `sts2-tas = "sts2_tas.cli:main"`이다.

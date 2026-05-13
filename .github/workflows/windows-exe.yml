@@ -1,0 +1,41 @@
+name: Build Windows Executable
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/windows-exe.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "scripts/build-windows-exe.ps1"
+      - "src/**"
+
+jobs:
+  windows-exe:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Build executable
+        shell: pwsh
+        run: ./scripts/build-windows-exe.ps1
+
+      - name: Smoke executable
+        shell: pwsh
+        run: ./dist/sts2-tas.exe --help
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: sts2-tas-windows-x64
+          path: dist/sts2-tas.exe
+          if-no-files-found: error
