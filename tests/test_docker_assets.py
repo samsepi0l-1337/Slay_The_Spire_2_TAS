@@ -34,6 +34,7 @@ def test_docs_explain_windows_docker_and_v1_gaps() -> None:
     docker_doc = (ROOT / "docs" / "docker.md").read_text(encoding="utf-8")
     gaps_doc = (ROOT / "docs" / "v1-gaps.md").read_text(encoding="utf-8")
     index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "Windows PowerShell" in docker_doc
     assert "Python 3.14" in docker_doc
@@ -44,3 +45,7 @@ def test_docs_explain_windows_docker_and_v1_gaps() -> None:
     assert "reinforcement learning" in gaps_doc
     assert "Docker" in index
     assert "v1 gaps" in index
+    assert "PYTHONPATH=src" in index
+    assert "--no-editable" in index
+    assert "PYTHONPATH=src" in readme
+    assert "--no-editable" in readme

@@ -8,6 +8,8 @@ Slay the Spire 2 화면 인식 기반 TAS 학습/자동화 MVP입니다.
 
 Python 3.14 이상에서 실행합니다.
 
+로컬 체크아웃에서 Python 3.14가 `.venv` 아래 editable `.pth`를 스킵해 `ModuleNotFoundError: No module named 'sts2_tas'`가 나면 `PYTHONPATH=src`를 붙여 실행합니다. 빌드 의존성이 설치 가능한 환경에서는 `uv run --no-editable ...`로 non-editable package install을 강제하는 방법도 사용할 수 있습니다.
+
 ```bash
 uv run --extra dev pytest --cov=sts2_tas --cov-fail-under=100
 uv run sts2-tas capture --screenshot reward.png --out data/snapshots.jsonl --game-version 0.105.1 --branch beta --character ironclad --ascension 0 --floor 1 --deck strike,bash --relics burning_blood --hp 70 --gold 99

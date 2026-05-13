@@ -15,3 +15,5 @@
 ```bash
 uv run --extra dev pytest --cov=sts2_tas --cov-fail-under=100
 ```
+
+Python 3.14 로컬 체크아웃에서 `.venv` editable install이 `sts2_tas`를 import하지 못하면 `PYTHONPATH=src`를 붙여 실행한다. 네트워크/빌드 의존성이 가능한 환경에서는 `uv run --no-editable ...`로 package install을 강제할 수 있다.
