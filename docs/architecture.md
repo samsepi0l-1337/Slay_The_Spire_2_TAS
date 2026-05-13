@@ -4,7 +4,7 @@
 
 1. `sts2-tas parse-screen` reads a screenshot and OCR tokens, then writes catalog-matched options.
 2. `sts2-tas capture` or `capture-live` stores an unlabeled `GameStep` row.
-3. `sts2-tas label` updates one `GameStep` JSONL row with an `ActionCandidate.identity`, for example `pick_card:card_1` or `skip`.
+3. `sts2-tas label` updates one `GameStep` JSONL row with an `ActionCandidate.identity`, for example `pick_card|option=card_1` or `skip_reward|option=skip`. CLI choices still accept short aliases such as `pick:card_1`, `pick_card:card_1`, and `skip` when they resolve to one legal action.
 4. `sts2-tas train` trains a PyTorch entity-centric actor-critic ranker over legal `ActionCandidate` tokens.
 5. `sts2-tas recommend` loads a saved `.pt` checkpoint and ranks the current `GameStep` actions.
 6. `sts2-tas live-step` captures a screenshot or uses `--capture-fixture`, parses OCR options, chooses from `--choice` or `--model`, and applies one dry-run/jsonl/native action.
@@ -19,13 +19,13 @@ The torch encoder tokenizes these groups:
 - `GLOBAL`, `PLAYER`, `CARD`, `RELIC`, `POTION`
 - `MONSTER`, `PATH`, `ACTION`, `OBSERVATION`, `DECISION_CONTEXT`
 
-The `EntityTransformerActorCritic` scores only the current legal action candidates, masks illegal actions before policy selection, and predicts a value logit for later seed-loop outcome learning. It is behavior-cloning first; PPO, GNN map encoding, and simulator-backed self-play remain future work.
+The `EntityTransformerActorCritic` scores only the current legal action candidates, masks illegal actions before policy selection, and predicts a value logit for later seed-loop outcome learning. Value loss is applied only to rows with a real `StepOutcome`, so unlabeled outcome rows do not train as false losses. It is behavior-cloning first; PPO, GNN map encoding, and simulator-backed self-play remain future work.
 
 ## Game State Coverage
 
 The schema includes the gameplay fields needed for StS2-style decisions:
 
-- player HP, max HP, block, energy, turn, strength, dexterity, vulnerable, weak, frail, artifact, poison, regen, intangible, and character-specific resources
+- player HP, max HP, block, energy, turn, strength, dexterity, vulnerable, weak, frail, artifact, poison, regen, intangible, gold, and character-specific resources
 - card instances with zone, upgrade state, cost, type, rarity, generated/temporary/retain/exhaust/ethereal/innate flags
 - relic state with acquisition order, counter, cooldown, and activation flags
 - potion, monster, path, observation, and decision-context entities
@@ -45,7 +45,7 @@ It currently recognizes:
 - skip button
 - relic choice options
 
-Card rewards require all three card options plus the skip button before the parser returns a `card_reward`; partial OCR fails closed instead of producing an incomplete decision surface. Duplicate catalog ids are made slot-specific, for example `strike_1`, `strike_2`, and `strike_3`, so repeated card names remain selectable.
+Card rewards require all three card options plus the skip button before the parser returns a `card_reward`; partial OCR fails closed instead of producing an incomplete decision surface. Duplicate catalog ids are made slot-specific for option ids, for example `strike_1`, `strike_2`, and `strike_3`, so repeated card names remain selectable while reward `CardInstance.card_id` stays canonical as `strike`.
 
 Unknown layouts fail instead of creating empty-option training rows. OCR providers are pluggable: tests use a JSON/fake provider and live use can route through `--ocr-provider tesseract --ocr-language eng+kor`.
 
@@ -79,4 +79,4 @@ Quartz/PyObjC targeted PID event delivery is intentionally only an extension poi
 - StS2 Early Access changes must be handled by storing `game_version`, `branch`, and `catalog_version` in every learning row.
 - Actual input execution requires `--execute`; default CLI behavior is dry-run and `native` is rejected unless `--execute` is present.
 - Steam/Godot process memory and internal runtime state are not read.
-- Saved model files are loaded as PyTorch checkpoints; only load trusted local model artifacts.
+- Saved model files are loaded as `.pt` PyTorch checkpoints with safe tensor-only loading; only load trusted local model artifacts.

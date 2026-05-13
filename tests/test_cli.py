@@ -33,6 +33,11 @@ def _relic_image(path: Path, count: int = 3) -> Path:
     image.save(path)
     return path
 def _game_step(chosen: str, relic: str = "burning_blood") -> GameStep:
+    actions = [
+        ActionCandidate(action_type="pick_card", option_id="anger", screen_box=(1, 2, 3, 4), legal=True),
+        ActionCandidate(action_type="skip_reward", option_id="skip", screen_box=(5, 6, 7, 8), legal=True),
+    ]
+    aliases = {"anger": actions[0].identity, "skip": actions[1].identity}
     return GameStep(
         state=StructuredGameState(
             game_version="0.105.1",
@@ -46,11 +51,8 @@ def _game_step(chosen: str, relic: str = "burning_blood") -> GameStep:
             cards=[],
             relics=[],
         ),
-        actions=[
-            ActionCandidate(action_type="pick_card", option_id="anger", screen_box=(1, 2, 3, 4), legal=True),
-            ActionCandidate(action_type="skip_reward", option_id="skip", screen_box=(5, 6, 7, 8), legal=True),
-        ],
-        chosen_action_id=chosen,
+        actions=actions,
+        chosen_action_id=aliases.get(chosen, chosen),
         outcome=StepOutcome(victory=relic == "burning_blood", floor_reached=2, hp_remaining=70),
         observation=ObservationQuality("screen", 1.0, "0.105.1", "beta", "test-catalog"),
         screenshot_path=Path("fixture.png"),
@@ -236,7 +238,7 @@ def test_cli_label_train_and_recommend(tmp_path: Path, capsys) -> None:
     assert label_code == 0
     assert train_code == 0
     assert recommend_code == 0
-    assert output["best"]["action_id"] in {"anger", "skip"}
+    assert output["best"]["option_id"] in {"anger", "skip"}
 
 
 def test_cli_label_accepts_skip_choice(tmp_path: Path) -> None:
@@ -244,7 +246,7 @@ def test_cli_label_accepts_skip_choice(tmp_path: Path) -> None:
     dataset.write_text(_game_step("anger").to_json() + "\n")
 
     assert cli.main(["label", "--dataset", str(dataset), "--index", "0", "--choice", "skip"]) == 0
-    assert json.loads(dataset.read_text().splitlines()[0])["chosen_action_id"] == "skip"
+    assert json.loads(dataset.read_text().splitlines()[0])["chosen_action_id"] == "skip_reward|option=skip"
 
 
 def test_cli_label_accepts_direct_action_id(tmp_path: Path) -> None:
@@ -252,7 +254,25 @@ def test_cli_label_accepts_direct_action_id(tmp_path: Path) -> None:
     dataset.write_text(_game_step("skip").to_json() + "\n")
 
     assert cli.main(["label", "--dataset", str(dataset), "--index", "0", "--choice", "anger"]) == 0
-    assert json.loads(dataset.read_text().splitlines()[0])["chosen_action_id"] == "anger"
+    assert json.loads(dataset.read_text().splitlines()[0])["chosen_action_id"] == "pick_card|option=anger"
+
+
+def test_cli_train_rejects_non_pt_model_path_before_training(tmp_path: Path) -> None:
+    dataset = tmp_path / "steps.jsonl"
+    dataset.write_text(_game_step("anger").to_json() + "\n")
+
+    with pytest.raises(ValueError, match=".pt"):
+        cli.main(
+            [
+                "train",
+                "--dataset",
+                str(dataset),
+                "--model",
+                str(tmp_path / "model.bin"),
+                "--character",
+                "ironclad",
+            ]
+        )
 
 
 def test_cli_label_rejects_missing_pick_option(tmp_path: Path) -> None:
@@ -261,6 +281,25 @@ def test_cli_label_rejects_missing_pick_option(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="not present"):
         cli.main(["label", "--dataset", str(dataset), "--index", "0", "--choice", "pick_card:bash"])
+
+
+def test_cli_label_rejects_ambiguous_action_alias(tmp_path: Path) -> None:
+    step = GameStep(
+        state=_game_step("anger").state,
+        actions=[
+            ActionCandidate(action_type="play_card", source_card_id="strike", screen_box=(1, 2, 3, 4)),
+            ActionCandidate(action_type="discard_card", source_card_id="strike", screen_box=(5, 6, 7, 8)),
+        ],
+        chosen_action_id=None,
+        outcome=None,
+        observation=_game_step("anger").observation,
+        screenshot_path=Path("fixture.png"),
+    )
+    dataset = tmp_path / "steps.jsonl"
+    dataset.write_text(step.to_json() + "\n")
+
+    with pytest.raises(ValueError, match="ambiguous"):
+        cli.main(["label", "--dataset", str(dataset), "--index", "0", "--choice", "strike"])
 
 
 def test_cli_label_rejects_skip_when_skip_is_not_an_option(tmp_path: Path) -> None:

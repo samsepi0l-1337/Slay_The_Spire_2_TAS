@@ -25,6 +25,20 @@ def _ocr_fixture(path: Path) -> Path:
     )
     return path
 
+def _duplicate_ocr_fixture(path: Path) -> Path:
+    path.write_text(
+        json.dumps(
+            [
+                {"text": "Strike", "box": [250, 260, 430, 330], "confidence": 0.99},
+                {"text": "Strike", "box": [760, 260, 940, 330], "confidence": 0.99},
+                {"text": "Strike", "box": [1270, 260, 1450, 330], "confidence": 0.99},
+                {"text": "Skip", "box": [880, 930, 1040, 990], "confidence": 0.99},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return path
+
 def _step(path: Path, *, actions: list[ActionCandidate] | None = None) -> Path:
     step = GameStep(
         state=StructuredGameState(
@@ -150,6 +164,46 @@ def test_cli_capture_live_appends_parsed_game_step(tmp_path: Path) -> None:
     step = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
     assert exit_code == 0
     assert [action["option_id"] for action in step["actions"]] == ["strike", "defend", "bash", "skip"]
+
+def test_cli_capture_live_preserves_canonical_card_id_for_duplicate_reward_slots(tmp_path: Path) -> None:
+    output = tmp_path / "captures.jsonl"
+
+    exit_code = cli.main(
+        [
+            "capture-live",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture",
+            str(_duplicate_ocr_fixture(tmp_path / "ocr.json")),
+            "--out",
+            str(output),
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    step = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
+    reward_cards = [card for card in step["state"]["cards"] if card["zone"] == "reward"]
+    assert exit_code == 0
+    assert [action["option_id"] for action in step["actions"]] == ["strike_1", "strike_2", "strike_3", "skip"]
+    assert [card["instance_id"] for card in reward_cards] == [
+        "reward-0-strike_1",
+        "reward-1-strike_2",
+        "reward-2-strike_3",
+    ]
+    assert [card["card_id"] for card in reward_cards] == ["strike", "strike", "strike"]
 
 def test_cli_act_dry_run_reports_action_without_input_events(tmp_path: Path, capsys) -> None:
     input_log = tmp_path / "inputs.jsonl"

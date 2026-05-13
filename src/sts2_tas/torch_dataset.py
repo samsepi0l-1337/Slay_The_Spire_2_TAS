@@ -67,6 +67,7 @@ def collate_encoded_steps(encoded_steps: list[EncodedGameStep]) -> dict[str, tor
         ),
         "labels": torch.tensor([step.label_action_index for step in encoded_steps], dtype=torch.long),
         "outcome_values": torch.tensor([step.outcome_value for step in encoded_steps], dtype=torch.float32),
+        "outcome_mask": torch.tensor([step.outcome_mask for step in encoded_steps], dtype=torch.bool),
     }
 
 

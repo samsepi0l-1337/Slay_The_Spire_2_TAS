@@ -21,6 +21,12 @@ from sts2_tas.torch_dataset import GameStepTorchDataset, collate_encoded_steps
 
 
 def _step(chosen: str = "anger") -> GameStep:
+    actions = [
+        ActionCandidate(action_type="pick_card", option_id="anger", legal=True),
+        ActionCandidate(action_type="skip_reward", option_id="skip", legal=True),
+        ActionCandidate(action_type="play_card", source_card_id="strike", legal=False),
+    ]
+    aliases = {"anger": actions[0].identity, "skip": actions[1].identity, "strike": actions[2].identity}
     return GameStep(
         state=StructuredGameState(
             game_version="0.105.1",
@@ -32,12 +38,8 @@ def _step(chosen: str = "anger") -> GameStep:
             decision_context="card_reward",
             player=PlayerState(hp=70, max_hp=80, block=0, energy=3, turn=1),
         ),
-        actions=[
-            ActionCandidate(action_type="pick_card", option_id="anger", legal=True),
-            ActionCandidate(action_type="skip_reward", option_id="skip", legal=True),
-            ActionCandidate(action_type="play_card", source_card_id="strike", legal=False),
-        ],
-        chosen_action_id=chosen,
+        actions=actions,
+        chosen_action_id=aliases.get(chosen, chosen),
         outcome=StepOutcome(victory=True, floor_reached=2, hp_remaining=70),
         observation=ObservationQuality(
             source_type="screen",
@@ -75,6 +77,7 @@ def test_encode_game_step_creates_action_mask_and_label_index() -> None:
     assert encoded.action_mask == [True, True, False]
     assert encoded.label_action_index == 0
     assert encoded.outcome_value == 1.0
+    assert encoded.outcome_mask is True
     assert encoded.action_positions[0] < len(encoded.token_ids)
 
 
@@ -88,6 +91,7 @@ def test_collate_encoded_steps_pads_tokens_and_actions() -> None:
     assert batch["numeric_features"].shape[:2] == batch["token_ids"].shape
     assert batch["action_positions"].shape == batch["action_mask"].shape
     assert batch["labels"].tolist() == [0, 1]
+    assert batch["outcome_mask"].tolist() == [True, True]
 
 
 def test_encoding_covers_optional_entity_groups_and_error_paths() -> None:
@@ -131,6 +135,7 @@ def test_encoding_covers_optional_entity_groups_and_error_paths() -> None:
     encoded = encode_game_step(full_step, catalog)
 
     assert encoded.outcome_value == 0.0
+    assert encoded.outcome_mask is False
     assert TOKEN_TYPE_IDS["CARD"] in encoded.token_types
     assert TOKEN_TYPE_IDS["RELIC"] in encoded.token_types
     assert TOKEN_TYPE_IDS["POTION"] in encoded.token_types
@@ -196,6 +201,40 @@ def test_encoding_keeps_targeted_combat_actions_distinct() -> None:
     assert first.identity != second.identity
     assert encoded.label_action_index == 1
     assert encoded.token_ids[encoded.action_positions[0]] != encoded.token_ids[encoded.action_positions[1]]
+
+
+def test_encoding_includes_gold_from_player_character_resource() -> None:
+    action = ActionCandidate(action_type="skip_reward", option_id="skip", legal=True)
+    step = GameStep(
+        state=StructuredGameState(
+            game_version="0.105.1",
+            branch="beta",
+            catalog_version="test-catalog",
+            character="ironclad",
+            ascension=0,
+            floor=1,
+            decision_context="card_reward",
+            player=PlayerState(
+                hp=70,
+                max_hp=80,
+                block=0,
+                energy=3,
+                turn=1,
+                character_resource={"gold": 99},
+            ),
+        ),
+        actions=[action],
+        chosen_action_id=action.identity,
+        outcome=None,
+        observation=ObservationQuality("screen", 1.0, "0.105.1", "beta", "test-catalog"),
+        screenshot_path=Path("fixture.png"),
+    )
+    catalog = EntityCatalog.from_steps([step], version="test-catalog")
+
+    encoded = encode_game_step(step, catalog)
+    player_index = encoded.token_types.index(TOKEN_TYPE_IDS["PLAYER"])
+
+    assert encoded.numeric_features[player_index][14] == 99.0
 
 
 def test_torch_dataset_rejects_unlabeled_steps() -> None:

@@ -26,6 +26,8 @@ def add_ml_parsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParse
 
 
 def _train(args: argparse.Namespace) -> None:
+    if args.model.suffix != ".pt":
+        raise ValueError("torch training expects --model to end with .pt")
     model = train_torch_model(
         load_game_steps(args.dataset),
         character=args.character,

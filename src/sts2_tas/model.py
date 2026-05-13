@@ -78,7 +78,9 @@ def train_torch_model(
                 action_mask=batch["action_mask"],
             )
             loss = nn.functional.cross_entropy(output.policy_logits, batch["labels"])
-            loss = loss + 0.5 * value_loss(output.value, batch["outcome_values"])
+            outcome_mask = batch["outcome_mask"]
+            if outcome_mask.any():
+                loss = loss + 0.5 * value_loss(output.value[outcome_mask], batch["outcome_values"][outcome_mask])
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -133,10 +135,11 @@ def recommend(model: TorchTrainedRecommender, step: GameStep) -> Recommendation:
 
 
 def _step_with_query_label(step: GameStep) -> GameStep:
+    label_action = next(action for action in step.actions if action.legal)
     return GameStep(
         state=step.state,
         actions=step.actions,
-        chosen_action_id=step.actions[0].identity,
+        chosen_action_id=label_action.identity,
         outcome=step.outcome,
         observation=step.observation,
         screenshot_path=step.screenshot_path,
@@ -173,7 +176,7 @@ def _save_torch_model(model: TorchTrainedRecommender, path: Path) -> None:
 def _load_torch_model(path: Path) -> TorchTrainedRecommender:
     import torch
 
-    checkpoint: dict[str, Any] = torch.load(path, map_location="cpu", weights_only=False)
+    checkpoint: dict[str, Any] = torch.load(path, map_location="cpu", weights_only=True)
     if checkpoint.get("format") != "sts2_tas_torch_recommender_v1":
         raise ValueError("unsupported torch model format")
     catalog = EntityCatalog.from_dict(checkpoint["catalog"])

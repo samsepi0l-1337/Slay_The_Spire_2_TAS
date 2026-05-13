@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
+from .ml_entities import resolve_action_identity
 from .schema import AutomationAction, CoordinateSpace, GameStep, TargetWindow
 from .windowing import WindowDetector, WindowDetectorProtocol
 
@@ -59,13 +60,10 @@ def plan_action(
     coordinate_space: CoordinateSpace = "screen_absolute",
 ) -> AutomationAction:
     _validate_target_window(coordinate_space, target_window)
-    candidate = next((action for action in step.actions if action.identity == action_id), None)
-    if candidate is None:
-        raise ValueError(f"action_id is not present in game step actions: {action_id}")
-    if not candidate.legal:
-        raise ValueError(f"action_id is not legal: {action_id}")
+    resolved_action_id = resolve_action_identity(step.actions, action_id)
+    candidate = next(action for action in step.actions if action.identity == resolved_action_id)
     automation_action = "skip" if candidate.action_type in {"skip_reward", "end_turn"} else "pick"
-    option_id = None if automation_action == "skip" else candidate.identity
+    option_id = None if automation_action == "skip" else candidate.option_id or candidate.identity
     target = candidate.screen_box
     if automation_action == "pick" and target is None:
         raise ValueError(f"action_id has no screen target: {action_id}")

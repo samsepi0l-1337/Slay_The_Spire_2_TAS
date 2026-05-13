@@ -30,6 +30,7 @@ class EncodedGameStep:
     action_mask: list[bool]
     label_action_index: int
     outcome_value: float
+    outcome_mask: bool
 
 
 def encode_game_step(step: GameStep, catalog: EntityCatalog) -> EncodedGameStep:
@@ -61,10 +62,11 @@ def encode_game_step(step: GameStep, catalog: EntityCatalog) -> EncodedGameStep:
     action_positions = []
     for action in step.actions:
         action_positions.append(len(token_ids))
-        add("action", f"{action.action_type}:{action.identity}", "ACTION", _action_numeric(action))
+        add("action", action.identity, "ACTION", _action_numeric(action))
 
     label_index = _label_index(step.actions, step.chosen_action_id)
     outcome_value = 0.0 if step.outcome is None else float(step.outcome.victory)
+    outcome_mask = step.outcome is not None
     return EncodedGameStep(
         token_ids=token_ids,
         token_types=token_types,
@@ -74,6 +76,7 @@ def encode_game_step(step: GameStep, catalog: EntityCatalog) -> EncodedGameStep:
         action_mask=[action.legal for action in step.actions],
         label_action_index=label_index,
         outcome_value=outcome_value,
+        outcome_mask=outcome_mask,
     )
 
 
@@ -118,6 +121,7 @@ def _player_numeric(player: PlayerState) -> list[float]:
         player.poison,
         player.regen,
         player.intangible,
+        float(player.character_resource.get("gold", 0)) if player.character_resource is not None else 0.0,
     ]
 
 

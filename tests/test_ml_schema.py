@@ -15,6 +15,7 @@ from sts2_tas.schema import (
     StepOutcome,
     StructuredGameState,
 )
+from sts2_tas.ml_entities import action_choice_aliases, resolve_action_identity
 from sts2_tas.capture_state import CapturedGameState
 from sts2_tas.step_factory import _action_type, _card_type, _state_with_reward_cards
 
@@ -157,16 +158,47 @@ def test_game_step_rejects_all_illegal_actions() -> None:
         )
 
 
-def test_action_identity_distinguishes_targets_without_breaking_simple_ids() -> None:
+def test_action_identity_distinguishes_single_entity_action_types_and_targets() -> None:
     pick = ActionCandidate(action_type="pick_card", option_id="anger")
-    source_only = ActionCandidate(action_type="play_card", source_card_id="strike")
+    play = ActionCandidate(action_type="play_card", source_card_id="strike")
+    discard = ActionCandidate(action_type="discard_card", source_card_id="strike")
     first_target = ActionCandidate(action_type="play_card", source_card_id="strike", target_monster_id="jaw_worm")
     second_target = ActionCandidate(action_type="play_card", source_card_id="strike", target_monster_id="cultist")
 
-    assert pick.identity == "anger"
-    assert source_only.identity == "strike"
+    assert pick.identity == "pick_card|option=anger"
+    assert play.identity == "play_card|source_card=strike"
+    assert discard.identity == "discard_card|source_card=strike"
+    assert play.identity != discard.identity
     assert first_target.identity != second_target.identity
-    assert first_target.identity == "source_card=strike|target_monster=jaw_worm"
+    assert first_target.identity == "play_card|source_card=strike|target_monster=jaw_worm"
+
+
+def test_action_choice_aliases_resolve_unique_legacy_choices() -> None:
+    actions = [
+        ActionCandidate(action_type="pick_card", option_id="strike"),
+        ActionCandidate(action_type="skip_reward", option_id="skip"),
+        ActionCandidate(action_type="play_card", source_card_id="bash"),
+        ActionCandidate(action_type="end_turn"),
+    ]
+
+    assert "pick_card:strike" in action_choice_aliases(actions[0])
+    assert "skip" in action_choice_aliases(actions[1])
+    assert "end_turn" in action_choice_aliases(actions[3])
+    assert resolve_action_identity(actions, "pick_card:strike") == actions[0].identity
+    assert resolve_action_identity(actions, "skip") == actions[1].identity
+    assert resolve_action_identity(actions, "play_card:bash") == actions[2].identity
+    assert resolve_action_identity(actions, "end_turn") == actions[3].identity
+
+
+def test_action_choice_aliases_reject_ambiguous_or_illegal_choices() -> None:
+    legal = ActionCandidate(action_type="play_card", source_card_id="strike")
+    other_legal = ActionCandidate(action_type="discard_card", source_card_id="strike")
+    illegal = ActionCandidate(action_type="pick_card", option_id="anger", legal=False)
+
+    with pytest.raises(ValueError, match="ambiguous"):
+        resolve_action_identity([legal, other_legal], "strike")
+    with pytest.raises(ValueError, match="not legal"):
+        resolve_action_identity([illegal], "anger")
 
 
 @pytest.mark.parametrize(

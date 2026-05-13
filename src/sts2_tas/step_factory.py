@@ -130,7 +130,7 @@ def _state_with_reward_cards(captured_state: CapturedGameState, options) -> Capt
     reward_cards = [
         CardInstance(
             instance_id=f"reward-{index}-{option.id}",
-            card_id=option.id,
+            card_id=_canonical_option_id(option.id),
             zone="reward",
             upgraded=False,
             base_cost=None,
@@ -186,3 +186,10 @@ def _card_type(tags: list[str]) -> str:
         if card_type in tags:
             return card_type
     return "unknown"
+
+
+def _canonical_option_id(option_id: str) -> str:
+    base, separator, suffix = option_id.rpartition("_")
+    if separator and suffix.isdigit():
+        return base
+    return option_id

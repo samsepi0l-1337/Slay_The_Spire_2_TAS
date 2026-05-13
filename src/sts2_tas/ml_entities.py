@@ -242,8 +242,8 @@ class ActionCandidate:
             raise ValueError("action_type is required")
 
     @property
-    def identity(self) -> str:
-        parts = [
+    def identity_fields(self) -> tuple[tuple[str, str], ...]:
+        fields = (
             ("option", self.option_id),
             ("source_card", self.source_card_id),
             ("source_potion", self.source_potion_id),
@@ -252,13 +252,15 @@ class ActionCandidate:
             ("path_node", self.path_node_id),
             ("shop_item", self.shop_item_id),
             ("event_option", self.event_option_id),
-        ]
-        present = [(name, value) for name, value in parts if value is not None]
-        if not present:
+        )
+        return tuple((name, value) for name, value in fields if value is not None)
+
+    @property
+    def identity(self) -> str:
+        if not self.identity_fields:
             return self.action_type
-        if len(present) == 1:
-            return present[0][1]
-        return "|".join(f"{name}={value}" for name, value in present)
+        fields = "|".join(f"{name}={value}" for name, value in self.identity_fields)
+        return f"{self.action_type}|{fields}"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ActionCandidate:
@@ -379,3 +381,45 @@ class StructuredGameState:
 
 def _optional_int(value: Any) -> int | None:
     return None if value is None else int(value)
+
+
+def action_choice_aliases(action: ActionCandidate) -> set[str]:
+    aliases = {action.identity}
+    fields = action.identity_fields
+    if not fields:
+        aliases.add(action.action_type)
+        return aliases
+    field_identity = "|".join(f"{name}={value}" for name, value in fields)
+    action_verb = "skip" if action.action_type in {"skip_reward", "end_turn"} else "pick"
+    aliases.add(field_identity)
+    aliases.add(f"{action.action_type}:{field_identity}")
+    aliases.add(f"{action_verb}:{field_identity}")
+    if len(fields) == 1:
+        name, value = fields[0]
+        aliases.update(
+            {
+                value,
+                f"{action.action_type}:{value}",
+                f"{action_verb}:{value}",
+                f"{name}={value}",
+                f"{action.action_type}:{name}={value}",
+                f"{action_verb}:{name}={value}",
+            }
+        )
+    if action.action_type == "skip_reward" and action.option_id == "skip":
+        aliases.add("skip")
+    return aliases
+
+
+def resolve_action_identity(actions: list[ActionCandidate], choice: str, *, legal_only: bool = True) -> str:
+    matches = [action for action in actions if choice in action_choice_aliases(action)]
+    if not matches:
+        raise ValueError(f"action_id is not present in game step actions: {choice}")
+    legal_matches = [action for action in matches if action.legal]
+    if legal_only and not legal_matches:
+        raise ValueError(f"action_id is not legal: {choice}")
+    candidates = legal_matches if legal_only else matches
+    identities = {action.identity for action in candidates}
+    if len(identities) > 1:
+        raise ValueError(f"ambiguous action choice: {choice}")
+    return candidates[0].identity

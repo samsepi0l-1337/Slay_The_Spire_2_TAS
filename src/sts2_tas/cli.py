@@ -8,6 +8,7 @@ from .automation import JsonlInputController, NativeInputController, apply_actio
 from .capture_state import load_captured_game_state
 from .evaluation import write_evaluation
 from .ml_cli import add_ml_parsers
+from .ml_entities import resolve_action_identity
 from .model import load_model, recommend
 from .recognition import (
     FakeOcrProvider,
@@ -175,8 +176,7 @@ def _capture(args: argparse.Namespace) -> None:
 def _label(args: argparse.Namespace) -> None:
     steps = load_game_steps(args.dataset)
     target = steps[args.index]
-    action_id = _parse_action_id(args.choice)
-    _validate_action_id(target, action_id)
+    action_id = _resolve_action_id(target, args.choice)
     steps[args.index] = GameStep(
         state=target.state,
         actions=target.actions,
@@ -234,9 +234,10 @@ def _live_step(args: argparse.Namespace) -> None:
 def _act(args: argparse.Namespace) -> None:
     step = GameStep.from_json(args.step.read_text(encoding="utf-8"))
     target_window = _target_window(args)
+    action_id = _resolve_action_id(step, args.choice)
     action = plan_action(
         step,
-        _parse_action_id(args.choice),
+        action_id,
         dry_run=not args.execute,
         target_window=target_window,
     )
@@ -301,11 +302,11 @@ def _step_from_screen(
 
 def _live_step_action_id(args: argparse.Namespace, step: GameStep) -> str:
     if args.choice is not None:
-        action_id = _parse_action_id(args.choice)
+        action_id = _resolve_action_id(step, args.choice)
     else:
         result = recommend(load_model(args.model), step)
         action_id = result.best.action_id
-    _validate_action_id(step, action_id)
+    _resolve_action_id(step, action_id)
     return action_id
 
 
@@ -313,19 +314,13 @@ def _automation_choice(action) -> dict[str, str | None]:
     return {"action": action.action, "option_id": action.option_id}
 
 
-def _parse_action_id(choice: str) -> str:
-    if choice == "skip":
-        return "skip"
-    if ":" not in choice:
-        return choice
-    _, action_id = choice.split(":", maxsplit=1)
-    return action_id
-
-
-def _validate_action_id(step: GameStep, action_id: str) -> None:
-    legal_action_ids = {action.identity for action in step.actions if action.legal}
-    if action_id not in legal_action_ids:
-        raise ValueError(f"chosen action is not present in legal action candidates: {action_id}")
+def _resolve_action_id(step: GameStep, choice: str) -> str:
+    try:
+        return resolve_action_identity(step.actions, choice)
+    except ValueError as error:
+        if "not present" in str(error):
+            raise ValueError(f"chosen action is not present in legal action candidates: {choice}") from error
+        raise
 
 
 def _split_csv(value: str) -> list[str]:

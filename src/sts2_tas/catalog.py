@@ -82,5 +82,5 @@ def _tokens_from_step(step: GameStep) -> list[tuple[str, str]]:
     tokens.extend(("potion", potion.potion_id) for potion in state.potions or [])
     tokens.extend(("monster", monster.monster_id) for monster in state.monsters or [])
     tokens.extend(("path", path.node_type) for path in state.path_candidates or [])
-    tokens.extend(("action", f"{action.action_type}:{action.identity}") for action in step.actions)
+    tokens.extend(("action", action.identity) for action in step.actions)
     return tokens

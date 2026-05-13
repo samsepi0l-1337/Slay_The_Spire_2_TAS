@@ -18,6 +18,12 @@ from sts2_tas.torch_model import EntityTransformerActorCritic
 
 
 def _step(chosen: str, victory: bool) -> GameStep:
+    actions = [
+        ActionCandidate(action_type="pick_card", option_id="anger", legal=True),
+        ActionCandidate(action_type="skip_reward", option_id="skip", legal=True),
+        ActionCandidate(action_type="play_card", source_card_id="strike", legal=False),
+    ]
+    aliases = {"anger": actions[0].identity, "skip": actions[1].identity, "strike": actions[2].identity}
     return GameStep(
         state=StructuredGameState(
             game_version="0.105.1",
@@ -29,12 +35,8 @@ def _step(chosen: str, victory: bool) -> GameStep:
             decision_context="card_reward",
             player=PlayerState(hp=70 if victory else 10, max_hp=80, block=0, energy=3, turn=1),
         ),
-        actions=[
-            ActionCandidate(action_type="pick_card", option_id="anger", legal=True),
-            ActionCandidate(action_type="skip_reward", option_id="skip", legal=True),
-            ActionCandidate(action_type="play_card", source_card_id="strike", legal=False),
-        ],
-        chosen_action_id=chosen,
+        actions=actions,
+        chosen_action_id=aliases.get(chosen, chosen),
         outcome=StepOutcome(victory=victory, floor_reached=2, hp_remaining=70 if victory else 10),
         observation=ObservationQuality(
             source_type="screen",
@@ -62,7 +64,7 @@ def test_entity_transformer_masks_illegal_actions() -> None:
         dropout=0.0,
     )
 
-    output = model(**{key: value for key, value in batch.items() if key not in {"labels", "outcome_values"}})
+    output = model(**{key: value for key, value in batch.items() if key not in {"labels", "outcome_values", "outcome_mask"}})
 
     assert output.policy_logits.shape == (1, 3)
     assert output.value.shape == (1,)
@@ -86,5 +88,5 @@ def test_torch_model_save_load_preserves_recommendation(tmp_path: Path) -> None:
     loaded = load_model(path)
     result = recommend(loaded, _step("anger", True))
 
-    assert result.best.action_id in {"anger", "skip"}
+    assert result.best.option_id in {"anger", "skip"}
     assert len(result.candidates) == 2
