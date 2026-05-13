@@ -6,6 +6,8 @@ Slay the Spire 2 화면 인식 기반 TAS 학습/자동화 MVP입니다.
 
 ## Quick Start
 
+Python 3.14 이상에서 실행합니다.
+
 ```bash
 uv run --extra dev pytest --cov=sts2_tas --cov-fail-under=100
 uv run sts2-tas capture --screenshot reward.png --out data/snapshots.jsonl --game-version 0.105.1 --branch beta --character ironclad --ascension 0 --floor 1 --deck strike,bash --relics burning_blood --hp 70 --gold 99

@@ -3,6 +3,7 @@
 ## Build
 
 macOS, Linux, Windows PowerShell 모두 같은 이미지 이름을 사용합니다.
+이미지는 Python 3.14 slim 런타임을 기준으로 빌드합니다.
 
 ```bash
 docker build -t sts2-tas:local .
