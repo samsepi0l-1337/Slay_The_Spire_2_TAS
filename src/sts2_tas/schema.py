@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 ChoiceKind = Literal["card", "relic", "skip"]
 Action = Literal["pick", "skip"]
+Box = tuple[int, int, int, int]
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,7 @@ class ChoiceOption:
     name: str
     kind: ChoiceKind
     tags: list[str]
+    box: Box | None = None
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -78,6 +80,7 @@ class DecisionSnapshot:
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
+        data["options"] = [_choice_option_to_dict(option) for option in self.options]
         data["screenshot_path"] = str(self.screenshot_path)
         return data
 
@@ -97,7 +100,7 @@ class DecisionSnapshot:
             relics=list(data["relics"]),
             hp=int(data["hp"]),
             gold=int(data["gold"]),
-            options=[ChoiceOption(**option) for option in data["options"]],
+            options=[_choice_option_from_dict(option) for option in data["options"]],
             chosen=DecisionChoice(**chosen) if chosen is not None else None,
             skipped=bool(data["skipped"]),
             screenshot_path=Path(data["screenshot_path"]),
@@ -106,3 +109,104 @@ class DecisionSnapshot:
     @classmethod
     def from_json(cls, payload: str) -> DecisionSnapshot:
         return cls.from_dict(json.loads(payload))
+
+
+@dataclass(frozen=True)
+class OcrResult:
+    text: str
+    box: Box
+    confidence: float
+
+
+@dataclass(frozen=True)
+class RecognizedOption:
+    id: str
+    name: str
+    kind: ChoiceKind
+    box: Box
+    confidence: float
+    source_text: str
+    tags: list[str]
+
+    def to_choice_option(self) -> ChoiceOption:
+        return ChoiceOption(id=self.id, name=self.name, kind=self.kind, tags=self.tags, box=self.box)
+
+
+@dataclass(frozen=True)
+class ParsedScreen:
+    kind: str
+    options: list[RecognizedOption]
+    screenshot_path: Path
+    resolution: tuple[int, int]
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["screenshot_path"] = str(self.screenshot_path)
+        return data
+
+
+@dataclass(frozen=True)
+class AutomationAction:
+    action: Action
+    option_id: str | None
+    dry_run: bool
+    target: Box | None = None
+
+    def input_plan(self) -> dict[str, int | str]:
+        if self.target is None:
+            if self.action == "pick":
+                raise ValueError("pick automation actions require target")
+            return {"kind": "keypress", "key": "escape"}
+        left, top, right, bottom = self.target
+        return {"kind": "click", "x": (left + right) // 2, "y": (top + bottom) // 2}
+
+    def to_event(self) -> dict[str, Any]:
+        event: dict[str, Any] = {"action": self.action, "option_id": self.option_id}
+        if self.target is not None:
+            event["target"] = list(self.target)
+        event["input_plan"] = self.input_plan()
+        return event
+
+    def to_report(self) -> dict[str, Any]:
+        report = {"dry_run": self.dry_run, **self.to_event()}
+        return report
+
+
+def _choice_option_to_dict(option: ChoiceOption) -> dict[str, Any]:
+    data = asdict(option)
+    if data["box"] is None:
+        del data["box"]
+    return data
+
+
+def _choice_option_from_dict(data: dict[str, Any]) -> ChoiceOption:
+    box = data.get("box")
+    return ChoiceOption(
+        id=data["id"],
+        name=data["name"],
+        kind=data["kind"],
+        tags=list(data["tags"]),
+        box=tuple(box) if box is not None else None,  # type: ignore[arg-type]
+    )
+
+
+@dataclass(frozen=True)
+class RunEpisode:
+    seed: int
+    steps: int
+    choices: list[dict[str, str]]
+    victory: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class SeedEvaluation:
+    episodes: int
+    victories: int
+    win_rate: float
+    average_steps: float
+
+    def to_dict(self) -> dict[str, int | float]:
+        return asdict(self)

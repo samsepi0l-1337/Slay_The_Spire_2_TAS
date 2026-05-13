@@ -3,7 +3,7 @@ name = "sts2-tas"
 version = "0.1.0"
 description = "Screen-recognition learning MVP for Slay the Spire 2 TAS decisions."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
   "joblib>=1.4",
   "pillow>=10.0",

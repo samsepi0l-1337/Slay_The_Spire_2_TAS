@@ -3,6 +3,7 @@
 ## Build
 
 macOS, Linux, Windows PowerShell 모두 같은 이미지 이름을 사용합니다.
+이미지는 Python 3.14 slim 런타임을 기준으로 빌드합니다.
 
 ```bash
 docker build -t sts2-tas:local .
@@ -37,7 +38,9 @@ docker run --rm -v "${PWD}:/workspace" sts2-tas:local capture `
 
 ## Runtime Boundary
 
-The container runs the CLI and model code. It does not capture the Windows desktop or click the game window. For v1, capture screenshots on the host and pass those files into the container through a volume.
+The container runs the CLI and model code. It does not capture the Windows desktop or click the game window. For live vision, capture screenshots on the host and pass those files into the container through a volume.
+
+The image does not install the Tesseract binary or language packs. Use `--ocr-fixture` in the container, or run `--ocr-provider tesseract` on a host where Tesseract and the required English/Korean language data are installed.
 
 Generated datasets and models should stay outside the image:
 
