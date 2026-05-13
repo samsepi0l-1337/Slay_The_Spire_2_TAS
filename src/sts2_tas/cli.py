@@ -140,6 +140,7 @@ def _parser() -> argparse.ArgumentParser:
     run_loop.add_argument("--ocr-language", default="eng+kor")
     run_loop.add_argument("--episodes-out", type=Path, required=True)
     run_loop.add_argument("--max-steps", type=int, required=True)
+    run_loop.add_argument("--victory-seeds", default="")
     run_loop.set_defaults(handler=_run_loop)
 
     evaluate_seeds = subparsers.add_parser("evaluate-seeds")
@@ -278,6 +279,7 @@ def _run_loop(args: argparse.Namespace) -> None:
         ocr_provider=_ocr_provider(args),
         episodes_out=args.episodes_out,
         max_steps=args.max_steps,
+        victory_seeds={int(seed) for seed in args.victory_seeds.split(",") if seed},
     )
 
 

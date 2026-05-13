@@ -20,7 +20,7 @@ uv run sts2-tas act --snapshot query.json --choice pick:strike --input-log input
 uv run sts2-tas act --snapshot query.json --choice pick:strike --input-log inputs.jsonl --input-backend native --execute
 uv run sts2-tas live-step --screenshot-out live.png --ocr-provider tesseract --choice pick:strike --input-log inputs.jsonl --game-version 0.105.1 --branch beta --character ironclad --ascension 0 --floor 1 --hp 70 --gold 99
 uv run sts2-tas live-step --capture-fixture reward.png --ocr-fixture ocr.json --model models/ironclad.joblib --input-log inputs.jsonl --execute --game-version 0.105.1 --branch beta --character ironclad --ascension 0 --floor 1 --hp 70 --gold 99
-uv run sts2-tas run-loop --seeds 7,8 --capture-fixture reward.png --ocr-fixture ocr.json --episodes-out episodes.jsonl --max-steps 1
+uv run sts2-tas run-loop --seeds 7,8 --victory-seeds 8 --capture-fixture reward.png --ocr-fixture ocr.json --episodes-out episodes.jsonl --max-steps 1
 uv run sts2-tas evaluate-seeds --episodes episodes.jsonl --out summary.json
 ```
 

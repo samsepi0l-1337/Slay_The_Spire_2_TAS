@@ -255,15 +255,30 @@ def _compound_line_tokens(line_tokens: dict[tuple[str, str, str, str], list[OcrT
         if len(tokens) < 2:
             continue
         ordered = sorted(tokens, key=lambda token: token.box[0])
-        left = min(token.box[0] for token in ordered)
-        top = min(token.box[1] for token in ordered)
-        right = max(token.box[2] for token in ordered)
-        bottom = max(token.box[3] for token in ordered)
-        compounds.append(
-            OcrToken(
-                text=" ".join(token.text for token in ordered),
-                box=(left, top, right, bottom),
-                confidence=sum(token.confidence for token in ordered) / len(ordered),
-            )
-        )
+        compounds.extend(_catalog_span_tokens(ordered))
     return compounds
+
+
+def _catalog_span_tokens(tokens: list[OcrToken]) -> list[OcrToken]:
+    compounds: list[OcrToken] = []
+    for start in range(len(tokens)):
+        for end in range(start + 2, len(tokens) + 1):
+            span = tokens[start:end]
+            text = " ".join(token.text for token in span)
+            if _catalog_match(text) is None:
+                continue
+            compounds.append(_merge_tokens(span, text))
+    return compounds
+
+
+def _merge_tokens(tokens: list[OcrToken], text: str) -> OcrToken:
+    return OcrToken(
+        text=text,
+        box=(
+            min(token.box[0] for token in tokens),
+            min(token.box[1] for token in tokens),
+            max(token.box[2] for token in tokens),
+            max(token.box[3] for token in tokens),
+        ),
+        confidence=sum(token.confidence for token in tokens) / len(tokens),
+    )

@@ -68,8 +68,8 @@ def _run_command(command: list[str]) -> None:
 
 
 def _native_command(action: AutomationAction, platform_name: str) -> list[str]:
-    plan = action.input_plan()
     system = platform_name.lower()
+    plan = _native_input_plan(action, system)
     if system == "darwin":
         return _macos_command(plan)
     if system == "linux":
@@ -77,6 +77,12 @@ def _native_command(action: AutomationAction, platform_name: str) -> list[str]:
     if system == "windows":
         return _windows_command(plan)
     raise RuntimeError(f"unsupported native input platform: {platform_name}")
+
+
+def _native_input_plan(action: AutomationAction, system: str) -> dict[str, int | str]:
+    if system == "windows" and action.action == "skip":
+        return {"kind": "keypress", "key": "escape"}
+    return action.input_plan()
 
 
 def _macos_command(plan: dict[str, int | str]) -> list[str]:

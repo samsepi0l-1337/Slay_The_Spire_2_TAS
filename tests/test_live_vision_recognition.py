@@ -167,5 +167,36 @@ def test_tesseract_tsv_parser_adds_multiword_line_tokens() -> None:
     assert recognition.OcrToken("Burning Blood", (760, 420, 940, 500), 0.95) in tokens
 
 
+def test_tesseract_tsv_parser_splits_adjacent_multiword_options() -> None:
+    tokens = recognition._tokens_from_tsv(
+        "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+        "5\t1\t1\t1\t1\t1\t300\t420\t90\t80\t96.0\tBurning\n"
+        "5\t1\t1\t1\t1\t2\t400\t420\t80\t80\t94.0\tBlood\n"
+        "5\t1\t1\t1\t1\t3\t900\t420\t70\t80\t92.0\tTiny\n"
+        "5\t1\t1\t1\t1\t4\t980\t420\t90\t80\t90.0\tHouse\n"
+    )
+
+    assert recognition.OcrToken("Burning Blood", (300, 420, 480, 500), 0.95) in tokens
+    assert recognition.OcrToken("Tiny House", (900, 420, 1070, 500), 0.91) in tokens
+    assert recognition.OcrToken("Burning Blood Tiny House", (300, 420, 1070, 500), 0.93) not in tokens
+
+
+def test_parse_ocr_screen_matches_adjacent_multiword_relics_from_one_tsv_line(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        recognition._tokens_from_tsv(
+            "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+            "5\t1\t1\t1\t1\t1\t300\t420\t90\t80\t96.0\tBurning\n"
+            "5\t1\t1\t1\t1\t2\t400\t420\t80\t80\t94.0\tBlood\n"
+            "5\t1\t1\t1\t1\t3\t900\t420\t70\t80\t92.0\tTiny\n"
+            "5\t1\t1\t1\t1\t4\t980\t420\t90\t80\t90.0\tHouse\n"
+        )
+    )
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "screen.png"), ocr_provider=provider)
+
+    assert parsed.kind == "relic_choice"
+    assert [option.id for option in parsed.options] == ["burning_blood", "tiny_house"]
+
+
 def test_tesseract_tsv_parser_accepts_empty_output() -> None:
     assert recognition._tokens_from_tsv("") == []

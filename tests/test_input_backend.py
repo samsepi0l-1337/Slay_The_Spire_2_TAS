@@ -85,7 +85,7 @@ def test_native_input_controller_maps_platform_commands(monkeypatch) -> None:
     subprocess_calls = []
     monkeypatch.setattr(automation.subprocess, "run", lambda command, check: subprocess_calls.append((command, check)))
     automation.NativeInputController(platform_name="Windows").send(
-        AutomationAction(action="skip", option_id=None, dry_run=False, target=None)
+        AutomationAction(action="skip", option_id=None, dry_run=False, target=(880, 930, 1040, 990))
     )
 
     assert commands == [

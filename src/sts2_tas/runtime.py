@@ -42,10 +42,6 @@ def backup_save(save_path: Path, backup_dir: Path) -> Path:
 def restore_save(save_path: Path, backup_dir: Path) -> Path:
     backup_path = _backup_path(save_path, backup_dir)
     if not backup_path.is_file():
-        legacy_backup_path = backup_dir / save_path.name
-        if legacy_backup_path.is_file():
-            backup_path = legacy_backup_path
-    if not backup_path.is_file():
         raise ValueError(f"backup file does not exist: {backup_path}")
     if save_path.exists():
         backup_dir.mkdir(parents=True, exist_ok=True)
@@ -67,8 +63,10 @@ def run_seed_loop(
     ocr_provider: OcrProvider,
     episodes_out: Path,
     max_steps: int,
+    victory_seeds: set[int] | None = None,
 ) -> list[RunEpisode]:
-    episodes = [_run_seed(seed, screenshot, ocr_provider, max_steps) for seed in seeds]
+    victories = victory_seeds or set()
+    episodes = [_run_seed(seed, screenshot, ocr_provider, max_steps, seed in victories) for seed in seeds]
     episodes_out.parent.mkdir(parents=True, exist_ok=True)
     with episodes_out.open("w", encoding="utf-8") as file:
         for episode in episodes:
@@ -76,7 +74,7 @@ def run_seed_loop(
     return episodes
 
 
-def _run_seed(seed: int, screenshot: Path, ocr_provider: OcrProvider, max_steps: int) -> RunEpisode:
+def _run_seed(seed: int, screenshot: Path, ocr_provider: OcrProvider, max_steps: int, victory: bool) -> RunEpisode:
     parsed = parse_ocr_screen(screenshot, ocr_provider)
     choice = next(option for option in parsed.options if option.kind != "skip")
     choices = [{"action": "pick", "option_id": choice.id}][:max_steps]
@@ -84,4 +82,5 @@ def _run_seed(seed: int, screenshot: Path, ocr_provider: OcrProvider, max_steps:
         seed=seed,
         steps=len(choices),
         choices=choices,
+        victory=victory,
     )

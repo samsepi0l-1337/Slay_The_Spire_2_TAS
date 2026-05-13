@@ -249,7 +249,7 @@ def test_save_state_backups_do_not_collide_for_same_file_names(tmp_path: Path) -
     assert second_save.read_text(encoding="utf-8") == "second"
 
 
-def test_save_state_restore_accepts_legacy_file_name_backup(tmp_path: Path) -> None:
+def test_save_state_restore_rejects_legacy_file_name_backup(tmp_path: Path) -> None:
     save_file = tmp_path / "runs" / "autosave.sav"
     save_file.parent.mkdir()
     save_file.write_text("after", encoding="utf-8")
@@ -257,9 +257,10 @@ def test_save_state_restore_accepts_legacy_file_name_backup(tmp_path: Path) -> N
     backup_dir.mkdir()
     (backup_dir / "autosave.sav").write_text("before", encoding="utf-8")
 
-    runtime.restore_save(save_file, backup_dir)
+    with pytest.raises(ValueError, match="backup file does not exist"):
+        runtime.restore_save(save_file, backup_dir)
 
-    assert save_file.read_text(encoding="utf-8") == "before"
+    assert save_file.read_text(encoding="utf-8") == "after"
 
 
 def test_cli_run_loop_records_seed_episode(tmp_path: Path) -> None:
@@ -311,6 +312,21 @@ def test_cli_run_loop_records_actual_executed_steps_when_max_steps_is_higher(tmp
     assert exit_code == 0
     assert episode["steps"] == 1
     assert episode["choices"] == [{"action": "pick", "option_id": "strike"}]
+
+
+def test_cli_run_loop_records_declared_victory_seeds(tmp_path: Path) -> None:
+    episodes = tmp_path / "episodes.jsonl"
+
+    exit_code = cli.main([
+        "run-loop", "--seeds", "7,8", "--victory-seeds", "8",
+        "--capture-fixture", str(_screen(tmp_path / "screen.png")),
+        "--ocr-fixture", str(_ocr_fixture(tmp_path / "ocr.json")),
+        "--episodes-out", str(episodes), "--max-steps", "1",
+    ])
+
+    rows = [json.loads(line) for line in episodes.read_text(encoding="utf-8").splitlines()]
+    assert exit_code == 0
+    assert [(row["seed"], row["victory"]) for row in rows] == [(7, False), (8, True)]
 
 
 def test_cli_evaluate_seeds_writes_summary(tmp_path: Path) -> None:
