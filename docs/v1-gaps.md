@@ -43,13 +43,14 @@ Implemented:
 - `--execute` gated input event logging
 - `--input-backend native` execution adapter for local OS input plans
 - option-box center click planning for picks and skip-button clicks
+- macOS target-window activation plus same-script window identity/bounds verification before native input
 - explicit save-state backup and restore
 - seed run-loop episode generation
 
 Not implemented:
 
-- window focus management
 - OS permission provisioning for live screen capture
+- Quartz/PyObjC targeted PID input delivery
 - Windows native click injection
 - direct game process reset hooks
 - online/co-op or leaderboard automation

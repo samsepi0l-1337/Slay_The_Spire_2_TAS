@@ -9,12 +9,13 @@ from typing import Any, Callable
 from .recognition import OcrProvider, parse_ocr_screen
 from .schema import RunEpisode
 
-ScreenGrabber = Callable[[], Any]
+ScreenGrabber = Callable[..., Any]
 
 
-def capture_screen(screenshot_out: Path, *, grabber: ScreenGrabber | None = None) -> Path:
+def capture_screen(screenshot_out: Path, *, grabber: ScreenGrabber | None = None, bbox: tuple[int, int, int, int] | None = None) -> Path:
     try:
-        image = (grabber or _pillow_screen_grabber)()
+        capture = grabber or _pillow_screen_grabber
+        image = capture(bbox=bbox) if bbox is not None else capture()
         screenshot_out.parent.mkdir(parents=True, exist_ok=True)
         image.save(screenshot_out)
     except Exception as error:
@@ -24,10 +25,12 @@ def capture_screen(screenshot_out: Path, *, grabber: ScreenGrabber | None = None
     return screenshot_out
 
 
-def _pillow_screen_grabber() -> Any:
+def _pillow_screen_grabber(*, bbox: tuple[int, int, int, int] | None = None) -> Any:
     from PIL import ImageGrab
 
-    return ImageGrab.grab()
+    if bbox is None:
+        return ImageGrab.grab()
+    return ImageGrab.grab(bbox=bbox)
 
 
 def backup_save(save_path: Path, backup_dir: Path) -> Path:

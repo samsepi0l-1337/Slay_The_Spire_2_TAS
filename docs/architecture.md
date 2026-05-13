@@ -42,7 +42,13 @@ Unknown layouts fail instead of creating empty-option training rows. OCR provide
 
 `sts2-tas live-step` emits JSON with `choice`, `action`, `input_plan`, and `screenshot_path`. `--capture-fixture` keeps tests and fixture runs deterministic; `--screenshot-out` writes the live captured screen before OCR. Live capture failures are reported as permission/setup errors and should be retried only after OS screen-recording permission is granted.
 
-`--input-backend native --execute` sends the same plan through a platform adapter instead of writing JSONL. macOS uses `osascript` System Events, Linux uses `xdotool`, and Windows currently supports only the keypress path through PowerShell SendKeys while click input fails explicitly. Tests inject a subprocess runner so no real OS input is sent.
+`live-step --screenshot-out --target-process "Slay the Spire 2"` captures the target window bbox and marks the resulting snapshot as `coordinate_space: "window_relative"` with `target_window` metadata. `act --target-process` only translates coordinates for snapshots whose window-relative metadata matches the current detected target window. Legacy snapshots without coordinate metadata default to `screen_absolute` and fail closed instead of adding the window offset a second time.
+
+`--input-backend native --execute` sends the same plan through a platform adapter instead of writing JSONL. macOS uses `osascript` System Events, Linux uses `xdotool`, and Windows currently supports only the keypress path through PowerShell SendKeys while click input fails explicitly. With a target window, macOS builds one AppleScript that activates the application, re-reads the window title/bounds inside the same script, errors if the expected metadata changed, then sends click/key input. Tests inject subprocess/window runners so no real OS input is sent.
+
+Production real-input usage combines target-window detection, native input, and the explicit execution gate: `live-step --screenshot-out ... --target-process "Slay the Spire 2" --input-backend native --execute`. Replaying a saved window-relative snapshot uses the same gate with `act --snapshot ... --target-process "Slay the Spire 2" --input-backend native --execute`. Omit `--input-backend native --execute` first to verify the dry-run plan and target metadata.
+
+Quartz/PyObjC targeted PID event delivery is intentionally only an extension point for now. No dependency is added in this boundary.
 
 `save-state backup` and `save-state restore` operate only on the explicit `--save` file and `--backup-dir`. Backup names include a stable hash of the save path so saves with the same file name in different directories do not overwrite each other. Restore requires that exact hashed backup and keeps a pre-restore copy before replacing the save file.
 

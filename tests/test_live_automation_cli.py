@@ -182,6 +182,7 @@ def test_cli_act_dry_run_reports_action_without_input_events(tmp_path: Path, cap
         "action": "pick",
         "option_id": "strike",
         "target": [250, 260, 430, 330],
+        "coordinate_space": "screen_absolute",
         "input_plan": {"kind": "click", "x": 340, "y": 295},
     }
     assert not input_log.exists()
@@ -209,6 +210,7 @@ def test_cli_act_execute_writes_input_event(tmp_path: Path) -> None:
         "action": "pick",
         "option_id": "strike",
         "target": [250, 260, 430, 330],
+        "coordinate_space": "screen_absolute",
         "input_plan": {"kind": "click", "x": 340, "y": 295},
     }
 

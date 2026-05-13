@@ -19,7 +19,8 @@ from .recognition import (
     parse_ocr_screen,
 )
 from .runtime import backup_save, capture_screen, restore_save, run_seed_loop
-from .schema import ChoiceOption, DecisionChoice, DecisionSnapshot
+from .schema import ChoiceOption, DecisionChoice, DecisionSnapshot, TargetWindow
+from .windowing import WindowDetector
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -102,6 +103,7 @@ def _parser() -> argparse.ArgumentParser:
     live_step.add_argument("--input-log", type=Path, required=True)
     live_step.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
     live_step.add_argument("--execute", action="store_true")
+    live_step.add_argument("--target-process")
     live_step.add_argument("--game-version", required=True)
     live_step.add_argument("--branch", required=True)
     live_step.add_argument("--character", required=True)
@@ -119,6 +121,7 @@ def _parser() -> argparse.ArgumentParser:
     act.add_argument("--input-log", type=Path, required=True)
     act.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
     act.add_argument("--execute", action="store_true")
+    act.add_argument("--target-process")
     act.set_defaults(handler=_act)
 
     save_state = subparsers.add_parser("save-state")
@@ -192,6 +195,8 @@ def _label(args: argparse.Namespace) -> None:
         chosen=choice,
         skipped=choice.action == "skip",
         screenshot_path=target.screenshot_path,
+        coordinate_space=target.coordinate_space,
+        target_window=target.target_window,
     )
     write_snapshots(args.dataset, snapshots)
 
@@ -232,10 +237,17 @@ def _capture_live(args: argparse.Namespace) -> None:
 
 
 def _live_step(args: argparse.Namespace) -> None:
-    screenshot_path = args.capture_fixture or capture_screen(args.screenshot_out)
-    snapshot = _snapshot_from_screen(args, screenshot_path)
+    target_window = _target_window(args)
+    if args.capture_fixture:
+        screenshot_path = args.capture_fixture
+    elif target_window is None:
+        screenshot_path = capture_screen(args.screenshot_out)
+    else:
+        screenshot_path = capture_screen(args.screenshot_out, bbox=target_window.bounds.to_bbox())
+    snapshot_target_window = target_window if target_window is not None and not args.capture_fixture else None
+    snapshot = _snapshot_from_screen(args, screenshot_path, target_window=snapshot_target_window)
     choice = _live_step_choice(args, snapshot)
-    action = plan_action(snapshot, choice, dry_run=not args.execute)
+    action = plan_action(snapshot, choice, dry_run=not args.execute, target_window=target_window)
     if args.input_backend == "native" and not args.execute:
         raise ValueError("native input backend requires --execute")
     controller = _input_controller(args) if args.execute else None
@@ -245,12 +257,20 @@ def _live_step(args: argparse.Namespace) -> None:
         "input_plan": action.input_plan(),
         "screenshot_path": str(screenshot_path),
     }
+    if target_window is not None:
+        report["target_window"] = target_window.to_dict()
     print(json.dumps(report, sort_keys=True))
 
 
 def _act(args: argparse.Namespace) -> None:
     snapshot = DecisionSnapshot.from_json(args.snapshot.read_text(encoding="utf-8"))
-    action = plan_action(snapshot, _parse_choice(args.choice), dry_run=not args.execute)
+    target_window = _target_window(args)
+    action = plan_action(
+        snapshot,
+        _parse_choice(args.choice),
+        dry_run=not args.execute,
+        target_window=target_window,
+    )
     if args.input_backend == "native" and not args.execute:
         raise ValueError("native input backend requires --execute")
     controller = _input_controller(args) if args.execute else None
@@ -262,6 +282,12 @@ def _input_controller(args: argparse.Namespace) -> JsonlInputController | Native
     if args.input_backend == "native":
         return NativeInputController()
     return JsonlInputController(args.input_log)
+
+
+def _target_window(args: argparse.Namespace) -> TargetWindow | None:
+    if getattr(args, "target_process", None) is None:
+        return None
+    return WindowDetector().detect(args.target_process)
 
 
 def _save_state_backup(args: argparse.Namespace) -> None:
@@ -287,7 +313,12 @@ def _evaluate_seeds(args: argparse.Namespace) -> None:
     write_evaluation(args.episodes, args.out)
 
 
-def _snapshot_from_screen(args: argparse.Namespace, screenshot_path: Path) -> DecisionSnapshot:
+def _snapshot_from_screen(
+    args: argparse.Namespace,
+    screenshot_path: Path,
+    *,
+    target_window: TargetWindow | None = None,
+) -> DecisionSnapshot:
     parsed = parse_ocr_screen(screenshot_path, _ocr_provider(args))
     return DecisionSnapshot(
         game_version=args.game_version,
@@ -303,6 +334,8 @@ def _snapshot_from_screen(args: argparse.Namespace, screenshot_path: Path) -> De
         chosen=None,
         skipped=False,
         screenshot_path=screenshot_path,
+        coordinate_space="window_relative" if target_window is not None else "screen_absolute",
+        target_window=target_window,
     )
 
 
