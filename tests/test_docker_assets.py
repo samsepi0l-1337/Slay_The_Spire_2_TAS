@@ -49,24 +49,20 @@ def test_docs_explain_windows_docker_and_v1_gaps() -> None:
     assert "window focus management" not in gaps_doc
     assert "Docker" in index
     assert "v1 gaps" in index
+    assert "Windows executable" in index
     assert "PYTHONPATH=src" in index
     assert "--no-editable" in index
+    assert "scripts/build-windows-exe.ps1" in readme
+    assert "sts2-tas-windows-x64" in readme
+    assert "dist/sts2-tas.exe" in readme
     assert "PYTHONPATH=src" in readme
     assert "--no-editable" in readme
     assert (
-        'live-step --screenshot-out live.png --ocr-provider tesseract --choice pick:strike '
-        '--input-log inputs.jsonl --target-process "Slay the Spire 2" '
-        "--input-backend native --execute"
+        'live-step --screenshot-out live.png --ocr-provider tesseract --choice pick_card:strike '
+        "--input-log inputs.jsonl"
     ) in readme
-    assert (
-        'act --snapshot window-relative-query.json --choice pick:strike --input-log inputs.jsonl '
-        '--target-process "Slay the Spire 2" --input-backend native --execute'
-    ) in readme
+    assert '--target-process "Slay the Spire 2" --input-backend native --execute' in readme
     assert (
         'live-step --screenshot-out ... --target-process "Slay the Spire 2" '
-        "--input-backend native --execute"
-    ) in architecture_doc
-    assert (
-        'act --snapshot ... --target-process "Slay the Spire 2" '
         "--input-backend native --execute"
     ) in architecture_doc

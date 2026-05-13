@@ -4,19 +4,50 @@ import json
 import pytest
 
 from sts2_tas import automation, cli
-from sts2_tas.schema import AutomationAction, DecisionChoice, DecisionSnapshot, TargetWindow, WindowBounds
+from sts2_tas.schema import (
+    ActionCandidate,
+    AutomationAction,
+    GameStep,
+    ObservationQuality,
+    PlayerState,
+    StructuredGameState,
+    TargetWindow,
+    WindowBounds,
+)
 
 
-def _snapshot(path: Path) -> Path:
-    path.write_text(
-        '{"game_version":"0.105.1","branch":"beta","character":"ironclad","ascension":0,"floor":1,'
-        '"deck":["strike"],"relics":["burning_blood"],"hp":70,"gold":0,'
-        '"options":[{"id":"strike","name":"Strike","kind":"card","tags":[],"box":[250,260,430,330]},'
-        '{"id":"skip","name":"Skip","kind":"skip","tags":[],"box":[880,930,1040,990]}],'
-        '"chosen":null,"skipped":false,"screenshot_path":"screen.png"}',
-        encoding="utf-8",
+def _step(path: Path, *, actions: list[ActionCandidate] | None = None) -> Path:
+    step = GameStep(
+        state=StructuredGameState(
+            game_version="0.105.1",
+            branch="beta",
+            catalog_version="test-catalog",
+            character="ironclad",
+            ascension=0,
+            floor=1,
+            decision_context="card_reward",
+            player=PlayerState(hp=70, max_hp=80, block=0, energy=3, turn=1),
+        ),
+        actions=actions
+        or [
+            ActionCandidate(action_type="pick_card", option_id="strike", screen_box=(250, 260, 430, 330)),
+            ActionCandidate(action_type="skip_reward", option_id="skip", screen_box=(880, 930, 1040, 990)),
+        ],
+        chosen_action_id=None,
+        outcome=None,
+        observation=ObservationQuality("screen", 1.0, "0.105.1", "beta", "test-catalog"),
+        screenshot_path=Path("screen.png"),
     )
+    path.write_text(step.to_json(), encoding="utf-8")
     return path
+
+
+def _target_window(left: int = 100) -> TargetWindow:
+    return TargetWindow(
+        process="Slay the Spire 2",
+        title="Main Window",
+        bounds=WindowBounds(left=left, top=200, width=1280, height=720),
+    )
 
 
 def test_cli_act_native_execute_sends_click_without_jsonl_event(monkeypatch, tmp_path: Path, capsys) -> None:
@@ -32,10 +63,10 @@ def test_cli_act_native_execute_sends_click_without_jsonl_event(monkeypatch, tmp
     exit_code = cli.main(
         [
             "act",
-            "--snapshot",
-            str(_snapshot(tmp_path / "snapshot.json")),
+            "--step",
+            str(_step(tmp_path / "step.json")),
             "--choice",
-            "pick:strike",
+            "pick_card:strike",
             "--input-log",
             str(input_log),
             "--input-backend",
@@ -72,161 +103,57 @@ def test_native_input_controller_maps_skip_to_keypress() -> None:
     assert commands == [["osascript", "-e", 'tell application "System Events" to key code 53']]
 
 
-def test_action_translates_window_relative_box_to_target_window_coordinates() -> None:
-    action = AutomationAction(
-        action="pick",
-        option_id="strike",
-        dry_run=True,
-        target=(250, 260, 430, 330),
-        coordinate_space="window_relative",
-        target_window=TargetWindow(
-            process="Slay the Spire 2",
-            title="Main Window",
-            bounds=WindowBounds(left=100, top=200, width=1280, height=720),
-        ),
-    )
-
-    assert action.input_plan() == {"kind": "click", "x": 440, "y": 495}
-    assert action.to_report()["target_window"] == {
-        "process": "Slay the Spire 2",
-        "title": "Main Window",
-        "bounds": {"left": 100, "top": 200, "width": 1280, "height": 720},
-    }
-    assert action.to_report()["coordinate_space"] == "window_relative"
-
-
-def test_plan_action_rejects_target_window_for_default_screen_absolute_snapshot(tmp_path: Path) -> None:
-    snapshot = DecisionSnapshot.from_json(_snapshot(tmp_path / "snapshot.json").read_text(encoding="utf-8"))
-    target_window = TargetWindow(
-        process="Slay the Spire 2",
-        title="Main Window",
-        bounds=WindowBounds(left=100, top=200, width=1280, height=720),
-    )
+def test_plan_action_rejects_target_window_for_screen_absolute_step(tmp_path: Path) -> None:
+    step = GameStep.from_json(_step(tmp_path / "step.json").read_text(encoding="utf-8"))
 
     with pytest.raises(ValueError, match="window_relative"):
-        automation.plan_action(
-            snapshot,
-            DecisionChoice(action="pick", option_id="strike"),
-            dry_run=True,
-            target_window=target_window,
-        )
+        automation.plan_action(step, "strike", dry_run=True, target_window=_target_window())
 
 
-def test_plan_action_accepts_matching_window_relative_snapshot(tmp_path: Path) -> None:
-    target_window = TargetWindow(
-        process="Slay the Spire 2",
-        title="Main Window",
-        bounds=WindowBounds(left=100, top=200, width=1280, height=720),
-    )
-    snapshot = DecisionSnapshot.from_json(_snapshot(tmp_path / "snapshot.json").read_text(encoding="utf-8"))
-    snapshot = DecisionSnapshot(
-        game_version=snapshot.game_version,
-        branch=snapshot.branch,
-        character=snapshot.character,
-        ascension=snapshot.ascension,
-        floor=snapshot.floor,
-        deck=snapshot.deck,
-        relics=snapshot.relics,
-        hp=snapshot.hp,
-        gold=snapshot.gold,
-        options=snapshot.options,
-        chosen=snapshot.chosen,
-        skipped=snapshot.skipped,
-        screenshot_path=snapshot.screenshot_path,
-        coordinate_space="window_relative",
-        target_window=target_window,
-    )
+def test_plan_action_accepts_window_relative_step(tmp_path: Path) -> None:
+    step = GameStep.from_json(_step(tmp_path / "step.json").read_text(encoding="utf-8"))
 
     action = automation.plan_action(
-        snapshot,
-        DecisionChoice(action="pick", option_id="strike"),
+        step,
+        "strike",
         dry_run=True,
-        target_window=target_window,
+        target_window=_target_window(),
+        coordinate_space="window_relative",
     )
 
     assert action.coordinate_space == "window_relative"
     assert action.input_plan() == {"kind": "click", "x": 440, "y": 495}
 
 
-def test_plan_action_rejects_window_relative_snapshot_without_current_target_window(tmp_path: Path) -> None:
-    target_window = TargetWindow(
-        process="Slay the Spire 2",
-        title="Main Window",
-        bounds=WindowBounds(left=100, top=200, width=1280, height=720),
-    )
-    snapshot = DecisionSnapshot.from_json(_snapshot(tmp_path / "snapshot.json").read_text(encoding="utf-8"))
-    snapshot = DecisionSnapshot(
-        game_version=snapshot.game_version,
-        branch=snapshot.branch,
-        character=snapshot.character,
-        ascension=snapshot.ascension,
-        floor=snapshot.floor,
-        deck=snapshot.deck,
-        relics=snapshot.relics,
-        hp=snapshot.hp,
-        gold=snapshot.gold,
-        options=snapshot.options,
-        chosen=snapshot.chosen,
-        skipped=snapshot.skipped,
-        screenshot_path=snapshot.screenshot_path,
-        coordinate_space="window_relative",
-        target_window=target_window,
-    )
+def test_plan_action_rejects_window_relative_without_current_target_window(tmp_path: Path) -> None:
+    step = GameStep.from_json(_step(tmp_path / "step.json").read_text(encoding="utf-8"))
 
     with pytest.raises(ValueError, match="current target window"):
-        automation.plan_action(
-            snapshot,
-            DecisionChoice(action="pick", option_id="strike"),
-            dry_run=True,
-        )
+        automation.plan_action(step, "strike", dry_run=True, coordinate_space="window_relative")
 
 
-def test_plan_action_rejects_mismatched_window_relative_snapshot(tmp_path: Path) -> None:
-    captured_window = TargetWindow(
-        process="Slay the Spire 2",
-        title="Main Window",
-        bounds=WindowBounds(left=100, top=200, width=1280, height=720),
-    )
-    current_window = TargetWindow(
-        process="Slay the Spire 2",
-        title="Main Window",
-        bounds=WindowBounds(left=101, top=200, width=1280, height=720),
-    )
-    snapshot = DecisionSnapshot.from_json(_snapshot(tmp_path / "snapshot.json").read_text(encoding="utf-8"))
-    snapshot = DecisionSnapshot(
-        game_version=snapshot.game_version,
-        branch=snapshot.branch,
-        character=snapshot.character,
-        ascension=snapshot.ascension,
-        floor=snapshot.floor,
-        deck=snapshot.deck,
-        relics=snapshot.relics,
-        hp=snapshot.hp,
-        gold=snapshot.gold,
-        options=snapshot.options,
-        chosen=snapshot.chosen,
-        skipped=snapshot.skipped,
-        screenshot_path=snapshot.screenshot_path,
-        coordinate_space="window_relative",
-        target_window=captured_window,
+def test_plan_action_rejects_missing_illegal_or_targetless_actions(tmp_path: Path) -> None:
+    step = GameStep.from_json(
+        _step(
+            tmp_path / "step.json",
+            actions=[
+                ActionCandidate(action_type="pick_card", option_id="strike", legal=False, screen_box=(1, 2, 3, 4)),
+                ActionCandidate(action_type="pick_card", option_id="bash", legal=True),
+            ],
+        ).read_text(encoding="utf-8")
     )
 
-    with pytest.raises(ValueError, match="target window metadata"):
-        automation.plan_action(
-            snapshot,
-            DecisionChoice(action="pick", option_id="strike"),
-            dry_run=True,
-            target_window=current_window,
-        )
+    with pytest.raises(ValueError, match="not present"):
+        automation.plan_action(step, "missing", dry_run=True)
+    with pytest.raises(ValueError, match="not legal"):
+        automation.plan_action(step, "strike", dry_run=True)
+    with pytest.raises(ValueError, match="no screen target"):
+        automation.plan_action(step, "bash", dry_run=True)
 
 
 def test_native_input_controller_verifies_target_window_before_input() -> None:
     commands = []
-    target_window = TargetWindow(
-        process="Slay the Spire 2",
-        title="Main Window",
-        bounds=WindowBounds(left=100, top=200, width=1280, height=720),
-    )
+    target_window = _target_window()
 
     class Detector:
         def detect(self, process: str) -> TargetWindow:
@@ -263,11 +190,7 @@ def test_native_input_controller_verifies_target_window_before_input() -> None:
 
 def test_native_input_controller_keeps_target_keypress_inside_window_guard() -> None:
     commands = []
-    target_window = TargetWindow(
-        process="Slay the Spire 2",
-        title="Main Window",
-        bounds=WindowBounds(left=100, top=200, width=1280, height=720),
-    )
+    target_window = _target_window()
 
     class Detector:
         def detect(self, process: str) -> TargetWindow:
@@ -294,20 +217,9 @@ def test_native_input_controller_keeps_target_keypress_inside_window_guard() -> 
 
 
 def test_native_input_controller_fails_closed_when_target_window_changes() -> None:
-    expected = TargetWindow(
-        process="Slay the Spire 2",
-        title="Main Window",
-        bounds=WindowBounds(left=100, top=200, width=1280, height=720),
-    )
-    moved = TargetWindow(
-        process="Slay the Spire 2",
-        title="Main Window",
-        bounds=WindowBounds(left=101, top=200, width=1280, height=720),
-    )
-
     class Detector:
         def detect(self, process: str) -> TargetWindow:
-            return moved
+            return _target_window(left=101)
 
     controller = automation.NativeInputController(
         platform_name="Darwin",
@@ -323,7 +235,7 @@ def test_native_input_controller_fails_closed_when_target_window_changes() -> No
                 dry_run=False,
                 target=None,
                 coordinate_space="window_relative",
-                target_window=expected,
+                target_window=_target_window(),
             )
         )
 
@@ -380,9 +292,9 @@ def test_native_input_controller_rejects_unsupported_platforms() -> None:
 
 
 def test_plan_action_uses_skip_box_when_available(tmp_path: Path) -> None:
-    snapshot = DecisionSnapshot.from_json(_snapshot(tmp_path / "snapshot.json").read_text(encoding="utf-8"))
+    step = GameStep.from_json(_step(tmp_path / "step.json").read_text(encoding="utf-8"))
 
-    action = automation.plan_action(snapshot, DecisionChoice(action="skip"), dry_run=True)
+    action = automation.plan_action(step, "skip", dry_run=True)
 
     assert action.target == (880, 930, 1040, 990)
     assert action.input_plan() == {"kind": "click", "x": 960, "y": 960}
@@ -393,10 +305,10 @@ def test_cli_act_rejects_native_without_execute(tmp_path: Path) -> None:
         cli.main(
             [
                 "act",
-                "--snapshot",
-                str(_snapshot(tmp_path / "snapshot.json")),
+                "--step",
+                str(_step(tmp_path / "step.json")),
                 "--choice",
-                "pick:strike",
+                "pick_card:strike",
                 "--input-log",
                 str(tmp_path / "inputs.jsonl"),
                 "--input-backend",

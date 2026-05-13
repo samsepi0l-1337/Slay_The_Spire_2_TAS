@@ -5,13 +5,11 @@ from PIL import Image
 import pytest
 
 from sts2_tas import automation, cli, runtime
-from sts2_tas.schema import AutomationAction, ChoiceOption, DecisionChoice, DecisionSnapshot
-
+from sts2_tas.schema import ActionCandidate, AutomationAction, GameStep, ObservationQuality, PlayerState, StructuredGameState
 
 def _screen(path: Path) -> Path:
     Image.new("RGB", (1920, 1080), (15, 18, 24)).save(path)
     return path
-
 
 def _ocr_fixture(path: Path) -> Path:
     path.write_text(
@@ -27,33 +25,44 @@ def _ocr_fixture(path: Path) -> Path:
     )
     return path
 
-
-def _snapshot(path: Path) -> Path:
+def _duplicate_ocr_fixture(path: Path) -> Path:
     path.write_text(
         json.dumps(
-            {
-                "game_version": "0.105.1",
-                "branch": "beta",
-                "character": "ironclad",
-                "ascension": 0,
-                "floor": 1,
-                "deck": ["strike"],
-                "relics": ["burning_blood"],
-                "hp": 70,
-                "gold": 0,
-                "options": [
-                    {"id": "strike", "name": "Strike", "kind": "card", "tags": [], "box": [250, 260, 430, 330]},
-                    {"id": "skip", "name": "Skip", "kind": "skip", "tags": [], "box": [880, 930, 1040, 990]},
-                ],
-                "chosen": None,
-                "skipped": False,
-                "screenshot_path": "screen.png",
-            }
+            [
+                {"text": "Strike", "box": [250, 260, 430, 330], "confidence": 0.99},
+                {"text": "Strike", "box": [760, 260, 940, 330], "confidence": 0.99},
+                {"text": "Strike", "box": [1270, 260, 1450, 330], "confidence": 0.99},
+                {"text": "Skip", "box": [880, 930, 1040, 990], "confidence": 0.99},
+            ]
         ),
         encoding="utf-8",
     )
     return path
 
+def _step(path: Path, *, actions: list[ActionCandidate] | None = None) -> Path:
+    step = GameStep(
+        state=StructuredGameState(
+            game_version="0.105.1",
+            branch="beta",
+            catalog_version="test-catalog",
+            character="ironclad",
+            ascension=0,
+            floor=1,
+            decision_context="card_reward",
+            player=PlayerState(hp=70, max_hp=80, block=0, energy=3, turn=1),
+        ),
+        actions=actions
+        or [
+            ActionCandidate(action_type="pick_card", option_id="strike", screen_box=(250, 260, 430, 330)),
+            ActionCandidate(action_type="skip_reward", option_id="skip", screen_box=(880, 930, 1040, 990)),
+        ],
+        chosen_action_id=None,
+        outcome=None,
+        observation=ObservationQuality("screen", 1.0, "0.105.1", "beta", "test-catalog"),
+        screenshot_path=Path("screen.png"),
+    )
+    path.write_text(step.to_json(), encoding="utf-8")
+    return path
 
 def test_cli_parse_screen_writes_catalog_matched_options(tmp_path: Path) -> None:
     output = tmp_path / "parsed.json"
@@ -73,7 +82,6 @@ def test_cli_parse_screen_writes_catalog_matched_options(tmp_path: Path) -> None
     parsed = json.loads(output.read_text(encoding="utf-8"))
     assert exit_code == 0
     assert [option["id"] for option in parsed["options"]] == ["strike", "defend", "bash", "skip"]
-
 
 def test_cli_parse_screen_can_use_tesseract_provider(monkeypatch, tmp_path: Path) -> None:
     output = tmp_path / "parsed.json"
@@ -112,7 +120,6 @@ def test_cli_parse_screen_can_use_tesseract_provider(monkeypatch, tmp_path: Path
     assert languages == ["eng+kor"]
     assert [option["id"] for option in parsed["options"]] == ["strike", "defend", "bash", "skip"]
 
-
 def test_cli_parse_screen_requires_fixture_for_fixture_provider(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="ocr fixture"):
         cli.main(
@@ -125,8 +132,7 @@ def test_cli_parse_screen_requires_fixture_for_fixture_provider(tmp_path: Path) 
             ]
         )
 
-
-def test_cli_capture_live_appends_parsed_snapshot(tmp_path: Path) -> None:
+def test_cli_capture_live_appends_parsed_game_step(tmp_path: Path) -> None:
     output = tmp_path / "captures.jsonl"
 
     exit_code = cli.main(
@@ -155,10 +161,49 @@ def test_cli_capture_live_appends_parsed_snapshot(tmp_path: Path) -> None:
         ]
     )
 
-    snapshot = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
+    step = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
     assert exit_code == 0
-    assert [option["id"] for option in snapshot["options"]] == ["strike", "defend", "bash", "skip"]
+    assert [action["option_id"] for action in step["actions"]] == ["strike", "defend", "bash", "skip"]
 
+def test_cli_capture_live_preserves_canonical_card_id_for_duplicate_reward_slots(tmp_path: Path) -> None:
+    output = tmp_path / "captures.jsonl"
+
+    exit_code = cli.main(
+        [
+            "capture-live",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture",
+            str(_duplicate_ocr_fixture(tmp_path / "ocr.json")),
+            "--out",
+            str(output),
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    step = json.loads(output.read_text(encoding="utf-8").splitlines()[0])
+    reward_cards = [card for card in step["state"]["cards"] if card["zone"] == "reward"]
+    assert exit_code == 0
+    assert [action["option_id"] for action in step["actions"]] == ["strike_1", "strike_2", "strike_3", "skip"]
+    assert [card["instance_id"] for card in reward_cards] == [
+        "reward-0-strike_1",
+        "reward-1-strike_2",
+        "reward-2-strike_3",
+    ]
+    assert [card["card_id"] for card in reward_cards] == ["strike", "strike", "strike"]
 
 def test_cli_act_dry_run_reports_action_without_input_events(tmp_path: Path, capsys) -> None:
     input_log = tmp_path / "inputs.jsonl"
@@ -166,10 +211,10 @@ def test_cli_act_dry_run_reports_action_without_input_events(tmp_path: Path, cap
     exit_code = cli.main(
         [
             "act",
-            "--snapshot",
-            str(_snapshot(tmp_path / "snapshot.json")),
+            "--step",
+            str(_step(tmp_path / "step.json")),
             "--choice",
-            "pick:strike",
+            "pick_card:strike",
             "--input-log",
             str(input_log),
         ]
@@ -187,17 +232,16 @@ def test_cli_act_dry_run_reports_action_without_input_events(tmp_path: Path, cap
     }
     assert not input_log.exists()
 
-
 def test_cli_act_execute_writes_input_event(tmp_path: Path) -> None:
     input_log = tmp_path / "inputs.jsonl"
 
     exit_code = cli.main(
         [
             "act",
-            "--snapshot",
-            str(_snapshot(tmp_path / "snapshot.json")),
+            "--step",
+            str(_step(tmp_path / "step.json")),
             "--choice",
-            "pick:strike",
+            "pick_card:strike",
             "--input-log",
             str(input_log),
             "--execute",
@@ -214,7 +258,6 @@ def test_cli_act_execute_writes_input_event(tmp_path: Path) -> None:
         "input_plan": {"kind": "click", "x": 340, "y": 295},
     }
 
-
 def test_cli_save_state_backup_and_restore_round_trip(tmp_path: Path) -> None:
     save_file = tmp_path / "runs" / "autosave.sav"
     save_file.parent.mkdir()
@@ -228,7 +271,6 @@ def test_cli_save_state_backup_and_restore_round_trip(tmp_path: Path) -> None:
     assert backup_code == 0
     assert restore_code == 0
     assert save_file.read_text(encoding="utf-8") == "before"
-
 
 def test_save_state_backups_do_not_collide_for_same_file_names(tmp_path: Path) -> None:
     first_save = tmp_path / "first" / "autosave.sav"
@@ -250,8 +292,7 @@ def test_save_state_backups_do_not_collide_for_same_file_names(tmp_path: Path) -
     assert first_save.read_text(encoding="utf-8") == "first"
     assert second_save.read_text(encoding="utf-8") == "second"
 
-
-def test_save_state_restore_rejects_legacy_file_name_backup(tmp_path: Path) -> None:
+def test_save_state_restore_rejects_old_file_name_backup(tmp_path: Path) -> None:
     save_file = tmp_path / "runs" / "autosave.sav"
     save_file.parent.mkdir()
     save_file.write_text("after", encoding="utf-8")
@@ -263,7 +304,6 @@ def test_save_state_restore_rejects_legacy_file_name_backup(tmp_path: Path) -> N
         runtime.restore_save(save_file, backup_dir)
 
     assert save_file.read_text(encoding="utf-8") == "after"
-
 
 def test_cli_run_loop_records_seed_episode(tmp_path: Path) -> None:
     episodes = tmp_path / "episodes.jsonl"
@@ -290,7 +330,6 @@ def test_cli_run_loop_records_seed_episode(tmp_path: Path) -> None:
     assert episode["steps"] == 1
     assert episode["choices"] == [{"action": "pick", "option_id": "strike"}]
 
-
 def test_cli_run_loop_records_actual_executed_steps_when_max_steps_is_higher(tmp_path: Path) -> None:
     episodes = tmp_path / "episodes.jsonl"
 
@@ -315,21 +354,30 @@ def test_cli_run_loop_records_actual_executed_steps_when_max_steps_is_higher(tmp
     assert episode["steps"] == 1
     assert episode["choices"] == [{"action": "pick", "option_id": "strike"}]
 
-
 def test_cli_run_loop_records_declared_victory_seeds(tmp_path: Path) -> None:
     episodes = tmp_path / "episodes.jsonl"
 
-    exit_code = cli.main([
-        "run-loop", "--seeds", "7,8", "--victory-seeds", "8",
-        "--capture-fixture", str(_screen(tmp_path / "screen.png")),
-        "--ocr-fixture", str(_ocr_fixture(tmp_path / "ocr.json")),
-        "--episodes-out", str(episodes), "--max-steps", "1",
-    ])
+    exit_code = cli.main(
+        [
+            "run-loop",
+            "--seeds",
+            "7,8",
+            "--victory-seeds",
+            "8",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture",
+            str(_ocr_fixture(tmp_path / "ocr.json")),
+            "--episodes-out",
+            str(episodes),
+            "--max-steps",
+            "1",
+        ]
+    )
 
     rows = [json.loads(line) for line in episodes.read_text(encoding="utf-8").splitlines()]
     assert exit_code == 0
     assert [(row["seed"], row["victory"]) for row in rows] == [(7, False), (8, True)]
-
 
 def test_cli_evaluate_seeds_writes_summary(tmp_path: Path) -> None:
     episodes = tmp_path / "episodes.jsonl"
@@ -355,34 +403,22 @@ def test_cli_evaluate_seeds_writes_summary(tmp_path: Path) -> None:
         "average_steps": 2.5,
     }
 
-
 def test_plan_action_rejects_missing_pick_option(tmp_path: Path) -> None:
-    snapshot = DecisionSnapshot.from_json(_snapshot(tmp_path / "snapshot.json").read_text(encoding="utf-8"))
+    step = GameStep.from_json(_step(tmp_path / "step.json").read_text(encoding="utf-8"))
 
     with pytest.raises(ValueError, match="not present"):
-        automation.plan_action(snapshot, DecisionChoice(action="pick", option_id="bash"), dry_run=True)
+        automation.plan_action(step, "bash", dry_run=True)
 
-
-def test_plan_action_rejects_skip_without_skip_option() -> None:
-    snapshot = DecisionSnapshot(
-        game_version="0.105.1",
-        branch="beta",
-        character="ironclad",
-        ascension=0,
-        floor=1,
-        deck=[],
-        relics=[],
-        hp=70,
-        gold=0,
-        options=[ChoiceOption(id="strike", name="Strike", kind="card", tags=[])],
-        chosen=None,
-        skipped=False,
-        screenshot_path=Path("screen.png"),
+def test_plan_action_rejects_skip_without_skip_action(tmp_path: Path) -> None:
+    step = GameStep.from_json(
+        _step(
+            tmp_path / "step.json",
+            actions=[ActionCandidate(action_type="pick_card", option_id="strike", screen_box=(250, 260, 430, 330))],
+        ).read_text(encoding="utf-8")
     )
 
-    with pytest.raises(ValueError, match="skip option"):
-        automation.plan_action(snapshot, DecisionChoice(action="skip"), dry_run=True)
-
+    with pytest.raises(ValueError, match="not present"):
+        automation.plan_action(step, "skip", dry_run=True)
 
 def test_apply_action_requires_controller_for_execute() -> None:
     action = AutomationAction(action="pick", option_id="strike", dry_run=False)
@@ -390,11 +426,9 @@ def test_apply_action_requires_controller_for_execute() -> None:
     with pytest.raises(ValueError, match="input controller"):
         automation.apply_action(action, None)
 
-
 def test_save_state_rejects_missing_save_file(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="save file"):
         runtime.backup_save(tmp_path / "missing.sav", tmp_path / "backups")
-
 
 def test_save_state_rejects_missing_backup(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="backup file"):

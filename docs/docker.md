@@ -24,7 +24,7 @@ docker run --rm -v "${PWD}:/workspace" sts2-tas:local --help
 ```powershell
 docker run --rm -v "${PWD}:/workspace" sts2-tas:local capture `
   --screenshot data/reward.png `
-  --out data/snapshots.jsonl `
+  --out data/steps.jsonl `
   --game-version 0.105.1 `
   --branch beta `
   --character ironclad `
@@ -46,4 +46,15 @@ Generated datasets and models should stay outside the image:
 
 - `data/*.jsonl`
 - `data/*.png`
-- `models/*.joblib`
+- `models/*.pt`
+
+## Windows Executable
+
+Docker is not required when you only need a local Windows CLI executable. On Windows PowerShell, run:
+
+```powershell
+.\scripts\build-windows-exe.ps1
+.\dist\sts2-tas.exe --help
+```
+
+The same build runs in GitHub Actions under `Build Windows Executable` and uploads `dist/sts2-tas.exe` as the `sts2-tas-windows-x64` artifact.

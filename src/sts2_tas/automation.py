@@ -7,7 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
-from .schema import AutomationAction, DecisionChoice, DecisionSnapshot, TargetWindow
+from .ml_entities import resolve_action_identity
+from .schema import AutomationAction, CoordinateSpace, GameStep, TargetWindow
 from .windowing import WindowDetector, WindowDetectorProtocol
 
 
@@ -51,31 +52,28 @@ class NativeInputController:
 
 
 def plan_action(
-    snapshot: DecisionSnapshot,
-    choice: DecisionChoice,
+    step: GameStep,
+    action_id: str,
     *,
     dry_run: bool,
     target_window: TargetWindow | None = None,
+    coordinate_space: CoordinateSpace = "screen_absolute",
 ) -> AutomationAction:
-    action_target_window = _resolve_action_target_window(snapshot, target_window)
-    target = None
-    if choice.action == "pick":
-        option = next((option for option in snapshot.options if option.id == choice.option_id), None)
-        if option is None:
-            raise ValueError(f"choice option_id is not present in snapshot options: {choice.option_id}")
-        target = option.box
-    if choice.action == "skip":
-        skip_option = next((option for option in snapshot.options if option.kind == "skip"), None)
-        if skip_option is None:
-            raise ValueError("skip choice requires a skip option in the snapshot")
-        target = skip_option.box
+    _validate_target_window(coordinate_space, target_window)
+    resolved_action_id = resolve_action_identity(step.actions, action_id)
+    candidate = next(action for action in step.actions if action.identity == resolved_action_id)
+    automation_action = "skip" if candidate.action_type in {"skip_reward", "end_turn"} else "pick"
+    option_id = None if automation_action == "skip" else candidate.option_id or candidate.identity
+    target = candidate.screen_box
+    if automation_action == "pick" and target is None:
+        raise ValueError(f"action_id has no screen target: {action_id}")
     return AutomationAction(
-        action=choice.action,
-        option_id=choice.option_id,
+        action=automation_action,
+        option_id=option_id,
         dry_run=dry_run,
         target=target,
-        coordinate_space=snapshot.coordinate_space,
-        target_window=action_target_window,
+        coordinate_space=coordinate_space,
+        target_window=target_window,
     )
 
 
@@ -152,19 +150,11 @@ def _escape_applescript(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _resolve_action_target_window(
-    snapshot: DecisionSnapshot,
-    target_window: TargetWindow | None,
-) -> TargetWindow | None:
-    if snapshot.coordinate_space == "window_relative" and target_window is None:
-        raise ValueError("window_relative snapshots require a current target window")
-    if target_window is None:
-        return None
-    if snapshot.coordinate_space != "window_relative":
-        raise ValueError("target-process coordinate translation requires a window_relative snapshot")
-    if snapshot.target_window != target_window:
-        raise ValueError("target window metadata does not match current target window")
-    return target_window
+def _validate_target_window(coordinate_space: CoordinateSpace, target_window: TargetWindow | None) -> None:
+    if coordinate_space == "window_relative" and target_window is None:
+        raise ValueError("window_relative actions require a current target window")
+    if target_window is not None and coordinate_space != "window_relative":
+        raise ValueError("target-process coordinate translation requires a window_relative step")
 
 
 def _macos_target_guard(plan: dict[str, int | str], action: str) -> str:

@@ -6,7 +6,8 @@ v1 now includes a reproducible data pipeline plus guarded live-vision automation
 
 Implemented:
 
-- supervised tabular candidate ranking
+- PyTorch entity/action behavior-cloning ranker with value head
+- legal action masking for torch policy logits
 - per-character model training
 - deterministic save/load/recommend flow
 - seed episode JSONL logging
@@ -14,7 +15,8 @@ Implemented:
 
 Not implemented:
 
-- neural reinforcement learning
+- PPO or other neural reinforcement learning loops
+- GNN map encoder
 - simulator-backed self-play
 - automatic patch-to-patch card/relic metadata migration
 

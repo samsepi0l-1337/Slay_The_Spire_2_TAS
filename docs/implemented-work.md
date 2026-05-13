@@ -1,16 +1,16 @@
 # Implemented Work
 
-현재 구현된 기능과 검증 범위를 작업 영역별로 정리한다. 이 문서는 실제 코드 기준의 현황 문서이며, 제외 항목은 [v1 gaps](v1-gaps.md)에 별도로 유지한다.
+현재 구현된 기능과 검증 범위를 실제 코드 기준으로 정리한다. 제외 항목은 [v1 gaps](v1-gaps.md)에 별도로 유지한다.
 
 ## CLI Commands
 
-- `capture`: 색상 기반 화면 fixture를 감지해 unlabeled `DecisionSnapshot` JSONL을 기록한다.
+- `capture`: 색상 기반 화면 fixture를 감지해 unlabeled `GameStep` JSONL을 기록한다.
 - `parse-screen`: screenshot과 OCR provider 결과를 catalog-matched option JSON으로 변환한다.
-- `capture-live`: OCR 결과를 `DecisionSnapshot` JSONL로 저장한다.
-- `label`: dataset의 특정 snapshot에 `pick:<option_id>` 또는 `skip` 라벨을 붙인다.
-- `train`: 라벨된 snapshot으로 캐릭터별 scikit-learn 추천 모델을 학습한다.
-- `recommend`: 저장된 모델과 현재 snapshot으로 후보별 추천 점수를 출력한다.
-- `act`: snapshot과 명시 choice로 dry-run/input event/native input action을 계획하거나 실행한다.
+- `capture-live`: OCR 결과를 `GameStep` JSONL로 저장한다.
+- `label`: dataset의 특정 `GameStep` row에 고유 action identity 라벨을 붙인다. `pick:card_1`, `pick_card:card_1`, `skip` 같은 짧은 별칭은 한 legal action으로 해석될 때만 허용한다.
+- `train`: 라벨된 `GameStep`으로 PyTorch ranker를 학습한다.
+- `recommend`: 저장된 `.pt` 모델과 현재 `GameStep`으로 후보별 추천 점수를 출력한다.
+- `act`: saved `GameStep`과 명시 action id로 dry-run/input event/native input action을 계획하거나 실행한다.
 - `live-step`: 화면 capture 또는 fixture, OCR parsing, manual/model choice, input planning/execution을 한 번에 수행한다.
 - `save-state backup`: 지정 save 파일을 backup directory로 복사한다.
 - `save-state restore`: exact hashed backup save를 원 위치로 복원하고 기존 save는 pre-restore copy로 보존한다.
@@ -19,9 +19,13 @@
 
 ## Data And Schema
 
-- `ChoiceOption`: 카드/유물/skip 후보의 id, name, kind, tags, optional screen box를 보존한다.
-- `DecisionChoice`: `pick`은 `option_id`를 요구하고, `skip`은 `option_id`를 금지한다.
-- `DecisionSnapshot`: game version, branch, character, ascension, floor, deck, relics, hp, gold, options, chosen/skipped state, screenshot path, coordinate space, target window metadata를 JSON으로 round-trip한다.
+- `GameStep`/`StructuredGameState`: player/card/relic/potion/monster/path/action/observation 상태를 entity-centric learning row로 round-trip한다.
+- `PlayerState`: HP, max HP, block, energy, turn, strength/dexterity, vulnerable/weak/frail/artifact, poison/regen/intangible, character-specific resources를 보존한다.
+- `CardInstance`: card id, zone, upgrade state, cost, type, rarity, temporary/generated/retain/exhaust/ethereal/innate flags를 보존한다.
+- `RelicState`: acquisition order, counter, cooldown, combat/turn activation flags를 보존한다.
+- `ActionCandidate`: 현재 가능한 행동 후보, legal flag/mask, source/target ids, path/shop/event ids, optional screen box를 보존한다. identity는 action type과 entity field를 포함해 `play_card`/`discard_card`처럼 같은 카드 id를 쓰는 서로 다른 행동이 충돌하지 않게 한다.
+- `ObservationQuality`: OCR confidence, missing field, unknown token, catalog version을 저장해 Early Access catalog drift를 추적한다.
+- `capture`/`capture-live`/`live-step`은 `--state-json`으로 플레이어, 카드, 유물, 포션, 몬스터, 경로 후보 상태를 입력받고, 미제공 필드는 `missing_fields`에 기록한다.
 - `RecognizedOption`/`ParsedScreen`: OCR에서 인식한 canonical option과 화면 resolution을 구조화한다.
 - `AutomationAction`: action, option id, dry-run state, coordinate space, target box를 기반으로 click 또는 keypress `input_plan`을 만든다.
 - `WindowBounds`/`TargetWindow`: macOS target application/window identity와 bounds를 구조화해 relative option box를 screen absolute input plan으로 변환한다.
@@ -33,18 +37,19 @@
 - OCR provider protocol을 통해 fixture OCR과 Tesseract TSV adapter를 같은 parsing 경로로 사용한다.
 - 영어/한국어 alias catalog로 카드, 유물, skip text를 canonical id로 매핑한다.
 - 카드 보상 OCR은 3개 카드와 skip button이 모두 인식될 때만 `card_reward`로 처리한다.
-- 같은 catalog id가 여러 슬롯에 나오면 `strike_1`, `strike_2`처럼 slot-specific id로 분리한다.
+- 같은 catalog id가 여러 슬롯에 나오면 option id는 `strike_1`, `strike_2`처럼 slot-specific으로 분리하고, reward `CardInstance.card_id`는 canonical id인 `strike`로 유지한다.
 - Tesseract TSV의 단어 row를 catalog-matched multi-word span으로 합쳐 `Burning Blood`, `Tiny House` 같은 인접 multi-word 항목을 별도 option으로 매칭한다.
 - reward layout은 resolution-independent 위치 조건으로 필터링한다.
 - 알 수 없는 layout이나 catalog에 없는 텍스트는 빈 학습 row로 저장하지 않고 실패하거나 무시한다.
 
 ## Machine Learning
 
-- 라벨된 snapshot을 option candidate feature row로 변환한다.
-- scikit-learn `DictVectorizer + DecisionTreeClassifier` 기반 supervised recommender를 사용한다.
-- 캐릭터별 모델 학습을 지원하며, 추천 시 snapshot character와 모델 character mismatch를 거부한다.
-- `joblib`로 모델 save/load를 수행한다.
+- PyTorch `EntityTransformerActorCritic`은 global/player/card/relic/potion/monster/path/action/observation/decision-context token을 인코딩한다.
+- 모델은 legal action mask를 policy logits에 적용하고, behavior cloning policy loss를 학습한다. value head loss는 실제 `StepOutcome`이 있는 row에서만 적용한다.
+- 캐릭터별 모델 학습을 지원하며, 추천 시 `GameStep` character와 모델 character mismatch를 거부한다.
+- `.pt` checkpoint로 모델 save/load를 수행하고, checkpoint load는 PyTorch safe `weights_only` 경로를 사용한다.
 - 추천 결과는 best candidate와 candidates list를 JSON으로 출력한다.
+- PPO, GNN map encoder, simulator-backed self-play는 확장 지점으로만 남아 있다.
 
 ## Automation And Input
 
@@ -53,8 +58,7 @@
 - 기본 backend는 `jsonl`이며, input event를 JSONL로 기록한다.
 - `--input-backend native --execute`는 platform command로 실제 입력 계획을 전달한다.
 - macOS native backend는 `osascript` System Events를 사용한다.
-- `live-step --screenshot-out --target-process "Slay the Spire 2"`는 macOS `osascript` 기반 detector로 정확히 하나의 matching process/window를 찾고, target-window cropped capture를 `window_relative` snapshot으로 기록한다.
-- `act --target-process`는 snapshot의 `window_relative`/`target_window` metadata가 현재 target window와 일치할 때만 option box 중심 좌표를 window origin만큼 한 번 이동한다. 기존 metadata 없는 snapshot은 `screen_absolute`로 취급해 fail-closed한다.
+- `live-step --screenshot-out --target-process "Slay the Spire 2"`는 macOS `osascript` 기반 detector로 정확히 하나의 matching process/window를 찾고, target-window crop을 window-relative action plan으로 처리한다.
 - macOS native backend는 target process가 있으면 하나의 AppleScript 안에서 application activate, window identity/bounds 재조회, expected metadata 비교, click/key 실행을 순서대로 수행한다.
 - Linux native backend는 `xdotool`을 사용한다.
 - Windows native backend는 keypress만 PowerShell SendKeys로 지원하고 click은 명시적으로 실패한다.
@@ -65,37 +69,37 @@
 
 - `--capture-fixture`로 deterministic screenshot을 사용하거나, `--screenshot-out`으로 Pillow `ImageGrab.grab()` 결과를 저장한다.
 - target window가 있으면 `--screenshot-out` capture는 Pillow `ImageGrab.grab(bbox=...)` 경로로 window bounds를 캡처한다.
-- OCR parsing으로 현재 선택지를 만들고 `DecisionSnapshot`을 구성한다.
-- `--choice`가 있으면 manual choice를 사용한다.
-- `--model`이 있으면 저장된 추천 모델의 best candidate를 choice로 변환한다.
+- OCR parsing으로 현재 선택지를 만들고 `GameStep`을 구성한다.
+- `--choice`가 있으면 manual action id를 사용한다.
+- `--model`이 있으면 저장된 추천 모델의 best action id를 사용한다.
 - 결과 JSON에는 `choice`, `action`, `input_plan`, `screenshot_path`가 포함되고, target process 사용 시 `target_window`가 포함된다.
 - native backend는 `--execute` 없이 사용할 수 없다.
 
 ## Runtime And Evaluation
 
 - `capture_screen()`은 화면 캡처 실패를 OS screen recording permission/setup error로 감싸 보고한다.
-- save backup/restore는 명시된 파일과 backup directory만 조작하며, save path hash를 포함한 exact backup 이름으로 같은 파일명 충돌과 legacy basename 오복원을 막는다.
+- save backup/restore는 명시된 파일과 backup directory만 조작하며, save path hash를 포함한 exact backup 이름으로 같은 파일명 충돌과 old basename 오복원을 막는다.
 - seed loop는 현재 v1 boundary로, fixture/OCR 기반 episode row를 생성하고 실제 수행한 parsed choice 수를 `steps`, declared terminal result를 `victory`로 기록한다.
 - seed evaluation은 victories, win rate, average steps를 계산한다.
 
 ## Docker And Packaging
 
 - Dockerfile은 CLI 실행 이미지를 만든다.
+- `scripts/build-windows-exe.ps1`은 Windows PowerShell에서 PyInstaller one-file console executable을 `dist/sts2-tas.exe`로 만든다.
+- `.github/workflows/windows-exe.yml`은 Windows runner에서 exe smoke test 후 `sts2-tas-windows-x64` artifact를 업로드한다.
 - `.dockerignore`는 local state와 generated output을 제외한다.
 - README와 docker docs는 macOS/Linux/Windows 실행 경계를 설명한다.
 - Python package entrypoint는 `sts2-tas = "sts2_tas.cli:main"`이다.
 
 ## Tests And Verification
 
-- 현재 test suite는 schema, dataset, model, recognition, live OCR, automation CLI, native input backend, live-step CLI, Docker asset을 검증한다.
+- 현재 test suite는 schema, GameStep encoding/dataset/model, recognition, live OCR, automation CLI, native input backend, live-step CLI, Docker asset을 검증한다.
 - coverage gate는 `sts2_tas` 전체 100%를 요구한다.
 - 최종 검증 명령:
 
 ```bash
 uv run --extra dev pytest --cov=sts2_tas --cov-fail-under=100
 ```
-
-- 최근 확인된 결과: full pytest suite 통과, total coverage `100.00%`.
 
 ## Safety Boundaries
 
