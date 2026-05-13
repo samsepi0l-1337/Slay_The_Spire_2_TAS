@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_project_exposes_module_entrypoint_for_freezers() -> None:
     entrypoint = (ROOT / "src" / "sts2_tas" / "__main__.py").read_text(encoding="utf-8")
 
-    assert "from .cli import main" in entrypoint
+    assert "from sts2_tas.cli import main" in entrypoint
     assert "raise SystemExit(main())" in entrypoint
 
 
