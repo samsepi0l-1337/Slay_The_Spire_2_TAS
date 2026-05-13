@@ -7,7 +7,7 @@
 
 ## MVP Scope
 
-- 포함: 색상 fixture 감지, OCR fixture/Tesseract provider, 영어/한국어 카드·유물 식별, DecisionSnapshot JSONL, 라벨링, scikit-learn 학습, 추천 CLI, 단일 live-step 자동화, dry-run/jsonl/native 입력 계획, macOS target window 좌표 변환, save backup/restore, seed episode 평가.
+- 포함: 색상 fixture 감지, OCR fixture/Tesseract provider, 영어/한국어 카드·유물 식별, DecisionSnapshot JSONL, GameStep migration, 라벨링, scikit-learn baseline 학습, PyTorch entity/action ranker 학습, 추천 CLI, 단일 live-step 자동화, dry-run/jsonl/native 입력 계획, macOS target window 좌표 변환, save backup/restore, seed episode 평가.
 - 제외: Steam/Godot 내부 상태 직접 읽기, 온라인 co-op, Steam Leaderboards 자동화, neural RL 학습.
 
 ## Verification

@@ -179,6 +179,65 @@ def test_cli_label_train_and_recommend(tmp_path: Path, capsys) -> None:
     assert output["best"]["option_id"] == "anger"
 
 
+def test_cli_migrates_legacy_dataset_and_trains_torch_backend(tmp_path: Path, capsys) -> None:
+    dataset = tmp_path / "snapshots.jsonl"
+    dataset.write_text(
+        "\n".join(
+            [
+                _snapshot(DecisionChoice(action="pick", option_id="anger"), "burning_blood").to_json(),
+                _snapshot(DecisionChoice(action="skip"), "tiny_house").to_json(),
+                _snapshot(DecisionChoice(action="pick", option_id="anger"), "burning_blood").to_json(),
+                _snapshot(DecisionChoice(action="skip"), "tiny_house").to_json(),
+            ]
+        )
+        + "\n"
+    )
+    steps = tmp_path / "steps.jsonl"
+    model_path = tmp_path / "ironclad.pt"
+    query_path = tmp_path / "query.json"
+    query_path.write_text(_snapshot(DecisionChoice(action="pick", option_id="anger"), "burning_blood").to_json())
+
+    migrate_code = cli.main(["migrate-dataset", "--in", str(dataset), "--out", str(steps), "--catalog-version", "test-catalog"])
+    train_code = cli.main(
+        [
+            "train",
+            "--dataset",
+            str(steps),
+            "--model",
+            str(model_path),
+            "--character",
+            "ironclad",
+            "--backend",
+            "torch",
+            "--epochs",
+            "2",
+            "--batch-size",
+            "2",
+            "--device",
+            "cpu",
+        ]
+    )
+    recommend_code = cli.main(["recommend", "--model", str(model_path), "--snapshot", str(query_path), "--backend", "torch"])
+    output = json.loads(capsys.readouterr().out.splitlines()[-1])
+
+    assert migrate_code == 0
+    assert train_code == 0
+    assert recommend_code == 0
+    assert model_path.exists()
+    assert json.loads(steps.read_text().splitlines()[0])["state"]["catalog_version"] == "test-catalog"
+    assert output["best"]["option_id"] in {"anger", "skip"}
+
+
+def test_cli_recommend_rejects_backend_model_suffix_mismatch(tmp_path: Path) -> None:
+    query_path = tmp_path / "query.json"
+    query_path.write_text(_snapshot(DecisionChoice(action="pick", option_id="anger"), "burning_blood").to_json())
+
+    with pytest.raises(ValueError, match="sklearn backend"):
+        cli.main(["recommend", "--model", str(tmp_path / "model.pt"), "--snapshot", str(query_path), "--backend", "sklearn"])
+    with pytest.raises(ValueError, match="torch backend"):
+        cli.main(["recommend", "--model", str(tmp_path / "model.joblib"), "--snapshot", str(query_path), "--backend", "torch"])
+
+
 def test_cli_label_accepts_skip_choice(tmp_path: Path) -> None:
     dataset = tmp_path / "snapshots.jsonl"
     dataset.write_text(_snapshot(DecisionChoice(action="pick", option_id="anger"), "burning_blood").to_json() + "\n")

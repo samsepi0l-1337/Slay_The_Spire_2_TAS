@@ -8,8 +8,9 @@
 - `parse-screen`: screenshot과 OCR provider 결과를 catalog-matched option JSON으로 변환한다.
 - `capture-live`: OCR 결과를 `DecisionSnapshot` JSONL로 저장한다.
 - `label`: dataset의 특정 snapshot에 `pick:<option_id>` 또는 `skip` 라벨을 붙인다.
-- `train`: 라벨된 snapshot으로 캐릭터별 scikit-learn 추천 모델을 학습한다.
-- `recommend`: 저장된 모델과 현재 snapshot으로 후보별 추천 점수를 출력한다.
+- `train`: 라벨된 snapshot으로 캐릭터별 scikit-learn baseline을 학습하거나, `--backend torch`로 `GameStep` 기반 PyTorch ranker를 학습한다.
+- `recommend`: 저장된 `.joblib` 또는 `.pt` 모델과 현재 snapshot으로 후보별 추천 점수를 출력한다.
+- `migrate-dataset`: legacy `DecisionSnapshot` JSONL을 reward-only `GameStep` JSONL로 변환한다.
 - `act`: snapshot과 명시 choice로 dry-run/input event/native input action을 계획하거나 실행한다.
 - `live-step`: 화면 capture 또는 fixture, OCR parsing, manual/model choice, input planning/execution을 한 번에 수행한다.
 - `save-state backup`: 지정 save 파일을 backup directory로 복사한다.
@@ -22,6 +23,9 @@
 - `ChoiceOption`: 카드/유물/skip 후보의 id, name, kind, tags, optional screen box를 보존한다.
 - `DecisionChoice`: `pick`은 `option_id`를 요구하고, `skip`은 `option_id`를 금지한다.
 - `DecisionSnapshot`: game version, branch, character, ascension, floor, deck, relics, hp, gold, options, chosen/skipped state, screenshot path, coordinate space, target window metadata를 JSON으로 round-trip한다.
+- `GameStep`/`StructuredGameState`: player/card/relic/potion/monster/path/action/observation 상태를 entity-centric learning row로 round-trip한다.
+- `ActionCandidate`: 현재 가능한 행동 후보와 legal mask source를 보존한다.
+- `ObservationQuality`: OCR confidence, missing field, unknown token, catalog version을 저장해 Early Access catalog drift를 추적한다.
 - `RecognizedOption`/`ParsedScreen`: OCR에서 인식한 canonical option과 화면 resolution을 구조화한다.
 - `AutomationAction`: action, option id, dry-run state, coordinate space, target box를 기반으로 click 또는 keypress `input_plan`을 만든다.
 - `WindowBounds`/`TargetWindow`: macOS target application/window identity와 bounds를 구조화해 relative option box를 screen absolute input plan으로 변환한다.
@@ -40,10 +44,12 @@
 
 ## Machine Learning
 
-- 라벨된 snapshot을 option candidate feature row로 변환한다.
-- scikit-learn `DictVectorizer + DecisionTreeClassifier` 기반 supervised recommender를 사용한다.
+- 라벨된 snapshot을 option candidate feature row로 변환하는 scikit-learn baseline을 유지한다.
+- legacy snapshot을 reward-only `GameStep`으로 migrate해 새 학습 표면으로 사용할 수 있다.
+- PyTorch `EntityTransformerActorCritic`은 global/player/card/relic/potion/monster/path/action/observation/decision-context token을 인코딩한다.
+- torch backend는 legal action mask를 policy logits에 적용하고, behavior cloning policy loss와 value head loss를 함께 학습한다.
 - 캐릭터별 모델 학습을 지원하며, 추천 시 snapshot character와 모델 character mismatch를 거부한다.
-- `joblib`로 모델 save/load를 수행한다.
+- `joblib` 또는 `.pt` checkpoint로 모델 save/load를 수행한다.
 - 추천 결과는 best candidate와 candidates list를 JSON으로 출력한다.
 
 ## Automation And Input
@@ -87,7 +93,7 @@
 
 ## Tests And Verification
 
-- 현재 test suite는 schema, dataset, model, recognition, live OCR, automation CLI, native input backend, live-step CLI, Docker asset을 검증한다.
+- 현재 test suite는 schema, dataset, model, torch schema/encoding/model, recognition, live OCR, automation CLI, native input backend, live-step CLI, Docker asset을 검증한다.
 - coverage gate는 `sts2_tas` 전체 100%를 요구한다.
 - 최종 검증 명령:
 

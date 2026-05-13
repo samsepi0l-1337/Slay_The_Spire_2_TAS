@@ -7,7 +7,8 @@ from pathlib import Path
 from .automation import JsonlInputController, NativeInputController, apply_action, plan_action
 from .dataset import append_snapshot, load_snapshots, write_snapshots
 from .evaluation import write_evaluation
-from .model import load_model, recommend, save_model, train_model
+from .ml_cli import add_ml_parsers
+from .model import load_model, recommend
 from .recognition import (
     DetectionKind,
     FakeOcrProvider,
@@ -54,16 +55,7 @@ def _parser() -> argparse.ArgumentParser:
     label.add_argument("--choice", required=True)
     label.set_defaults(handler=_label)
 
-    train = subparsers.add_parser("train")
-    train.add_argument("--dataset", type=Path, required=True)
-    train.add_argument("--model", type=Path, required=True)
-    train.add_argument("--character", required=True)
-    train.set_defaults(handler=_train)
-
-    recommend_parser = subparsers.add_parser("recommend")
-    recommend_parser.add_argument("--model", type=Path, required=True)
-    recommend_parser.add_argument("--snapshot", type=Path, required=True)
-    recommend_parser.set_defaults(handler=_recommend)
+    add_ml_parsers(subparsers)
 
     parse_screen = subparsers.add_parser("parse-screen")
     parse_screen.add_argument("--screenshot", type=Path, required=True)
@@ -199,30 +191,6 @@ def _label(args: argparse.Namespace) -> None:
         target_window=target.target_window,
     )
     write_snapshots(args.dataset, snapshots)
-
-
-def _train(args: argparse.Namespace) -> None:
-    save_model(train_model(load_snapshots(args.dataset), character=args.character), args.model)
-
-
-def _recommend(args: argparse.Namespace) -> None:
-    result = recommend(load_model(args.model), DecisionSnapshot.from_json(args.snapshot.read_text(encoding="utf-8")))
-    print(
-        json.dumps(
-            {
-                "best": {
-                    "option_id": result.best.option_id,
-                    "action": result.best.action,
-                    "score": result.best.score,
-                },
-                "candidates": [
-                    {"option_id": candidate.option_id, "action": candidate.action, "score": candidate.score}
-                    for candidate in result.candidates
-                ],
-            },
-            sort_keys=True,
-        )
-    )
 
 
 def _parse_screen(args: argparse.Namespace) -> None:

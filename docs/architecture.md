@@ -5,10 +5,12 @@
 1. `sts2-tas parse-screen` reads a screenshot and OCR tokens, then writes catalog-matched options.
 2. `sts2-tas capture` or `capture-live` stores an unlabeled `DecisionSnapshot`.
 3. `sts2-tas label` updates one JSONL row with `pick:<option_id>` or `skip`.
-4. `sts2-tas train` converts labeled snapshots into per-option feature rows and trains a scikit-learn `DictVectorizer + DecisionTreeClassifier` recommender.
-5. `sts2-tas recommend` loads a saved model and ranks the current snapshot options.
-6. `sts2-tas live-step` captures a screenshot or uses `--capture-fixture`, parses OCR options, chooses from `--choice` or `--model`, and applies one dry-run/jsonl/native action.
-7. `sts2-tas act`, `run-loop`, and `evaluate-seeds` turn parsed options into dry-run input plans and seed-level episode summaries.
+4. `sts2-tas train --backend sklearn` converts labeled snapshots into per-option feature rows and trains a scikit-learn `DictVectorizer + DecisionTreeClassifier` baseline recommender.
+5. `sts2-tas migrate-dataset` converts legacy `DecisionSnapshot` rows into reward-only `GameStep` rows for entity/action learning.
+6. `sts2-tas train --backend torch` trains a PyTorch entity-centric actor-critic ranker over legal `ActionCandidate` tokens.
+7. `sts2-tas recommend` loads a saved `.joblib` or `.pt` model and ranks the current snapshot options.
+8. `sts2-tas live-step` captures a screenshot or uses `--capture-fixture`, parses OCR options, chooses from `--choice` or `--model`, and applies one dry-run/jsonl/native action.
+9. `sts2-tas act`, `run-loop`, and `evaluate-seeds` turn parsed options into dry-run input plans and seed-level episode summaries.
 
 ## DecisionSnapshot
 
@@ -19,6 +21,17 @@ Each snapshot stores:
 - `options`, `chosen`, `skipped`, `screenshot_path`
 
 Card decisions use `pick:<card_id>` or `skip`. Relic decisions use `pick:<relic_id>`.
+
+## GameStep Entity Ranker
+
+`GameStep` is the v1 learning surface for the PyTorch backend. It stores a `StructuredGameState`, legal `ActionCandidate` list, optional `StepOutcome`, `ObservationQuality`, and the chosen action id. Legacy snapshots migrate to reward-only `GameStep` rows so existing captures remain usable.
+
+The torch encoder tokenizes these groups:
+
+- `GLOBAL`, `PLAYER`, `CARD`, `RELIC`, `POTION`
+- `MONSTER`, `PATH`, `ACTION`, `OBSERVATION`, `DECISION_CONTEXT`
+
+The `EntityTransformerActorCritic` scores only the current legal action candidates, masks illegal actions before policy selection, and predicts a value logit for later seed-loop outcome learning. It is behavior-cloning first; PPO, GNN map encoding, and simulator-backed self-play remain future work.
 
 ## Screen Recognition
 
@@ -60,4 +73,4 @@ Quartz/PyObjC targeted PID event delivery is intentionally only an extension poi
 - StS2 Early Access changes must be handled by storing `game_version` and `branch` in every snapshot.
 - Actual input execution requires `--execute`; default CLI behavior is dry-run and `native` is rejected unless `--execute` is present.
 - Steam/Godot process memory and internal runtime state are not read.
-- Saved model files are loaded with `joblib`; only load trusted local model artifacts.
+- Saved model files are loaded with `joblib` or PyTorch checkpoints; only load trusted local model artifacts.

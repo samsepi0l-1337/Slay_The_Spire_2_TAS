@@ -297,3 +297,18 @@ class SeedEvaluation:
 
     def to_dict(self) -> dict[str, int | float]:
         return asdict(self)
+
+
+from .ml_schema import (  # noqa: E402
+    ActionCandidate,
+    CardInstance,
+    GameStep,
+    MonsterState,
+    ObservationQuality,
+    PathCandidate,
+    PlayerState,
+    PotionState,
+    RelicState,
+    StepOutcome,
+    StructuredGameState,
+)
