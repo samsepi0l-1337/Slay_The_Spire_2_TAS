@@ -10,6 +10,9 @@ on:
       - "scripts/build-windows-exe.ps1"
       - "src/**"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   windows-exe:
     runs-on: windows-latest
