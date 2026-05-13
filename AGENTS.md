@@ -17,6 +17,7 @@
 - subagent에서 commit, push, 검색, 간단한 검증, 간단한 분석은 gpt-5.4-mini 모델을 사용한다.
 - subagent에서 복잡한 코드 작성, 복잡한 검증, 복잡한 분석, 문서 작성은 gpt-5.5 모델을 사용한다.
 - 코드 작성 subagent의 작업을 완료하면 코드 검증 subagent를 생성하여 검증하고, 만약 검증 subagent에서 문제가 있다면 다시 코드 작성 subagent를 생성하여 작업을 반복한다.
+- 검증 subagent는 모든 수정과 코드, 로직에 대해서 비판적으로 검증한다.
 
 ## Work Rules
 
@@ -34,7 +35,8 @@
 
 - 수정하거나 작성하기 전에 관련 영역 문서를 먼저 확인한다.
 - 전체 문서 인덱스: `docs/README.md`
+- 코드 수정 시 관련 문서도 업데이트한다.
 
 ## Project
 
-- PR에는 `@codex review`, 문제, 원인, 수정 범위, 검증 결과, UI 변경 시 스크린샷을 포함한다.
+- PR comment에는 `@codex review`, 문제, 원인, 수정 범위, 검증 결과, UI 변경 시 스크린샷을 포함한다.

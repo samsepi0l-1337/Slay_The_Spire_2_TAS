@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from sts2_tas.schema import AutomationAction, ChoiceOption, DecisionChoice, DecisionSnapshot
+from sts2_tas.schema import AutomationAction, ChoiceOption, DecisionChoice, DecisionSnapshot, TargetWindow, WindowBounds
 
 
 def test_snapshot_round_trips_through_json() -> None:
@@ -29,6 +29,37 @@ def test_snapshot_round_trips_through_json() -> None:
     decoded = DecisionSnapshot.from_json(encoded)
 
     assert decoded == snapshot
+
+
+def test_window_relative_snapshot_round_trips_target_window_metadata() -> None:
+    target_window = TargetWindow(
+        process="Slay the Spire 2",
+        title="Main Window",
+        bounds=WindowBounds(left=100, top=200, width=1280, height=720),
+    )
+    snapshot = DecisionSnapshot(
+        game_version="0.105.1",
+        branch="beta",
+        character="ironclad",
+        ascension=2,
+        floor=7,
+        deck=["strike", "defend"],
+        relics=["burning_blood"],
+        hp=42,
+        gold=99,
+        options=[],
+        chosen=None,
+        skipped=False,
+        screenshot_path=Path("screenshots/window.png"),
+        coordinate_space="window_relative",
+        target_window=target_window,
+    )
+
+    encoded = snapshot.to_json()
+    decoded = DecisionSnapshot.from_json(encoded)
+
+    assert decoded == snapshot
+    assert decoded.to_dict()["target_window"] == target_window.to_dict()
 
 
 def test_snapshot_allows_unlabeled_capture() -> None:
@@ -129,6 +160,69 @@ def test_snapshot_numeric_and_identity_validation(field: str, value, message: st
         DecisionSnapshot(**data)
 
 
+def test_snapshot_rejects_invalid_coordinate_space() -> None:
+    with pytest.raises(ValueError, match="unsupported coordinate_space"):
+        DecisionSnapshot(
+            game_version="0.105.1",
+            branch="main",
+            character="ironclad",
+            ascension=0,
+            floor=1,
+            deck=[],
+            relics=[],
+            hp=70,
+            gold=0,
+            options=[],
+            chosen=None,
+            skipped=False,
+            screenshot_path=Path("capture.png"),
+            coordinate_space="viewport",  # type: ignore[arg-type]
+        )
+
+
+def test_snapshot_rejects_inconsistent_coordinate_metadata() -> None:
+    target_window = TargetWindow(
+        process="Slay the Spire 2",
+        title="Main Window",
+        bounds=WindowBounds(left=100, top=200, width=1280, height=720),
+    )
+
+    with pytest.raises(ValueError, match="screen_absolute"):
+        DecisionSnapshot(
+            game_version="0.105.1",
+            branch="main",
+            character="ironclad",
+            ascension=0,
+            floor=1,
+            deck=[],
+            relics=[],
+            hp=70,
+            gold=0,
+            options=[],
+            chosen=None,
+            skipped=False,
+            screenshot_path=Path("capture.png"),
+            target_window=target_window,
+        )
+    with pytest.raises(ValueError, match="window_relative"):
+        DecisionSnapshot(
+            game_version="0.105.1",
+            branch="main",
+            character="ironclad",
+            ascension=0,
+            floor=1,
+            deck=[],
+            relics=[],
+            hp=70,
+            gold=0,
+            options=[],
+            chosen=None,
+            skipped=False,
+            screenshot_path=Path("capture.png"),
+            coordinate_space="window_relative",
+        )
+
+
 def test_skip_choice_has_no_option_id() -> None:
     choice = DecisionChoice(action="skip")
 
@@ -146,3 +240,36 @@ def test_skip_automation_action_without_target_uses_escape_input_plan() -> None:
     action = AutomationAction(action="skip", option_id=None, dry_run=False, target=None)
 
     assert action.input_plan() == {"kind": "keypress", "key": "escape"}
+
+
+def test_automation_action_rejects_invalid_coordinate_metadata() -> None:
+    target_window = TargetWindow(
+        process="Slay the Spire 2",
+        title="Main Window",
+        bounds=WindowBounds(left=100, top=200, width=1280, height=720),
+    )
+
+    with pytest.raises(ValueError, match="unsupported coordinate_space"):
+        AutomationAction(
+            action="skip",
+            option_id=None,
+            dry_run=False,
+            target=None,
+            coordinate_space="viewport",  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="window_relative"):
+        AutomationAction(
+            action="skip",
+            option_id=None,
+            dry_run=False,
+            target=None,
+            target_window=target_window,
+        )
+    with pytest.raises(ValueError, match="target_window"):
+        AutomationAction(
+            action="pick",
+            option_id="anger",
+            dry_run=False,
+            target=(250, 260, 430, 330),
+            coordinate_space="window_relative",
+        )

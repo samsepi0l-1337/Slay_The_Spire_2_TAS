@@ -21,9 +21,10 @@
 
 - `ChoiceOption`: 카드/유물/skip 후보의 id, name, kind, tags, optional screen box를 보존한다.
 - `DecisionChoice`: `pick`은 `option_id`를 요구하고, `skip`은 `option_id`를 금지한다.
-- `DecisionSnapshot`: game version, branch, character, ascension, floor, deck, relics, hp, gold, options, chosen/skipped state, screenshot path를 JSON으로 round-trip한다.
+- `DecisionSnapshot`: game version, branch, character, ascension, floor, deck, relics, hp, gold, options, chosen/skipped state, screenshot path, coordinate space, target window metadata를 JSON으로 round-trip한다.
 - `RecognizedOption`/`ParsedScreen`: OCR에서 인식한 canonical option과 화면 resolution을 구조화한다.
-- `AutomationAction`: action, option id, dry-run state, target box를 기반으로 click 또는 keypress `input_plan`을 만든다.
+- `AutomationAction`: action, option id, dry-run state, coordinate space, target box를 기반으로 click 또는 keypress `input_plan`을 만든다.
+- `WindowBounds`/`TargetWindow`: macOS target application/window identity와 bounds를 구조화해 relative option box를 screen absolute input plan으로 변환한다.
 - 좌표 없는 `pick` action은 실행 계획 생성 시 실패한다. 좌표 없는 `skip`만 escape keypress 계획을 허용한다.
 
 ## Screen Recognition
@@ -52,17 +53,22 @@
 - 기본 backend는 `jsonl`이며, input event를 JSONL로 기록한다.
 - `--input-backend native --execute`는 platform command로 실제 입력 계획을 전달한다.
 - macOS native backend는 `osascript` System Events를 사용한다.
+- `live-step --screenshot-out --target-process "Slay the Spire 2"`는 macOS `osascript` 기반 detector로 정확히 하나의 matching process/window를 찾고, target-window cropped capture를 `window_relative` snapshot으로 기록한다.
+- `act --target-process`는 snapshot의 `window_relative`/`target_window` metadata가 현재 target window와 일치할 때만 option box 중심 좌표를 window origin만큼 한 번 이동한다. 기존 metadata 없는 snapshot은 `screen_absolute`로 취급해 fail-closed한다.
+- macOS native backend는 target process가 있으면 하나의 AppleScript 안에서 application activate, window identity/bounds 재조회, expected metadata 비교, click/key 실행을 순서대로 수행한다.
 - Linux native backend는 `xdotool`을 사용한다.
 - Windows native backend는 keypress만 PowerShell SendKeys로 지원하고 click은 명시적으로 실패한다.
 - 테스트에서는 runner/monkeypatch를 주입해 실제 OS 입력을 보내지 않는다.
+- Quartz/PyObjC PID-targeted input은 dependency 추가 없이 향후 확장 지점으로만 남겼다.
 
 ## Live Step
 
 - `--capture-fixture`로 deterministic screenshot을 사용하거나, `--screenshot-out`으로 Pillow `ImageGrab.grab()` 결과를 저장한다.
+- target window가 있으면 `--screenshot-out` capture는 Pillow `ImageGrab.grab(bbox=...)` 경로로 window bounds를 캡처한다.
 - OCR parsing으로 현재 선택지를 만들고 `DecisionSnapshot`을 구성한다.
 - `--choice`가 있으면 manual choice를 사용한다.
 - `--model`이 있으면 저장된 추천 모델의 best candidate를 choice로 변환한다.
-- 결과 JSON에는 `choice`, `action`, `input_plan`, `screenshot_path`가 포함된다.
+- 결과 JSON에는 `choice`, `action`, `input_plan`, `screenshot_path`가 포함되고, target process 사용 시 `target_window`가 포함된다.
 - native backend는 `--execute` 없이 사용할 수 없다.
 
 ## Runtime And Evaluation
@@ -89,7 +95,7 @@
 uv run --extra dev pytest --cov=sts2_tas --cov-fail-under=100
 ```
 
-- 최근 확인된 결과: `83 passed`, total coverage `100.00%`.
+- 최근 확인된 결과: full pytest suite 통과, total coverage `100.00%`.
 
 ## Safety Boundaries
 
