@@ -1,10 +1,14 @@
 .git/
 .omx/
 .venv/
+.uv-cache/
 .pytest_cache/
 __pycache__/
 .coverage
 .DS_Store
 data/
 models/
+build/
+dist/
+*.spec
 *.pyc

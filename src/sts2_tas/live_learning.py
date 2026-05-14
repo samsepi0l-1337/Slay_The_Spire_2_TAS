@@ -81,6 +81,8 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
         _append_episode_summary(args, state, labeled_step, action_id)
     if not _is_gameplay_step(labeled_step):
         return
+    if not _should_append_training_label(args):
+        return
     append_game_step(args.dataset, labeled_step)
     state.pending_labeled_steps += 1
     state.episode_labeled_steps += 1
@@ -145,6 +147,10 @@ def _is_gameplay_step(step: GameStep) -> bool:
 
 def _is_terminal_step(step: GameStep) -> bool:
     return step.outcome is not None and step.outcome.terminal
+
+
+def _should_append_training_label(args: argparse.Namespace) -> bool:
+    return args.choice is not None or bool(getattr(args, "allow_model_self_labels", False))
 
 
 def _append_episode_summary(args: argparse.Namespace, state: _LoopState, step: GameStep, restart_action_id: str) -> None:

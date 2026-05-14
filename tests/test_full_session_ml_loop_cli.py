@@ -103,6 +103,20 @@ def test_parse_ocr_screen_maps_game_over_restart_action(tmp_path: Path) -> None:
     assert [(option.id, option.kind) for option in parsed.options] == [("new_run", "restart_run")]
 
 
+def test_parse_ocr_screen_fails_closed_on_low_confidence_catalog_tokens(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            recognition.OcrToken("Strike", (250, 260, 430, 330), 0.99),
+            recognition.OcrToken("Defend", (760, 260, 940, 330), 0.30),
+            recognition.OcrToken("Bash", (1270, 260, 1450, 330), 0.99),
+            recognition.OcrToken("Skip", (880, 930, 1040, 990), 0.99),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="unknown OCR screen layout"):
+        recognition.parse_ocr_screen(_screen(tmp_path / "reward.png"), provider)
+
+
 def test_live_learn_loop_handles_game_over_restart_without_episode_output(tmp_path: Path, capsys) -> None:
     exit_code = cli.main(
         [

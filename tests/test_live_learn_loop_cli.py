@@ -270,6 +270,7 @@ def test_live_learn_loop_can_use_model_tesseract_and_target_window_capture(tmp_p
             "tesseract",
             "--model",
             str(tmp_path / "model.pt"),
+            "--allow-model-self-labels",
             "--dataset",
             str(tmp_path / "dataset.jsonl"),
             "--input-log",
@@ -299,6 +300,55 @@ def test_live_learn_loop_can_use_model_tesseract_and_target_window_capture(tmp_p
     assert exit_code == 0
     assert capture_calls == [(tmp_path / "target-000001.png", (100, 200, 1380, 920))]
     assert step.chosen_action_id == "skip_reward|option=skip"
+
+
+def test_live_learn_loop_does_not_self_label_model_choices_by_default(tmp_path: Path, monkeypatch, capsys) -> None:
+    import sts2_tas.live_learning as live_learning
+
+    class Result:
+        best = type("Best", (), {"action_id": "skip_reward|option=skip"})()
+
+    monkeypatch.setattr(live_learning, "load_model", lambda path: object())
+    monkeypatch.setattr(live_learning, "recommend", lambda model, step: Result())
+
+    dataset = tmp_path / "dataset.jsonl"
+    exit_code = cli.main(
+        [
+            "live-learn-loop",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture",
+            str(_ocr_fixture(tmp_path / "ocr.json")),
+            "--model",
+            str(tmp_path / "model.pt"),
+            "--dataset",
+            str(dataset),
+            "--input-log",
+            str(tmp_path / "inputs.jsonl"),
+            "--max-steps",
+            "1",
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert output["steps"] == 1
+    assert output["trained"] == 0
+    assert not dataset.exists()
 
 
 def test_live_learn_loop_execute_native_uses_injected_controller(tmp_path: Path, monkeypatch) -> None:

@@ -1,9 +1,13 @@
 .omx/
 .vscode/
 .venv/
+.uv-cache/
 .pytest_cache/
 __pycache__/
 .coverage
 .coverage.*
 data/
 models/
+build/
+dist/
+*.spec

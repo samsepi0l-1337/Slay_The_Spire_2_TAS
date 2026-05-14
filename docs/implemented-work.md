@@ -28,6 +28,7 @@
 - `ObservationQuality`: OCR confidence, missing field, unknown token, catalog version을 저장해 Early Access catalog drift를 추적한다.
 - `capture`/`capture-live`/`live-step`은 `--state-json`으로 플레이어, 카드, 유물, 포션, 몬스터, 경로 후보 상태를 입력받고, 미제공 필드는 `missing_fields`에 기록한다.
 - `RecognizedOption`/`ParsedScreen`: OCR에서 인식한 canonical option과 화면 resolution을 구조화한다.
+- `actions.generate_legal_actions`: structured state에서 combat, card reward, map context의 state-derived legal action generator를 제공한다. Combat은 hand card, living monster target, usable potion, end turn을 entity-linked action으로 만든다.
 - `AutomationAction`: action, option id, dry-run state, coordinate space, target box를 기반으로 click 또는 keypress `input_plan`을 만든다.
 - `WindowBounds`/`TargetWindow`: macOS target application/window identity와 bounds를 구조화해 relative option box를 screen absolute input plan으로 변환한다.
 - 좌표 없는 `pick` action은 실행 계획 생성 시 실패한다. 좌표 없는 `skip`만 escape keypress 계획을 허용한다.
@@ -42,6 +43,7 @@
 - 같은 catalog id가 여러 슬롯에 나오면 option id는 `strike_1`, `strike_2`처럼 slot-specific으로 분리하고, reward `CardInstance.card_id`는 canonical id인 `strike`로 유지한다.
 - Tesseract TSV의 단어 row를 catalog-matched multi-word span으로 합쳐 `Burning Blood`, `Tiny House` 같은 인접 multi-word 항목을 별도 option으로 매칭한다.
 - reward layout은 resolution-independent 위치 조건으로 필터링한다.
+- catalog-matched OCR token confidence가 `0.60` 미만이면 option으로 쓰지 않고 fail-closed 경로에 남긴다.
 - 알 수 없는 layout이나 catalog에 없는 텍스트는 빈 학습 row로 저장하지 않고 실패하거나 무시한다.
 
 ## Machine Learning
@@ -62,6 +64,7 @@
 - macOS native backend는 `osascript` System Events를 사용한다.
 - `live-step --screenshot-out --target-process "Slay the Spire 2"`는 macOS `osascript` 또는 Windows PowerShell/user32 기반 detector로 정확히 하나의 matching process/window를 찾고, target-window crop을 window-relative action plan으로 처리한다.
 - macOS native backend는 target process가 있으면 하나의 AppleScript 안에서 application activate, window identity/bounds 재조회, expected metadata 비교, click/key 실행을 순서대로 수행한다.
+- Windows native backend는 target process가 있으면 하나의 PowerShell script 안에서 process/title/bounds 재조회, `SetForegroundWindow`, click/key 실행을 순서대로 수행한다.
 - Linux native backend는 `xdotool`을 사용한다.
 - Windows native backend는 PowerShell/user32 `SetCursorPos`/`mouse_event`로 click을 보내고, keypress는 기존 PowerShell SendKeys 경로를 유지한다.
 - 테스트에서는 runner/monkeypatch를 주입해 실제 OS 입력을 보내지 않는다.
@@ -82,8 +85,9 @@
 - `--capture-fixture`는 모든 iteration에서 같은 deterministic screenshot을 재사용한다.
 - `--ocr-fixture-sequence`는 테스트/fixture 실행에서 iteration별 OCR frame을 순서대로 공급한다.
 - `--screenshot-out live.png`는 `live-000001.png`, `live-000002.png`처럼 반복 안전한 파일명으로 캡처한다.
-- 반복마다 OCR parsing 후 gameplay 화면은 `--choice` 또는 `--model` 추천으로 action identity를 선택하고, `chosen_action_id`가 채워진 `GameStep`을 `--dataset` JSONL에 append한다.
+- 반복마다 OCR parsing 후 gameplay 화면은 `--choice` 또는 `--model` 추천으로 action identity를 선택한다. `--choice` 라벨은 `chosen_action_id`가 채워진 `GameStep`으로 `--dataset` JSONL에 append한다.
 - 메뉴/모드/캐릭터/재시작 화면은 첫 legal action으로 입력 계획만 만들고 ML dataset에는 append하지 않는다.
+- `--model`이 고른 gameplay action은 self-label 위험을 막기 위해 기본적으로 dataset에 append하지 않는다. 실험적으로 저장하려면 `--allow-model-self-labels`를 명시한다.
 - terminal 화면은 `StepOutcome(terminal=True)`로 승패를 표시하고, `--episodes-out`이 있으면 episode, victory, floor, HP, labeled step count, restart action id를 JSONL로 기록한다.
 - 기본 동작은 dry-run이며 `--execute` 없이는 input controller를 만들지 않는다. `--input-backend native`는 `--execute` 없으면 실패한다.
 - `--train-every N --model-out path.pt` 조합은 N개 신규 labeled row마다 `train_torch_model(load_game_steps(dataset), character, epochs, batch_size, device)` 후 `save_model`을 호출한다.

@@ -90,6 +90,64 @@ def test_cli_act_native_execute_sends_click_without_jsonl_event(monkeypatch, tmp
     assert not input_log.exists()
 
 
+def test_cli_act_target_process_requires_explicit_window_relative_coordinates(
+    monkeypatch, tmp_path: Path
+) -> None:
+    class Detector:
+        def detect(self, process: str) -> TargetWindow:
+            raise AssertionError("target detection should not run for an invalid coordinate contract")
+
+    monkeypatch.setattr(cli, "WindowDetector", lambda: Detector())
+
+    with pytest.raises(ValueError, match="--coordinate-space window_relative"):
+        cli.main(
+            [
+                "act",
+                "--step",
+                str(_step(tmp_path / "step.json")),
+                "--choice",
+                "pick_card:strike",
+                "--input-log",
+                str(tmp_path / "inputs.jsonl"),
+                "--target-process",
+                "Slay the Spire 2",
+            ]
+        )
+
+
+def test_cli_act_target_process_accepts_window_relative_coordinates(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    class Detector:
+        def detect(self, process: str) -> TargetWindow:
+            assert process == "Slay the Spire 2"
+            return _target_window()
+
+    monkeypatch.setattr(cli, "WindowDetector", lambda: Detector())
+
+    exit_code = cli.main(
+        [
+            "act",
+            "--step",
+            str(_step(tmp_path / "step.json")),
+            "--choice",
+            "pick_card:strike",
+            "--input-log",
+            str(tmp_path / "inputs.jsonl"),
+            "--target-process",
+            "Slay the Spire 2",
+            "--coordinate-space",
+            "window_relative",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert output["coordinate_space"] == "window_relative"
+    assert output["input_plan"] == {"kind": "click", "x": 440, "y": 495}
+    assert output["target_window"]["process"] == "Slay the Spire 2"
+
+
 def test_native_input_controller_maps_skip_to_keypress() -> None:
     commands = []
     controller = automation.NativeInputController(
@@ -214,6 +272,71 @@ def test_native_input_controller_keeps_target_keypress_inside_window_guard() -> 
     )
 
     _assert_target_action_runs_inside_guard(commands[0][-1], "key code 53")
+
+
+def test_windows_native_input_keeps_target_guard_and_click_in_one_script() -> None:
+    commands = []
+    target_window = _target_window()
+
+    class Detector:
+        def detect(self, process: str) -> TargetWindow:
+            assert process == "Slay the Spire 2"
+            return target_window
+
+    controller = automation.NativeInputController(
+        platform_name="Windows",
+        runner=commands.append,
+        window_detector=Detector(),
+    )
+
+    controller.send(
+        AutomationAction(
+            action="pick",
+            option_id="strike",
+            dry_run=False,
+            target=(250, 260, 430, 330),
+            coordinate_space="window_relative",
+            target_window=target_window,
+        )
+    )
+
+    script = commands[0][-1]
+    assert commands[0][:3] == ["powershell", "-NoProfile", "-Command"]
+    assert "SetForegroundWindow" in script
+    assert "GetWindowRect" in script
+    assert "target window changed before input" in script
+    assert script.index("target window changed before input") < script.index("[Win32Input]::mouse_event")
+
+
+def test_windows_native_input_keeps_target_guard_and_keypress_in_one_script() -> None:
+    commands = []
+    target_window = _target_window()
+
+    class Detector:
+        def detect(self, process: str) -> TargetWindow:
+            return target_window
+
+    controller = automation.NativeInputController(
+        platform_name="Windows",
+        runner=commands.append,
+        window_detector=Detector(),
+    )
+
+    controller.send(
+        AutomationAction(
+            action="skip",
+            option_id=None,
+            dry_run=False,
+            target=None,
+            coordinate_space="window_relative",
+            target_window=target_window,
+        )
+    )
+
+    script = commands[0][-1]
+    assert "SetForegroundWindow" in script
+    assert "target window changed before input" in script
+    assert script.index("target window changed before input") < script.index("SendKeys")
 
 
 def test_native_input_controller_fails_closed_when_target_window_changes() -> None:

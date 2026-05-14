@@ -8,7 +8,7 @@
 4. `sts2-tas train` trains a PyTorch entity-centric actor-critic ranker over legal `ActionCandidate` tokens.
 5. `sts2-tas recommend` loads a saved `.pt` checkpoint and ranks the current `GameStep` actions.
 6. `sts2-tas live-step` captures a screenshot or uses `--capture-fixture`, parses OCR options, chooses from `--choice` or `--model`, and applies one dry-run/jsonl/native action.
-7. `sts2-tas live-learn-loop` repeats the live-step boundary across start menus, gameplay decisions, terminal screens, and restarts. It appends labeled `GameStep` rows only for gameplay decisions and can retrain/save a Torch model every N new labels.
+7. `sts2-tas live-learn-loop` repeats the live-step boundary across start menus, gameplay decisions, terminal screens, and restarts. It appends labeled `GameStep` rows only for supervised gameplay decisions and can retrain/save a Torch model every N new labels.
 8. `sts2-tas act`, `run-loop`, and `evaluate-seeds` turn parsed actions into dry-run input plans and seed-level episode summaries.
 
 ## GameStep Entity Ranker
@@ -34,6 +34,8 @@ The schema includes the gameplay fields needed for StS2-style decisions:
 
 `capture`, `capture-live`, and `live-step` accept direct player-state flags plus `--state-json`. The JSON path is the preferred route for real learning rows because it can carry hand/deck zones, current costs, relic counters, potion slots, monster intents, and path candidates in one typed payload. Any value that the capture path cannot observe or that the caller does not provide is preserved in `ObservationQuality.missing_fields` instead of being silently treated as known. OCR card rewards are also added as `CardInstance` rows with `zone="reward"` so the model can score the candidate card as an entity token, not only as an action id.
 
+`sts2_tas.actions.generate_legal_actions()` is the state-derived legal action generator boundary. It currently emits typed candidates for combat cards, targeted potions, end turn, card rewards, and map path choices. It links actions to card instance ids, potion slot ids, monster slot ids, reward card instances, and path node ids so training can generalize beyond OCR option ids. Unsupported contexts still return no candidates instead of inventing actions.
+
 ## Screen Recognition
 
 The recognizer keeps the deterministic color path for synthetic fixtures and adds an OCR path for live screenshots. `live-step --screenshot-out` uses Pillow `ImageGrab.grab()` through an injectable runtime wrapper; tests inject a fake grabber and never capture the real desktop. The OCR path is:
@@ -52,21 +54,21 @@ It currently recognizes:
 
 Card rewards require all three card options plus the skip button before the parser returns a `card_reward`; partial OCR fails closed instead of producing an incomplete decision surface. Duplicate catalog ids are made slot-specific for option ids, for example `strike_1`, `strike_2`, and `strike_3`, so repeated card names remain selectable while reward `CardInstance.card_id` stays canonical as `strike`.
 
-Unknown layouts fail instead of creating empty-option training rows. OCR providers are pluggable: tests use a JSON/fake provider and live use can route through `--ocr-provider tesseract --ocr-language eng+kor`.
+Unknown layouts fail instead of creating empty-option training rows. OCR providers are pluggable: tests use a JSON/fake provider and live use can route through `--ocr-provider tesseract --ocr-language eng+kor`. Catalog-matched OCR tokens below confidence `0.60` are ignored, so partial or low-confidence reward layouts fail closed.
 
 ## Automation And Evaluation
 
-`sts2-tas act` is dry-run by default and reads a saved `GameStep`. It reports the planned `pick` or `skip` action as JSON, including the target box and click/key input plan when available. It writes an input event only with `--execute` and the default `--input-backend jsonl`.
+`sts2-tas act` is dry-run by default and reads a saved `GameStep`. It reports the planned `pick` or `skip` action as JSON, including the target box and click/key input plan when available. It writes an input event only with `--execute` and the default `--input-backend jsonl`. `act --target-process` is accepted only with `--coordinate-space window_relative`; saved screen-absolute steps must stay target-free to avoid stale coordinate translation.
 
 `sts2-tas live-step` emits JSON with `choice`, `action`, `input_plan`, and `screenshot_path`. `--capture-fixture` keeps tests and fixture runs deterministic; `--screenshot-out` writes the live captured screen before OCR.
 
-`sts2-tas live-learn-loop` reuses the same capture/OCR/action planning contract in a bounded or user-interrupted loop. `--max-steps` makes the loop testable, `--capture-fixture` reuses the same fixture, and live screenshot capture writes numbered filenames derived from `--screenshot-out` so repeated runs do not overwrite one another. It appends selected gameplay actions as `chosen_action_id` in `--dataset`; menu, mode, character, and restart actions are planned but not persisted as ML labels. Optional `--train-every N --model-out model.pt` retrains from the full dataset after every N newly appended labels.
+`sts2-tas live-learn-loop` reuses the same capture/OCR/action planning contract in a bounded or user-interrupted loop. `--max-steps` makes the loop testable, `--capture-fixture` reuses the same fixture, and live screenshot capture writes numbered filenames derived from `--screenshot-out` so repeated runs do not overwrite one another. It appends selected gameplay actions as `chosen_action_id` in `--dataset` only when the label is supervised by `--choice` or the explicit `--allow-model-self-labels` experiment flag. Menu, mode, character, and restart actions are planned but not persisted as ML labels. Optional `--train-every N --model-out model.pt` retrains from the full dataset after every N newly appended labels.
 
 Terminal screens produce a `StepOutcome` with `terminal=True`. When `--episodes-out` is provided, the loop writes one episode JSON row with victory status, reached floor, remaining HP, labeled gameplay step count since the previous terminal, and the restart action id. It then plans the restart/new-run input action and continues the same loop so learning can resume on the next run.
 
-`live-step --screenshot-out --target-process "Slay the Spire 2"` captures the target window bbox, parses the cropped screenshot, treats option boxes as `window_relative`, and passes the current target window directly into the input plan. Saved `GameStep` rows are screen-absolute for `act`; target-window translation is kept inside the live-step capture/act cycle to avoid stale window metadata.
+`live-step --screenshot-out --target-process "Slay the Spire 2"` captures the target window bbox, parses the cropped screenshot, treats option boxes as `window_relative`, and passes the current target window directly into the input plan. Saved `GameStep` rows are screen-absolute for `act` unless the caller explicitly uses `--coordinate-space window_relative`; target-window translation is normally kept inside the live-step capture/act cycle to avoid stale window metadata.
 
-`--input-backend native --execute` sends the same plan through a platform adapter instead of writing JSONL. macOS uses `osascript` System Events, Linux uses `xdotool`, and Windows uses PowerShell with `user32` for target-window detection and click input while keeping SendKeys for keypresses. With a target window, the controller re-detects the process/window metadata before each input and fails closed if it changed; macOS also keeps the activate/check/click sequence inside one AppleScript. Tests inject subprocess/window runners so no real OS input is sent.
+`--input-backend native --execute` sends the same plan through a platform adapter instead of writing JSONL. macOS uses `osascript` System Events, Linux uses `xdotool`, and Windows uses PowerShell with `user32` for target-window detection and click input while keeping SendKeys for keypresses. With a target window, the controller re-detects the process/window metadata before each input and fails closed if it changed; macOS keeps activate/check/click in one AppleScript, and Windows keeps process/title/bounds recheck, `SetForegroundWindow`, and click/keypress in one PowerShell script. Tests inject subprocess/window runners so no real OS input is sent.
 
 Production real-input usage combines target-window detection, native input, and the explicit execution gate:
 

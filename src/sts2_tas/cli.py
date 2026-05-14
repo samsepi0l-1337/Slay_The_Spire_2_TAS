@@ -110,6 +110,7 @@ def _parser() -> argparse.ArgumentParser:
     live_learn_loop.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
     live_learn_loop.add_argument("--execute", action="store_true")
     live_learn_loop.add_argument("--target-process")
+    live_learn_loop.add_argument("--allow-model-self-labels", action="store_true")
     live_learn_loop.add_argument("--train-every", type=int)
     live_learn_loop.add_argument("--model-out", type=Path)
     live_learn_loop.add_argument("--episodes-out", type=Path)
@@ -130,6 +131,7 @@ def _parser() -> argparse.ArgumentParser:
     act.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
     act.add_argument("--execute", action="store_true")
     act.add_argument("--target-process")
+    act.add_argument("--coordinate-space", choices=["screen_absolute", "window_relative"], default="screen_absolute")
     act.set_defaults(handler=_act)
 
     save_state = subparsers.add_parser("save-state")
@@ -261,6 +263,8 @@ def _live_learn_loop(args: argparse.Namespace) -> None:
 
 def _act(args: argparse.Namespace) -> None:
     step = GameStep.from_json(args.step.read_text(encoding="utf-8"))
+    if args.target_process is not None and args.coordinate_space != "window_relative":
+        raise ValueError("act --target-process requires --coordinate-space window_relative")
     target_window = _target_window(args)
     action_id = _resolve_action_id(step, args.choice)
     action = plan_action(
@@ -268,6 +272,7 @@ def _act(args: argparse.Namespace) -> None:
         action_id,
         dry_run=not args.execute,
         target_window=target_window,
+        coordinate_space=args.coordinate_space,
     )
     if args.input_backend == "native" and not args.execute:
         raise ValueError("native input backend requires --execute")

@@ -14,6 +14,7 @@ Box = tuple[int, int, int, int]
 PixelPredicate = Callable[[tuple[int, int, int]], bool]
 OcrToken = OcrResult
 REFERENCE_RESOLUTION = (1920, 1080)
+MIN_OCR_OPTION_CONFIDENCE = 0.60
 
 
 class OcrProvider(Protocol):
@@ -181,6 +182,8 @@ def _is_skip_gray(pixel: tuple[int, int, int]) -> bool:
 
 
 def _recognized_option(token: OcrToken, resolution: tuple[int, int]) -> RecognizedOption | None:
+    if token.confidence < MIN_OCR_OPTION_CONFIDENCE:
+        return None
     entry = _catalog_match(token.text)
     if entry is None or not _in_layout_region(token, entry.kind, resolution):
         return None

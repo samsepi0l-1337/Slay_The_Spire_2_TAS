@@ -104,8 +104,9 @@ def _native_command(action: AutomationAction, platform_name: str) -> list[str]:
 
 def _native_input_plan(action: AutomationAction, system: str) -> dict[str, int | str]:
     if system == "windows" and action.action == "skip":
-        return {"kind": "keypress", "key": "escape"}
-    plan = action.input_plan()
+        plan = {"kind": "keypress", "key": "escape"}
+    else:
+        plan = action.input_plan()
     if action.target_window is not None:
         plan["target_process"] = action.target_window.process
         plan["target_title"] = action.target_window.title
@@ -136,6 +137,8 @@ def _linux_command(plan: dict[str, int | str]) -> list[str]:
 
 
 def _windows_command(plan: dict[str, int | str]) -> list[str]:
+    if "target_process" in plan:
+        return ["powershell", "-NoProfile", "-Command", _windows_target_guard_script(plan)]
     if plan["kind"] == "click":
         return ["powershell", "-NoProfile", "-Command", _windows_click_script(int(plan["x"]), int(plan["y"]))]
     return [
@@ -147,16 +150,67 @@ def _windows_command(plan: dict[str, int | str]) -> list[str]:
 
 
 def _windows_click_script(x: int, y: int) -> str:
+    return _windows_win32_signature() + _windows_click_action_script(x, y)
+
+
+def _windows_target_guard_script(plan: dict[str, int | str]) -> str:
+    process = _escape_powershell_single_quoted(str(plan["target_process"]))
+    title = _escape_powershell_single_quoted(str(plan["target_title"]))
+    action = (
+        _windows_click_action_script(int(plan["x"]), int(plan["y"]))
+        if plan["kind"] == "click"
+        else _windows_keypress_action_script()
+    )
+    return (
+        _windows_win32_signature()
+        + f"$expectedProcess = '{process}'\n"
+        + f"$expectedTitle = '{title}'\n"
+        + f"$expectedLeft = {plan['expected_left']}\n"
+        + f"$expectedTop = {plan['expected_top']}\n"
+        + f"$expectedWidth = {plan['expected_width']}\n"
+        + f"$expectedHeight = {plan['expected_height']}\n"
+        + "$matches = @(Get-Process | Where-Object { "
+        + "$_.MainWindowHandle -ne 0 -and "
+        + "($_.ProcessName -eq $expectedProcess -or $_.Name -eq $expectedProcess -or "
+        + "$_.MainWindowTitle -eq $expectedProcess) -and "
+        + "$_.MainWindowTitle -eq $expectedTitle })\n"
+        + "if ($matches.Count -ne 1) { throw 'target window changed before input' }\n"
+        + "$targetProcess = $matches[0]\n"
+        + "$rect = New-Object Win32Input+RECT\n"
+        + "if (-not [Win32Input]::GetWindowRect($targetProcess.MainWindowHandle, [ref]$rect)) { "
+        + "throw 'target window changed before input' }\n"
+        + "$width = $rect.Right - $rect.Left\n"
+        + "$height = $rect.Bottom - $rect.Top\n"
+        + "if ($rect.Left -ne $expectedLeft -or $rect.Top -ne $expectedTop -or "
+        + "$width -ne $expectedWidth -or $height -ne $expectedHeight) { "
+        + "throw 'target window changed before input' }\n"
+        + "if (-not [Win32Input]::SetForegroundWindow($targetProcess.MainWindowHandle)) { "
+        + "throw 'target window changed before input' }\n"
+        + action
+    )
+
+
+def _windows_win32_signature() -> str:
     return (
         "$signature = @'\n"
         "using System;\n"
         "using System.Runtime.InteropServices;\n"
         "public static class Win32Input {\n"
+        "  [StructLayout(LayoutKind.Sequential)] public struct RECT {\n"
+        "    public int Left; public int Top; public int Right; public int Bottom;\n"
+        "  }\n"
+        "  [DllImport(\"user32.dll\")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);\n"
+        "  [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);\n"
         "  [DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int X, int Y);\n"
         "  [DllImport(\"user32.dll\")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);\n"
         "}\n"
         "'@\n"
         "Add-Type -TypeDefinition $signature\n"
+    )
+
+
+def _windows_click_action_script(x: int, y: int) -> str:
+    return (
         f"if (-not [Win32Input]::SetCursorPos({x}, {y})) {{ throw 'SetCursorPos failed' }}\n"
         "[Win32Input]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)\n"
         "Start-Sleep -Milliseconds 50\n"
@@ -164,8 +218,16 @@ def _windows_click_script(x: int, y: int) -> str:
     )
 
 
+def _windows_keypress_action_script() -> str:
+    return "Add-Type -AssemblyName System.Windows.Forms\n[System.Windows.Forms.SendKeys]::SendWait('{ESC}')\n"
+
+
 def _escape_applescript(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _escape_powershell_single_quoted(value: str) -> str:
+    return value.replace("'", "''")
 
 
 def _validate_target_window(coordinate_space: CoordinateSpace, target_window: TargetWindow | None) -> None:

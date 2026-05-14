@@ -22,12 +22,16 @@ def test_project_requires_python_314() -> None:
 
 def test_dockerignore_excludes_local_state_and_generated_outputs() -> None:
     patterns = set((ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines())
+    gitignore_patterns = set((ROOT / ".gitignore").read_text(encoding="utf-8").splitlines())
 
     assert ".venv/" in patterns
+    assert ".uv-cache/" in patterns
     assert ".omx/" in patterns
     assert "data/" in patterns
     assert "models/" in patterns
     assert ".git/" in patterns
+    assert ".uv-cache/" in gitignore_patterns
+    assert "dist/" in gitignore_patterns
 
 
 def test_docs_explain_windows_docker_and_deferred_scope() -> None:
@@ -45,11 +49,15 @@ def test_docs_explain_windows_docker_and_deferred_scope() -> None:
     assert "Steam/Godot process memory" in implemented_doc
     assert "--execute" in implemented_doc
     assert "PPO, GNN map encoder, simulator-backed self-play" in implemented_doc
+    assert "self-label" in implemented_doc
+    assert "state-derived legal action generator" in implemented_doc
     assert "Quartz/PyObjC targeted PID event delivery" in architecture_doc
     assert "window focus management" not in implemented_doc
     assert "Docker" in index
-    assert "v1-gaps.md" not in index
-    assert "v1-gaps.md" not in readme
+    assert "v1-gaps.md" in index
+    assert "v1-gaps.md" in readme
+    assert "allow-model-self-labels" in architecture_doc
+    assert "--coordinate-space window_relative" in architecture_doc
     assert "Windows executable" in index
     assert "PYTHONPATH=src" in index
     assert "--no-editable" in index
