@@ -318,6 +318,8 @@ class StepOutcome:
     hp_remaining: int
     immediate_reward: float = 0.0
     terminal: bool = False
+    value_target: float | None = None
+    discounted_return: float | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StepOutcome:
@@ -327,6 +329,8 @@ class StepOutcome:
             hp_remaining=int(data["hp_remaining"]),
             immediate_reward=float(data.get("immediate_reward", 0.0)),
             terminal=bool(data.get("terminal", False)),
+            value_target=_optional_float(data.get("value_target")),
+            discounted_return=_optional_float(data.get("discounted_return")),
         )
 
 
@@ -384,6 +388,10 @@ class StructuredGameState:
 
 def _optional_int(value: Any) -> int | None:
     return None if value is None else int(value)
+
+
+def _optional_float(value: Any) -> float | None:
+    return None if value is None else float(value)
 
 
 def action_choice_aliases(action: ActionCandidate) -> set[str]:

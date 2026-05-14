@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from .catalog import EntityCatalog
 from .ml_schema import ActionCandidate, CardInstance, GameStep, MonsterState, PathCandidate, PlayerState, PotionState, RelicState
+from .trajectory import value_target_for_step
 
 TOKEN_TYPE_IDS = {
     "GLOBAL": 0,
@@ -65,7 +66,7 @@ def encode_game_step(step: GameStep, catalog: EntityCatalog) -> EncodedGameStep:
         add("action", action.identity, "ACTION", _action_numeric(action))
 
     label_index = _label_index(step.actions, step.chosen_action_id)
-    outcome_value = 0.0 if step.outcome is None else float(step.outcome.victory)
+    outcome_value = value_target_for_step(step)
     outcome_mask = step.outcome is not None
     return EncodedGameStep(
         token_ids=token_ids,

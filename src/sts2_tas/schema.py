@@ -187,6 +187,7 @@ from .ml_schema import (  # noqa: E402
     ActionCandidate,
     CardInstance,
     GameStep,
+    LabelSource,
     MonsterState,
     ObservationQuality,
     PathCandidate,

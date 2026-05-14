@@ -69,7 +69,8 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
     coordinate_space: CoordinateSpace = "window_relative" if target_window is not None and not args.capture_fixture else "screen_absolute"
     step = _step_from_screen(args, screenshot_path, iteration=state.steps + 1)
     action_id = _live_learn_action_id(args, step) if _is_gameplay_step(step) else _default_action_id(step)
-    labeled_step = _with_chosen_action(step, action_id)
+    label_source = "human" if args.choice is not None else "model_self"
+    labeled_step = _with_chosen_action(step, action_id, label_source)
     action = plan_action(
         labeled_step,
         action_id,
@@ -139,7 +140,7 @@ def _default_action_id(step: GameStep) -> str:
     return legal_actions[0].identity
 
 
-def _with_chosen_action(step: GameStep, action_id: str) -> GameStep:
+def _with_chosen_action(step: GameStep, action_id: str, label_source: str) -> GameStep:
     return GameStep(
         state=step.state,
         actions=step.actions,
@@ -147,6 +148,7 @@ def _with_chosen_action(step: GameStep, action_id: str) -> GameStep:
         outcome=step.outcome,
         observation=step.observation,
         screenshot_path=step.screenshot_path,
+        label_source=label_source,
     )
 
 
@@ -210,6 +212,7 @@ def _propagate_terminal_return(dataset: Path, labeled_steps: int, terminal_outco
             outcome=propagated,
             observation=step.observation,
             screenshot_path=step.screenshot_path,
+            label_source=step.label_source,
         )
     write_game_steps(dataset, steps)
 

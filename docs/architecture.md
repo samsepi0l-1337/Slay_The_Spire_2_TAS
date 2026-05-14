@@ -7,20 +7,25 @@
 3. `sts2-tas label` updates one `GameStep` JSONL row with an `ActionCandidate.identity`, for example `pick_card|option=card_1` or `skip_reward|option=skip`. CLI choices still accept short aliases such as `pick:card_1`, `pick_card:card_1`, and `skip` when they resolve to one legal action.
 4. `sts2-tas train` trains a PyTorch entity-centric actor-critic ranker over legal `ActionCandidate` tokens.
 5. `sts2-tas recommend` loads a saved `.pt` checkpoint and ranks the current `GameStep` actions.
-6. `sts2-tas live-step` captures a screenshot or uses `--capture-fixture`, parses OCR options/state, chooses from `--choice` or `--model`, applies dry-run/jsonl/native input, and can poll post-input frames for retryable transition acknowledgement.
-7. `sts2-tas live-learn-loop` repeats the live-step boundary across start menus, gameplay decisions, terminal screens, and restarts. It appends labeled `GameStep` rows only for supervised combat/card/relic/map gameplay decisions, propagates terminal returns to the current episode's gameplay rows, and can retrain/save a Torch model every N new labels or immediately after terminal return propagation.
-8. `sts2-tas act`, `run-loop`, `evaluate-seeds`, and branch search helpers turn parsed actions into dry-run input plans, seed-level episode summaries, baseline comparisons, branch outcome scores, branch-and-bound candidates, and MCTS candidates.
+6. `sts2-tas evaluate-model` measures recommendation accuracy, legal-action masking, calibration, value correlation, and score margins over labeled rows.
+7. `sts2-tas live-step` captures a screenshot or uses `--capture-fixture`, parses OCR options/state, chooses from `--choice` or `--model`, applies dry-run/jsonl/native input, and can poll post-input frames for retryable transition acknowledgement.
+8. `sts2-tas live-learn-loop` repeats the live-step boundary across start menus, gameplay decisions, terminal screens, and restarts. It appends labeled `GameStep` rows only for supervised combat/card/relic/map gameplay decisions, propagates terminal returns to the current episode's gameplay rows, and can retrain/save a Torch model every N new labels or immediately after terminal return propagation.
+9. `sts2-tas act`, `run-loop`, `evaluate-seeds`, `evaluate-play`, and branch search helpers turn parsed actions into dry-run input plans, seed-level episode summaries, baseline comparisons, play quality metrics, branch outcome scores, branch-and-bound candidates, and MCTS candidates.
 
 ## GameStep Entity Ranker
 
-`GameStep` is the learning and recommendation surface. It stores a `StructuredGameState`, legal `ActionCandidate` list, optional `StepOutcome`, `ObservationQuality`, and the chosen action id.
+`GameStep` is the learning and recommendation surface. It stores a `StructuredGameState`, legal `ActionCandidate` list, optional `StepOutcome`, `ObservationQuality`, the chosen action id, and `label_source`. Existing rows without `label_source` load as `human`.
 
 The torch encoder tokenizes these groups:
 
 - `GLOBAL`, `PLAYER`, `CARD`, `RELIC`, `POTION`
 - `MONSTER`, `PATH`, `ACTION`, `OBSERVATION`, `DECISION_CONTEXT`
 
-The `EntityTransformerActorCritic` scores only the current legal action candidates, masks illegal actions before policy selection, and predicts a value logit for later seed-loop outcome learning. Value loss is applied only to rows with a real `StepOutcome`, so unlabeled outcome rows do not train as false losses. It is behavior-cloning first; PPO, GNN map encoding, and simulator-backed self-play remain future work.
+The `EntityTransformerActorCritic` scores only the current legal action candidates, masks illegal actions before policy selection, and predicts a value logit for later seed-loop outcome learning. Default training uses supervised `human`, `search`, and `heuristic` labels; `model_shadow` and `model_self` rows are excluded. Value targets prefer explicit `StepOutcome.value_target`, then `discounted_return`, then reward/floor/HP/terminal shaping, and only fall back to victory when no richer signal exists. It is behavior-cloning first; PPO, GNN map encoding, and simulator-backed self-play remain future work.
+
+## Trajectory Schema
+
+`EpisodeState` records run id, seed, game version, floor, room type, and turn index for one point in an episode. `TrajectoryStep` records the transition-level row: run id, seed, game version, floor, room type, turn index, state before, legal actions, selected action, state after, reward, terminal, and label source. The schema round-trips through dict/JSON and supports JSONL load/write for trajectory-level evaluation.
 
 ## Game State Coverage
 
@@ -87,7 +92,7 @@ Quartz/PyObjC targeted PID event delivery is intentionally only an extension poi
 
 `save-state backup` and `save-state restore` operate only on the explicit `--save` file and `--backup-dir`. Backup names include a stable hash of the save path so saves with the same file name in different directories do not overwrite each other. `runtime.search_save_state_branches()` wraps this restore boundary around `branch_and_bound_seed()` so each score and bound scorer sees the same save-state baseline before evaluating a candidate path. `runtime.score_branch_outcome()` scores terminal progress using victory/floor/HP/step weights, and `runtime.mcts_seed_search()` performs UCT-style repeated branch sampling with the same scorer callback contract.
 
-`run-loop` consumes seed lists, optional `--victory-seeds`, a capture fixture, OCR tokens, and a max step count, then records JSONL episodes. In this fixture-only boundary it performs one parsed choice per seed, records the actual executed step count, and stores declared victory outcomes per seed. `evaluate-seeds` summarizes episode count, victories, win rate, and average steps; with `--baseline`, it also emits candidate-vs-rule-baseline deltas.
+`run-loop` consumes seed lists, optional `--victory-seeds`, a capture fixture, OCR tokens, and a max step count, then records JSONL episodes. In this fixture-only boundary it performs one parsed choice per seed, records the actual executed step count, and stores declared victory outcomes per seed. `evaluate-seeds` summarizes episode count, victories, win rate, and average steps; with `--baseline`, it also emits candidate-vs-rule-baseline deltas. `evaluate-play` summarizes play JSONL with win rate, average floor/HP/steps, latency, transition timeout rate, misclick rate, illegal action rate, and candidate recall.
 
 ## Constraints
 

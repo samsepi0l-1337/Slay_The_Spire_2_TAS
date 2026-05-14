@@ -14,6 +14,7 @@ uv run sts2-tas capture --screenshot reward.png --out data/steps.jsonl --game-ve
 uv run sts2-tas label --dataset data/steps.jsonl --index 0 --choice pick_card:card_1
 uv run sts2-tas train --dataset data/steps.jsonl --model models/ironclad.pt --character ironclad --epochs 30 --batch-size 128 --device auto
 uv run sts2-tas recommend --model models/ironclad.pt --step query.json
+uv run sts2-tas evaluate-model --dataset data/steps.jsonl --model models/ironclad.pt --character ironclad --out model-eval.json
 uv run sts2-tas parse-screen --screenshot reward.png --ocr-fixture ocr.json --out parsed.json
 uv run sts2-tas parse-screen --screenshot reward.png --ocr-provider tesseract --ocr-language eng+kor --out parsed.json
 uv run sts2-tas parse-screen --screenshot reward.png --ocr-provider tesseract --region-calibration regions.json --out parsed.json
@@ -29,9 +30,10 @@ uv run sts2-tas live-learn-loop --screenshot-out live.png --ocr-provider tessera
 uv run sts2-tas run-loop --seeds 7,8 --victory-seeds 8 --capture-fixture reward.png --ocr-fixture ocr.json --episodes-out episodes.jsonl --max-steps 1
 uv run sts2-tas evaluate-seeds --episodes episodes.jsonl --out summary.json
 uv run sts2-tas evaluate-seeds --episodes candidate.jsonl --baseline rule-baseline.jsonl --out comparison.json
+uv run sts2-tas evaluate-play --episodes episodes.jsonl --out play-eval.json
 ```
 
-실제 학습용 row는 `--state-json`으로 player/card/relic/potion/monster/path 상태를 함께 넣는 것을 권장합니다. CLI flag로 주지 않은 값은 `ObservationQuality.missing_fields`에 남겨 모델 입력 품질을 추적합니다.
+실제 학습용 row는 `--state-json`으로 player/card/relic/potion/monster/path 상태를 함께 넣는 것을 권장합니다. CLI flag로 주지 않은 값은 `ObservationQuality.missing_fields`에 남겨 모델 입력 품질을 추적합니다. 기존 `GameStep` JSONL은 계속 읽히며, `label_source`가 없으면 `human`으로 처리됩니다. 기본 학습은 `human`/`search`/`heuristic` label만 사용하고 model self/shadow row는 제외합니다.
 
 로컬 Python 3.14 editable install이 `sts2_tas`를 import하지 못하는 환경에서는 `.venv` hidden flag를 정리한 뒤 다시 실행합니다. 임시 우회가 필요하면 `PYTHONPATH=src uv run ...` 또는 `uv run --no-editable ...`로 실행할 수 있습니다.
 

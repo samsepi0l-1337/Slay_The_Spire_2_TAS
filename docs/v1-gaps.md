@@ -41,13 +41,18 @@ Window capture
 - save-state branch search는 bound scorer 평가 전에도 save를 복원한다.
 - live OCR overlay가 `cards` 같은 entity payload를 제공하면 `cards.metadata` 같은 stale nested missing field를 제거한다.
 - `--ack-max-retries` 음수 입력을 실행 전 명시적으로 거부한다.
+- `EpisodeState`/`TrajectoryStep` JSONL을 추가해 run id, seed, game version, floor, room type, turn index, state before/after, legal/selected action, reward, terminal, label source를 transition row로 저장한다.
+- `label_source`를 `human`, `heuristic`, `search`, `model_shadow`, `model_self`로 분리하고 기존 `GameStep` row는 `human`으로 역직렬화한다.
+- 기본 학습은 `human`/`search`와 heuristic row만 사용하고 `model_shadow`/`model_self` row를 제외한다.
+- value target은 explicit `value_target`, `discounted_return`, reward/floor/HP/terminal signal을 우선하고, richer signal이 없을 때만 victory boolean으로 fallback한다.
+- `evaluate-model`과 `evaluate-play`를 추가해 model holdout/top-k/legal mask/calibration/value proxy와 play latency/timeout/misclick/illegal action/candidate recall을 리포트한다.
 
 ## P0 Gaps
 
 - Live state extractor: OCR text grammar 기반 HP/max HP, block, energy, turn, gold, floor, hand, potion, monster, map 추출과 calibrated CV/OCR region filtering은 시작됐다. draw/discard/exhaust, relic counters, field-level confidence는 남아 있다.
 - Legal action integration: combat/card_reward/map은 live OCR state와 generator가 연결됐다. targeted combat/potion multi-click은 구현됐다. shop/event/rest와 non-monster targeting은 남아 있다.
 - Transition acknowledgement: changed/no-op/timeout 분리, fixture sequence retry, live frame polling retry, action-order stable signature는 구현됐다. debounce, latency/error metrics, retry backoff policy는 남아 있다.
-- Trajectory return: terminal outcome을 gameplay rows에 Monte Carlo return으로 전파하고 terminal 직후 재학습한다. TD target, discounted return, per-step reward shaping은 남아 있다.
+- Trajectory return: terminal outcome을 gameplay rows에 Monte Carlo return으로 전파하고 terminal 직후 재학습한다. `TrajectoryStep` JSONL과 reward/return-aware value target은 시작됐다. TD target과 richer per-step reward shaping은 남아 있다.
 
 ## P1 Gaps
 

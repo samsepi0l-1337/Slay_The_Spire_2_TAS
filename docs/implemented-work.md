@@ -10,6 +10,8 @@
 - `label`: dataset의 특정 `GameStep` row에 고유 action identity 라벨을 붙인다. `pick:card_1`, `pick_card:card_1`, `skip` 같은 짧은 별칭은 한 legal action으로 해석될 때만 허용한다.
 - `train`: 라벨된 `GameStep`으로 PyTorch ranker를 학습한다.
 - `recommend`: 저장된 `.pt` 모델과 현재 `GameStep`으로 후보별 추천 점수를 출력한다.
+- `evaluate-model`: labeled dataset과 model을 받아 top-1/top-3, legal mask, value correlation, Brier score, score margin을 기록한다.
+- `evaluate-play`: episode/play JSONL에서 win rate, floor/HP/step 평균, latency, timeout, misclick, illegal action, candidate recall을 기록한다.
 - `act`: saved `GameStep`과 명시 action id로 dry-run/input event/native input action을 계획하거나 실행한다.
 - `live-step`: 화면 capture 또는 fixture, OCR parsing, manual/model choice, input planning/execution을 한 번에 수행한다. post-input OCR fixture, fixture sequence, live frame polling 기반 acknowledgement/retry를 지원한다.
 - `live-learn-loop`: 최초 시작 메뉴부터 gameplay, terminal, restart까지 `live-step` 경계를 반복한다. combat/card reward/relic choice/map 화면은 `--choice` 또는 `--allow-model-self-labels`일 때만 labeled `GameStep` JSONL에 누적하고, terminal return을 같은 episode의 gameplay row에 전파하며, 지정 interval과 terminal 전파 직후 PyTorch 모델을 재학습/저장한다. `--region-calibration`은 반복 OCR parse에도 적용된다.
@@ -21,11 +23,13 @@
 ## Data And Schema
 
 - `GameStep`/`StructuredGameState`: player/card/relic/potion/monster/path/action/observation 상태를 entity-centric learning row로 round-trip한다.
+- `EpisodeState`/`TrajectoryStep`: run/seed/game version/floor/room/turn transition과 state before/after, legal/selected action, reward, terminal, label source를 JSON/dict/JSONL로 round-trip한다.
 - `PlayerState`: HP, max HP, block, energy, turn, strength/dexterity, vulnerable/weak/frail/artifact, poison/regen/intangible, character-specific resources를 보존한다.
 - `CardInstance`: card id, zone, upgrade state, cost, type, rarity, temporary/generated/retain/exhaust/ethereal/innate flags를 보존한다.
 - `RelicState`: acquisition order, counter, cooldown, combat/turn activation flags를 보존한다.
 - `ActionCandidate`: 현재 가능한 행동 후보, legal flag/mask, source/target ids, path/shop/event ids, source `screen_box`, optional `target_screen_box`를 보존한다. identity는 action type과 entity field를 포함해 `play_card`/`discard_card`처럼 같은 카드 id를 쓰는 서로 다른 행동이 충돌하지 않게 한다.
 - `ObservationQuality`: OCR confidence, missing field, unknown token, catalog version을 저장해 Early Access catalog drift를 추적한다.
+- `label_source`: 기존 row는 `human`으로 읽고, 기본 학습은 `human`/`search`/`heuristic`만 포함한다. `model_shadow`/`model_self`는 기본 학습에서 제외한다.
 - `capture`/`capture-live`/`live-step`은 `--state-json`으로 플레이어, 카드, 유물, 포션, 몬스터, 경로 후보 상태를 입력받고, 미제공 필드는 `missing_fields`에 기록한다.
 - `RecognizedOption`/`ParsedScreen`: OCR에서 인식한 canonical option과 화면 resolution을 구조화한다.
 - `live_state.extract_live_state`: OCR text에서 player HP/energy/block/turn/gold/floor, hand card, potion, monster HP/intent, map node를 typed state payload와 screen box로 추출한다.
@@ -52,7 +56,7 @@
 ## Machine Learning
 
 - PyTorch `EntityTransformerActorCritic`은 global/player/card/relic/potion/monster/path/action/observation/decision-context token을 인코딩한다.
-- 모델은 legal action mask를 policy logits에 적용하고, behavior cloning policy loss를 학습한다. value head loss는 실제 `StepOutcome`이 있는 row에서만 적용한다.
+- 모델은 legal action mask를 policy logits에 적용하고, behavior cloning policy loss를 학습한다. value head loss는 실제 `StepOutcome`이 있는 row에서만 적용하며, explicit value target, discounted return, reward/floor/HP/terminal signal을 victory-only target보다 우선한다.
 - 캐릭터별 모델 학습을 지원하며, 추천 시 `GameStep` character와 모델 character mismatch를 거부한다.
 - `.pt` checkpoint로 모델 save/load를 수행하고, checkpoint load는 PyTorch safe `weights_only` 경로를 사용한다.
 - 추천 결과는 best candidate와 candidates list를 JSON으로 출력한다.
@@ -112,6 +116,7 @@
 - `search_save_state_branches()`는 score scorer와 bound scorer를 호출하기 전마다 backup save를 복원한다.
 - seed loop는 현재 v1 boundary로, fixture/OCR 기반 episode row를 생성하고 실제 수행한 parsed choice 수를 `steps`, declared terminal result를 `victory`로 기록한다.
 - seed evaluation은 victories, win rate, average steps를 계산한다.
+- model/play evaluation은 정책 정확도, legal mask, calibration/value proxy, score margin, latency, transition timeout, misclick, illegal action, candidate recall을 계산한다.
 
 ## Docker And Packaging
 

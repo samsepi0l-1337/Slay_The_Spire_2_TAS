@@ -9,6 +9,7 @@ from .automation import JsonlInputController, NativeInputController, apply_actio
 from .capture_state import load_captured_game_state
 from .cv_calibration import RegionCalibration, load_region_calibration
 from .evaluation import write_evaluation_report
+from .evaluation_cli import add_evaluation_parsers
 from .live_learning import run_live_learn_loop
 from .ml_cli import add_ml_parsers
 from .ml_entities import resolve_action_identity
@@ -51,6 +52,7 @@ def _parser() -> argparse.ArgumentParser:
     label.set_defaults(handler=_label)
 
     add_ml_parsers(subparsers)
+    add_evaluation_parsers(subparsers)
 
     parse_screen = subparsers.add_parser("parse-screen")
     parse_screen.add_argument("--screenshot", type=Path, required=True)
@@ -222,6 +224,7 @@ def _label(args: argparse.Namespace) -> None:
         outcome=target.outcome,
         observation=target.observation,
         screenshot_path=target.screenshot_path,
+        label_source="human",
     )
     write_game_steps(args.dataset, steps)
 

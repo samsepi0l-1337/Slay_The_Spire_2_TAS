@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .ml_entities import (
     ActionCandidate,
@@ -18,6 +18,9 @@ from .ml_entities import (
     StructuredGameState,
 )
 
+LabelSource = Literal["human", "heuristic", "search", "model_shadow", "model_self"]
+ALLOWED_LABEL_SOURCES = {"human", "heuristic", "search", "model_shadow", "model_self"}
+
 
 @dataclass(frozen=True)
 class GameStep:
@@ -27,12 +30,15 @@ class GameStep:
     outcome: StepOutcome | None
     observation: ObservationQuality
     screenshot_path: Path
+    label_source: LabelSource = "human"
 
     def __post_init__(self) -> None:
         if not self.actions:
             raise ValueError("game steps require at least one action candidate")
         if not any(action.legal for action in self.actions):
             raise ValueError("game steps require at least one legal action candidate")
+        if self.label_source not in ALLOWED_LABEL_SOURCES:
+            raise ValueError(f"unsupported label_source: {self.label_source}")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -42,6 +48,7 @@ class GameStep:
             "outcome": asdict(self.outcome) if self.outcome is not None else None,
             "observation": self.observation.to_dict(),
             "screenshot_path": str(self.screenshot_path),
+            "label_source": self.label_source,
         }
 
     def to_json(self) -> str:
@@ -57,6 +64,7 @@ class GameStep:
             outcome=StepOutcome.from_dict(outcome) if outcome is not None else None,
             observation=ObservationQuality.from_dict(data["observation"]),
             screenshot_path=Path(data["screenshot_path"]),
+            label_source=data.get("label_source", "human"),
         )
 
     @classmethod
