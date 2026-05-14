@@ -611,8 +611,10 @@ def _split_csv(value: str) -> list[str]:
 
 def _ocr_provider(args: argparse.Namespace, *, iteration: int = 1) -> OcrProvider:
     if args.ocr_provider == "tesseract":
-        kwargs = {"language": args.ocr_language, "tessdata_dir": args.tessdata_dir} | (
-            {"page_segmentation_mode": args.ocr_psm} if args.ocr_psm is not None else {}
+        kwargs = (
+            {"language": args.ocr_language, "tessdata_dir": args.tessdata_dir}
+            | ({"binary": args.tesseract_binary} if args.tesseract_binary != "tesseract" else {})
+            | ({"page_segmentation_mode": args.ocr_psm} if args.ocr_psm is not None else {})
         )
         return TesseractOcrProvider(**kwargs)
     if args.ocr_fixture_sequence is not None:

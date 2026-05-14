@@ -61,6 +61,7 @@ def _parser() -> argparse.ArgumentParser:
     parse_screen.add_argument("--ocr-fixture", type=Path)
     parse_screen.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     parse_screen.add_argument("--ocr-language", default="eng+kor")
+    parse_screen.add_argument("--tesseract-binary", default="tesseract")
     parse_screen.add_argument("--tessdata-dir", type=Path)
     parse_screen.add_argument("--ocr-psm", type=int)
     parse_screen.add_argument("--region-calibration", type=Path)
@@ -72,6 +73,7 @@ def _parser() -> argparse.ArgumentParser:
     capture_live.add_argument("--ocr-fixture", type=Path)
     capture_live.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     capture_live.add_argument("--ocr-language", default="eng+kor")
+    capture_live.add_argument("--tesseract-binary", default="tesseract")
     capture_live.add_argument("--tessdata-dir", type=Path)
     capture_live.add_argument("--ocr-psm", type=int)
     capture_live.add_argument("--region-calibration", type=Path)
@@ -99,6 +101,7 @@ def _parser() -> argparse.ArgumentParser:
     live_step.add_argument("--failure-log", type=Path)
     live_step.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_step.add_argument("--ocr-language", default="eng+kor")
+    live_step.add_argument("--tesseract-binary", default="tesseract")
     live_step.add_argument("--tessdata-dir", type=Path)
     live_step.add_argument("--ocr-psm", type=int)
     live_step.add_argument("--region-calibration", type=Path)
@@ -132,6 +135,7 @@ def _parser() -> argparse.ArgumentParser:
     live_learn_loop.add_argument("--failure-log", type=Path)
     live_learn_loop.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_learn_loop.add_argument("--ocr-language", default="eng+kor")
+    live_learn_loop.add_argument("--tesseract-binary", default="tesseract")
     live_learn_loop.add_argument("--tessdata-dir", type=Path)
     live_learn_loop.add_argument("--ocr-psm", type=int)
     live_learn_loop.add_argument("--region-calibration", type=Path)
@@ -180,6 +184,7 @@ def _parser() -> argparse.ArgumentParser:
     run_loop.add_argument("--ocr-fixture", type=Path)
     run_loop.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     run_loop.add_argument("--ocr-language", default="eng+kor")
+    run_loop.add_argument("--tesseract-binary", default="tesseract")
     run_loop.add_argument("--tessdata-dir", type=Path)
     run_loop.add_argument("--ocr-psm", type=int)
     run_loop.add_argument("--episodes-out", type=Path, required=True)
@@ -487,8 +492,10 @@ def _captured_state(args: argparse.Namespace):
 
 def _ocr_provider(args: argparse.Namespace) -> OcrProvider:
     if args.ocr_provider == "tesseract":
-        kwargs = {"language": args.ocr_language, "tessdata_dir": args.tessdata_dir} | (
-            {"page_segmentation_mode": args.ocr_psm} if args.ocr_psm is not None else {}
+        kwargs = (
+            {"language": args.ocr_language, "tessdata_dir": args.tessdata_dir}
+            | ({"binary": args.tesseract_binary} if args.tesseract_binary != "tesseract" else {})
+            | ({"page_segmentation_mode": args.ocr_psm} if args.ocr_psm is not None else {})
         )
         return TesseractOcrProvider(**kwargs)
     if args.ocr_fixture is None:

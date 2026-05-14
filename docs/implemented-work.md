@@ -42,7 +42,7 @@
 
 - synthetic/stable screenshot용 색상 기반 detector가 card reward, relic choice, skip button layout을 구분한다.
 - OCR provider protocol을 통해 fixture OCR과 Tesseract TSV adapter를 같은 parsing 경로로 사용한다.
-- Tesseract provider는 host 설치 language pack 외에 `--tessdata-dir`로 per-run `eng+kor` traineddata directory를 지정할 수 있고, sparse game UI에는 `--ocr-psm`을 전달할 수 있다.
+- Tesseract provider는 `--tesseract-binary`, host 설치 language pack 외의 `--tessdata-dir` per-run `eng+kor` traineddata directory, sparse game UI용 `--ocr-psm`을 전달할 수 있다.
 - 영어/한국어 alias catalog로 카드, 유물, skip text를 canonical id로 매핑한다.
 - OCR로 시작 메뉴의 `Continue`/`계속`/`Single Player`, 모드 선택의 `Standard`, 캐릭터 선택의 `Ironclad`, terminal 화면의 `Victory!`/`Game Over`/`승리`/`게임 오버`와 `New Run`/`다시 시작` 재시작 버튼을 매핑한다.
 - OCR로 map legend `Legend`/`범례`가 보이면 fixture 없이도 map 화면으로 분류한다.

@@ -360,10 +360,12 @@ def test_live_learn_loop_can_use_model_tesseract_and_target_window_capture(tmp_p
             self,
             *,
             language: str,
+            binary: str = "tesseract",
             tessdata_dir: Path | None = None,
             page_segmentation_mode: int | None = None,
         ) -> None:
             assert language == "eng+kor"
+            assert binary == "tesseract"
             assert tessdata_dir is None
             assert page_segmentation_mode is None
 

@@ -138,6 +138,7 @@ interactive task에서 확인된 게임 process는 `SlayTheSpire2`, SessionId는
   --screenshot-out remote-smoke\interactive-live.png `
   --ocr-provider tesseract `
   --ocr-language eng+kor `
+  --tesseract-binary 'C:\Program Files\Tesseract-OCR\tesseract.exe' `
   --tessdata-dir remote-smoke\tessdata `
   --ocr-psm 12 `
   --choice pick:strike `
@@ -176,12 +177,13 @@ Invoke-WebRequest `
   --screenshot remote-smoke\interactive-live.png `
   --ocr-provider tesseract `
   --ocr-language eng+kor `
+  --tesseract-binary 'C:\Program Files\Tesseract-OCR\tesseract.exe' `
   --tessdata-dir $tessdata `
   --ocr-psm 12 `
   --out remote-smoke\parsed.json
 ```
 
-마지막 확인된 기본 설치는 `v5.4.0.20240606`, language는 `eng`, `osd`였습니다. `kor.traineddata`는 host tessdata 또는 `--tessdata-dir` 경로에 있어야 `--ocr-language eng+kor`가 fixture 없이 동작합니다. 실제 게임 UI처럼 sparse text가 많은 화면은 `--ocr-psm 12`가 기본 page segmentation보다 안정적입니다.
+마지막 확인된 기본 설치는 `v5.4.0.20240606`, language는 `eng`, `osd`였습니다. `kor.traineddata`는 host tessdata 또는 `--tessdata-dir` 경로에 있어야 `--ocr-language eng+kor`가 fixture 없이 동작합니다. PATH가 잡히지 않은 host에서는 `--tesseract-binary 'C:\Program Files\Tesseract-OCR\tesseract.exe'`로 binary를 직접 지정합니다. 실제 게임 UI처럼 sparse text가 많은 화면은 `--ocr-psm 12`가 기본 page segmentation보다 안정적입니다.
 
 ## Windows Executable
 

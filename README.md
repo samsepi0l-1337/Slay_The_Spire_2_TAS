@@ -16,7 +16,7 @@ uv run sts2-tas train --dataset data/steps.jsonl --model models/ironclad.pt --ch
 uv run sts2-tas recommend --model models/ironclad.pt --step query.json
 uv run sts2-tas evaluate-model --eval-dataset data/steps.jsonl --model models/ironclad.pt --character ironclad --out model-eval.json
 uv run sts2-tas parse-screen --screenshot reward.png --ocr-fixture ocr.json --out parsed.json
-uv run sts2-tas parse-screen --screenshot reward.png --ocr-provider tesseract --ocr-language eng+kor --tessdata-dir tessdata --ocr-psm 12 --out parsed.json
+uv run sts2-tas parse-screen --screenshot reward.png --ocr-provider tesseract --ocr-language eng+kor --tesseract-binary tesseract --tessdata-dir tessdata --ocr-psm 12 --out parsed.json
 uv run sts2-tas parse-screen --screenshot reward.png --ocr-provider tesseract --region-calibration regions.json --out parsed.json
 uv run sts2-tas act --step query.json --choice pick_card:strike --input-log inputs.jsonl
 uv run sts2-tas act --step query.json --choice pick_card:strike --input-log inputs.jsonl --input-backend native --execute
