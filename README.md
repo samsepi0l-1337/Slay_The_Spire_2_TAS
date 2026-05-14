@@ -62,4 +62,3 @@ GitHub Actions의 `Build Windows Executable` workflow도 같은 스크립트를 
 - [docs/README.md](docs/README.md)
 - [docs/architecture.md](docs/architecture.md)
 - [docs/docker.md](docs/docker.md)
-- [docs/v1-gaps.md](docs/v1-gaps.md)

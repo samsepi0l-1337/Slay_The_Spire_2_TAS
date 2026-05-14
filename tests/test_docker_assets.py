@@ -30,10 +30,10 @@ def test_dockerignore_excludes_local_state_and_generated_outputs() -> None:
     assert ".git/" in patterns
 
 
-def test_docs_explain_windows_docker_and_v1_gaps() -> None:
+def test_docs_explain_windows_docker_and_deferred_scope() -> None:
     docker_doc = (ROOT / "docs" / "docker.md").read_text(encoding="utf-8")
-    gaps_doc = (ROOT / "docs" / "v1-gaps.md").read_text(encoding="utf-8")
     architecture_doc = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    implemented_doc = (ROOT / "docs" / "implemented-work.md").read_text(encoding="utf-8")
     index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
@@ -41,14 +41,15 @@ def test_docs_explain_windows_docker_and_v1_gaps() -> None:
     assert "Python 3.14" in docker_doc
     assert "docker run --rm" in docker_doc
     assert "volume" in docker_doc
-    assert "OCR" in gaps_doc
-    assert "screen automation" in gaps_doc
-    assert "reinforcement learning" in gaps_doc
-    assert "target-window activation" in gaps_doc
-    assert "Quartz/PyObjC targeted PID input delivery" in gaps_doc
-    assert "window focus management" not in gaps_doc
+    assert "OCR" in implemented_doc
+    assert "Steam/Godot process memory" in implemented_doc
+    assert "--execute" in implemented_doc
+    assert "PPO, GNN map encoder, simulator-backed self-play" in implemented_doc
+    assert "Quartz/PyObjC targeted PID event delivery" in architecture_doc
+    assert "window focus management" not in implemented_doc
     assert "Docker" in index
-    assert "v1 gaps" in index
+    assert "v1-gaps.md" not in index
+    assert "v1-gaps.md" not in readme
     assert "Windows executable" in index
     assert "PYTHONPATH=src" in index
     assert "--no-editable" in index

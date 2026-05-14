@@ -1,6 +1,6 @@
 # Implemented Work
 
-현재 구현된 기능과 검증 범위를 실제 코드 기준으로 정리한다. 제외 항목은 [v1 gaps](v1-gaps.md)에 별도로 유지한다.
+현재 구현된 기능과 검증 범위를 실제 코드 기준으로 정리한다. 제외 항목은 Safety Boundaries와 각 영역의 extension point에 함께 유지한다.
 
 ## CLI Commands
 
