@@ -119,7 +119,7 @@ uv sync --extra dev
 
 마지막 확인 결과는 `31 passed in 9.48s`였습니다.
 
-SSH service session은 Windows SessionId `0`에서 실행되므로 실제 desktop capture/input 경로가 아닙니다. 직접 SSH에서 `ImageGrab.grab()`은 `OSError: screen grab failed`가 날 수 있고, `WindowDetector().detect('SlayTheSpire2')`는 게임 창을 찾지 못할 수 있습니다. 실제 게임 화면 테스트는 로그인된 Windows interactive session에서 직접 실행하거나, `Interactive` scheduled task로 실행합니다.
+SSH service session은 Windows SessionId `0`에서 실행되므로 실제 desktop capture/input 경로가 아닙니다. 직접 SSH에서 `ImageGrab.grab()`은 `OSError: screen grab failed`가 날 수 있고, `WindowDetector().detect('SlayTheSpire2')`는 게임 창을 찾지 못할 수 있습니다. 실제 게임 화면 테스트는 로그인된 Windows interactive session에서 직접 실행하거나, `Interactive` scheduled task로 실행합니다. scheduled task는 `-WindowStyle Hidden`으로 실행해 PowerShell 콘솔 창이 게임 화면 캡처와 클릭 좌표를 가리지 않게 합니다.
 
 ```powershell
 $taskName = 'STS2TASRemoteSmoke'
@@ -149,7 +149,7 @@ interactive task에서 확인된 게임 process는 `SlayTheSpire2`, title은 `Sl
   --gold 99
 ```
 
-실제 클릭은 dry-run의 target window metadata, screenshot crop, input plan이 맞는 것을 확인한 뒤에만 `--input-backend native --execute`를 추가합니다.
+실제 클릭은 dry-run의 target window metadata, screenshot crop, input plan이 맞는 것을 확인한 뒤에만 `--input-backend native --execute`를 추가합니다. Windows PowerShell 5.1의 `Set-Content -Encoding UTF8`로 만든 fixture JSON은 UTF-8 BOM이 붙을 수 있으며, CLI의 fixture/ack sequence loader는 이 BOM을 허용합니다.
 
 Tesseract OCR은 Windows host에 설치해야 합니다.
 

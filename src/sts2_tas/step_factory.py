@@ -342,7 +342,7 @@ def _action_type(kind: str) -> str:
         return "pick_relic"
     if kind == "skip":
         return "skip_reward"
-    if kind in {"select_single_player", "select_mode", "select_character", "restart_run"}:
+    if kind in {"continue_run", "select_single_player", "select_mode", "select_character", "restart_run"}:
         return kind
     raise ValueError(f"unsupported recognized option kind: {kind}")
 

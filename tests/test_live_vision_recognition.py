@@ -55,6 +55,17 @@ def test_parse_ocr_screen_matches_korean_card_catalog(tmp_path: Path) -> None:
     ]
 
 
+def test_parse_ocr_screen_matches_korean_continue_menu(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("계속", (700, 650, 850, 720))])
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "menu.png"), ocr_provider=provider)
+
+    assert parsed.kind == "main_menu"
+    assert [(option.id, option.name, option.kind) for option in parsed.options] == [
+        ("continue", "Continue", "continue_run")
+    ]
+
+
 def test_parse_ocr_screen_scales_reward_layout_from_reference_resolution(tmp_path: Path) -> None:
     provider = recognition.FakeOcrProvider(
         [

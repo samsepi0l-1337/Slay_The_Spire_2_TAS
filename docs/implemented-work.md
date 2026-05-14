@@ -43,7 +43,7 @@
 - synthetic/stable screenshot용 색상 기반 detector가 card reward, relic choice, skip button layout을 구분한다.
 - OCR provider protocol을 통해 fixture OCR과 Tesseract TSV adapter를 같은 parsing 경로로 사용한다.
 - 영어/한국어 alias catalog로 카드, 유물, skip text를 canonical id로 매핑한다.
-- OCR로 시작 메뉴의 `Single Player`, 모드 선택의 `Standard`, 캐릭터 선택의 `Ironclad`, terminal 화면의 `Victory!`/`Game Over`/`승리`/`게임 오버`와 `New Run`/`다시 시작` 재시작 버튼을 매핑한다.
+- OCR로 시작 메뉴의 `Continue`/`계속`/`Single Player`, 모드 선택의 `Standard`, 캐릭터 선택의 `Ironclad`, terminal 화면의 `Victory!`/`Game Over`/`승리`/`게임 오버`와 `New Run`/`다시 시작` 재시작 버튼을 매핑한다.
 - 카드 보상 OCR은 3개 카드와 skip button이 모두 인식될 때만 `card_reward`로 처리한다.
 - 같은 catalog id가 여러 슬롯에 나오면 option id는 `strike_1`, `strike_2`처럼 slot-specific으로 분리하고, reward `CardInstance.card_id`는 canonical id인 `strike`로 유지한다.
 - Tesseract TSV의 단어 row를 catalog-matched multi-word span으로 합쳐 `Burning Blood`, `Tiny House` 같은 인접 multi-word 항목을 별도 option으로 매칭한다.
@@ -99,6 +99,7 @@
 
 - `--capture-fixture`는 모든 iteration에서 같은 deterministic screenshot을 재사용한다.
 - `--ocr-fixture-sequence`는 테스트/fixture 실행에서 iteration별 OCR frame을 순서대로 공급한다.
+- fixture OCR JSON과 ack fixture sequence JSON은 Windows PowerShell 5.1의 BOM 포함 UTF-8 출력을 허용한다.
 - `--screenshot-out live.png`는 `live-000001.png`, `live-000002.png`처럼 반복 안전한 파일명으로 캡처한다.
 - 반복마다 OCR parsing 후 combat/card reward/relic choice/map gameplay 화면은 `--choice` 또는 `--model` 추천으로 action identity를 선택한다. `--choice` 라벨은 `chosen_action_id`가 채워진 `GameStep`으로 `--dataset` JSONL에 append한다.
 - `--execute`로 gameplay label/model action을 보낼 때는 `--ack-ocr-fixture-sequence` 또는 `--ack-live-poll` transition acknowledgement가 필요하다. `changed`일 때만 dataset과 optional `--trajectory-out` append가 확정된다.

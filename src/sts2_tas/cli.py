@@ -9,6 +9,7 @@ import time
 from .automation import DeferredJsonlInputController, JsonlInputController, NativeInputController, apply_action, plan_action
 from .capture_state import load_captured_game_state
 from .cv_calibration import RegionCalibration, load_region_calibration
+from .json_io import load_json_file
 from .evaluation import write_evaluation_report
 from .evaluation_cli import add_evaluation_parsers
 from .live_learning import run_live_learn_loop
@@ -486,7 +487,7 @@ def _fixture_ocr_provider(path: Path) -> FakeOcrProvider:
     return FakeOcrProvider(
         [
             OcrToken(text=row["text"], box=tuple(row["box"]), confidence=float(row["confidence"]))  # type: ignore[arg-type]
-            for row in json.loads(path.read_text(encoding="utf-8"))
+            for row in load_json_file(path)
         ]
     )
 
@@ -578,7 +579,7 @@ def _ack_poll_step(
 
 
 def _ack_fixture_sequence_step(args: argparse.Namespace, screenshot_path: Path, attempt: int) -> GameStep | None:
-    frames = json.loads(args.ack_ocr_fixture_sequence.read_text(encoding="utf-8"))
+    frames = load_json_file(args.ack_ocr_fixture_sequence)
     if attempt > len(frames):
         return None
     provider = FakeOcrProvider(_frame_tokens(frames[attempt - 1]))

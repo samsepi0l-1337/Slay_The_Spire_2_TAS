@@ -43,6 +43,7 @@ CATALOG = (
     CatalogEntry("tiny_house", "Tiny House", "relic", ("tiny house", "\uc791\uc740 \uc9d1")),
     CatalogEntry("skip", "Skip", "skip", ("skip", "\ub118\uae30\uae30")),
     CatalogEntry("single_player", "Single Player", "select_single_player", ("single player", "\uc2f1\uae00 \ud50c\ub808\uc774")),
+    CatalogEntry("continue", "Continue", "continue_run", ("continue", "resume", "\uacc4\uc18d")),
     CatalogEntry("standard", "Standard", "select_mode", ("standard", "\ud45c\uc900", "\uc77c\ubc18")),
     CatalogEntry("ironclad", "Ironclad", "select_character", ("ironclad", "\uc544\uc774\uc5b8\ud074\ub798\ub4dc")),
     CatalogEntry("new_run", "New Run", "restart_run", ("new run", "play again", "retry", "\uc0c8 \ub7f0", "\ub2e4\uc2dc \uc2dc\uc791")),
@@ -302,7 +303,7 @@ def _terminal_candidates(tokens: list[OcrToken]) -> set[str]:
 
 def _menu_kind(options: list[RecognizedOption]) -> DetectionKind | None:
     kinds = {option.kind for option in options}
-    if "select_single_player" in kinds:
+    if {"continue_run", "select_single_player"} & kinds:
         return DetectionKind.MAIN_MENU
     if "select_mode" in kinds:
         return DetectionKind.MODE_SELECT
@@ -322,7 +323,7 @@ def _in_layout_region(
     calibration: RegionCalibration | None,
 ) -> bool:
     if calibration is not None:
-        region = "menu" if kind in {"select_single_player", "select_mode", "select_character", "restart_run"} else kind
+        region = "menu" if kind in {"continue_run", "select_single_player", "select_mode", "select_character", "restart_run"} else kind
         return calibration.contains_center(region, token.box, resolution)
     width, height = resolution
     center_x = (token.box[0] + token.box[2]) / 2 / width
@@ -331,7 +332,7 @@ def _in_layout_region(
         return 0.35 <= center_x <= 0.65 and center_y >= 0.75
     if kind == "card":
         return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.55
-    if kind in {"select_single_player", "select_mode", "select_character", "restart_run"}:
+    if kind in {"continue_run", "select_single_player", "select_mode", "select_character", "restart_run"}:
         return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.90
     return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.70
 

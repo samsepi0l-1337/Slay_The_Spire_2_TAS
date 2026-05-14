@@ -55,6 +55,7 @@ _CARD_TYPES = {"strike": "attack", "bash": "attack", "defend": "skill"}
 _KNOWN_SCREEN_TEXTS = {
     "bash",
     "burning blood",
+    "continue",
     "defend",
     "game over",
     "ironclad",
@@ -67,6 +68,7 @@ _KNOWN_SCREEN_TEXTS = {
     "victory",
     "victory!",
     "강타",
+    "계속",
     "넘기기",
     "수비",
     "아이언클래드",

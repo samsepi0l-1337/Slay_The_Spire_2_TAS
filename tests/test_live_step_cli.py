@@ -68,6 +68,46 @@ def test_cli_live_step_with_fixture_choice_reports_verifiable_action(tmp_path: P
     assert not input_log.exists()
 
 
+def test_cli_live_step_accepts_powershell_utf8_bom_fixture(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "ocr.json"
+    fixture.write_text(
+        json.dumps([{"text": "Continue", "box": [700, 650, 850, 720], "confidence": 0.99}]),
+        encoding="utf-8-sig",
+    )
+
+    exit_code = cli.main(
+        [
+            "live-step",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture",
+            str(fixture),
+            "--choice",
+            "continue",
+            "--input-log",
+            str(tmp_path / "inputs.jsonl"),
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert output["choice"] == {"action": "pick", "option_id": "continue"}
+
+
 def test_cli_live_step_can_acknowledge_post_input_state_change(tmp_path: Path, capsys) -> None:
     input_log = tmp_path / "inputs.jsonl"
     ack_fixture = tmp_path / "ack.json"
