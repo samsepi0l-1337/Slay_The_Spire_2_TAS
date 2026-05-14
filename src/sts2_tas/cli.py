@@ -11,14 +11,7 @@ from .live_learning import run_live_learn_loop
 from .ml_cli import add_ml_parsers
 from .ml_entities import resolve_action_identity
 from .model import load_model, recommend
-from .recognition import (
-    FakeOcrProvider,
-    OcrProvider,
-    OcrToken,
-    TesseractOcrProvider,
-    detect_screen,
-    parse_ocr_screen,
-)
+from .recognition import FakeOcrProvider, OcrProvider, OcrToken, TesseractOcrProvider, detect_screen, parse_ocr_screen
 from .runtime import backup_save, capture_screen, restore_save, run_seed_loop
 from .schema import CoordinateSpace, GameStep, TargetWindow
 from .step_factory import game_step_from_detection, game_step_from_parsed_screen
@@ -110,6 +103,7 @@ def _parser() -> argparse.ArgumentParser:
     live_learn_loop.add_argument("--dataset", type=Path, required=True)
     live_learn_loop.add_argument("--max-steps", type=int)
     live_learn_loop.add_argument("--ocr-fixture", type=Path)
+    live_learn_loop.add_argument("--ocr-fixture-sequence", type=Path)
     live_learn_loop.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_learn_loop.add_argument("--ocr-language", default="eng+kor")
     live_learn_loop.add_argument("--input-log", type=Path, required=True)
@@ -118,6 +112,7 @@ def _parser() -> argparse.ArgumentParser:
     live_learn_loop.add_argument("--target-process")
     live_learn_loop.add_argument("--train-every", type=int)
     live_learn_loop.add_argument("--model-out", type=Path)
+    live_learn_loop.add_argument("--episodes-out", type=Path)
     live_learn_loop.add_argument("--epochs", type=int, default=30)
     live_learn_loop.add_argument("--batch-size", type=int, default=128)
     live_learn_loop.add_argument("--device", default="auto")

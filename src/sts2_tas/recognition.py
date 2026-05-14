@@ -37,12 +37,21 @@ CATALOG = (
     CatalogEntry("burning_blood", "Burning Blood", "relic", ("burning blood", "\ud0c0\uc624\ub974\ub294 \ud53c")),
     CatalogEntry("tiny_house", "Tiny House", "relic", ("tiny house", "\uc791\uc740 \uc9d1")),
     CatalogEntry("skip", "Skip", "skip", ("skip", "\ub118\uae30\uae30")),
+    CatalogEntry("single_player", "Single Player", "select_single_player", ("single player", "\uc2f1\uae00 \ud50c\ub808\uc774")),
+    CatalogEntry("standard", "Standard", "select_mode", ("standard", "\ud45c\uc900", "\uc77c\ubc18")),
+    CatalogEntry("ironclad", "Ironclad", "select_character", ("ironclad", "\uc544\uc774\uc5b8\ud074\ub798\ub4dc")),
+    CatalogEntry("new_run", "New Run", "restart_run", ("new run", "play again", "retry", "\uc0c8 \ub7f0", "\ub2e4\uc2dc \uc2dc\uc791")),
 )
 
 
 class DetectionKind(str, Enum):
     CARD_REWARD = "card_reward"
     RELIC_CHOICE = "relic_choice"
+    MAIN_MENU = "main_menu"
+    MODE_SELECT = "mode_select"
+    CHARACTER_SELECT = "character_select"
+    VICTORY = "victory"
+    GAME_OVER = "game_over"
     UNKNOWN = "unknown"
 
 
@@ -79,14 +88,23 @@ class TesseractOcrProvider:
 def parse_ocr_screen(image_path: Path, ocr_provider: OcrProvider) -> ParsedScreen:
     image = Image.open(image_path)
     width, height = image.size
+    tokens = ocr_provider.recognize(image_path)
     options = [
         option
-        for token in ocr_provider.recognize(image_path)
+        for token in tokens
         if (option := _recognized_option(token, (width, height))) is not None
     ]
     non_skip = sorted((option for option in options if option.kind != "skip"), key=lambda option: option.box[0])
     skip = sorted((option for option in options if option.kind == "skip"), key=lambda option: option.box[0])
     cards = [option for option in non_skip if option.kind == "card"]
+    terminal_kind = _terminal_kind(tokens)
+    if terminal_kind is not None:
+        restarts = [option for option in non_skip if option.kind == "restart_run"]
+        if restarts:
+            return ParsedScreen(terminal_kind.value, _slot_ids(restarts), image_path, (width, height))
+    menu_kind = _menu_kind(non_skip)
+    if menu_kind is not None:
+        return ParsedScreen(menu_kind.value, _slot_ids(non_skip), image_path, (width, height))
     if len(cards) == 3 and len(cards) == len(non_skip) and skip:
         return ParsedScreen(DetectionKind.CARD_REWARD.value, [*_slot_ids(cards), skip[0]], image_path, (width, height))
     if non_skip and all(option.kind == "relic" for option in non_skip):
@@ -200,6 +218,26 @@ def _catalog_match(text: str) -> CatalogEntry | None:
     return None
 
 
+def _terminal_kind(tokens: list[OcrToken]) -> DetectionKind | None:
+    normalized = {_normalize_text(token.text) for token in tokens}
+    if normalized & {"victory", "victory!", "clear", "run clear"}:
+        return DetectionKind.VICTORY
+    if normalized & {"game over", "defeat", "defeated"}:
+        return DetectionKind.GAME_OVER
+    return None
+
+
+def _menu_kind(options: list[RecognizedOption]) -> DetectionKind | None:
+    kinds = {option.kind for option in options}
+    if "select_single_player" in kinds:
+        return DetectionKind.MAIN_MENU
+    if "select_mode" in kinds:
+        return DetectionKind.MODE_SELECT
+    if "select_character" in kinds:
+        return DetectionKind.CHARACTER_SELECT
+    return None
+
+
 def _normalize_text(text: str) -> str:
     return " ".join(text.casefold().strip().split())
 
@@ -212,6 +250,8 @@ def _in_layout_region(token: OcrToken, kind: str, resolution: tuple[int, int]) -
         return 0.35 <= center_x <= 0.65 and center_y >= 0.75
     if kind == "card":
         return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.55
+    if kind in {"select_single_player", "select_mode", "select_character", "restart_run"}:
+        return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.90
     return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.70
 
 

@@ -11,6 +11,7 @@ from .schema import (
     GameStep,
     ObservationQuality,
     ParsedScreen,
+    StepOutcome,
     StructuredGameState,
 )
 
@@ -76,6 +77,7 @@ def game_step_from_parsed_screen(
         source_type=source_type,
         ocr_confidence=confidence,
         screenshot_path=parsed.screenshot_path,
+        outcome=_outcome_from_parsed_screen(parsed.kind, floor=floor, hp=captured_state.player.hp),
     )
 
 
@@ -92,6 +94,7 @@ def _game_step(
     source_type: str,
     ocr_confidence: float,
     screenshot_path: Path,
+    outcome: StepOutcome | None = None,
 ) -> GameStep:
     catalog_version = f"{game_version}:{branch}"
     return GameStep(
@@ -112,7 +115,7 @@ def _game_step(
         ),
         actions=actions,
         chosen_action_id=None,
-        outcome=None,
+        outcome=outcome,
         observation=ObservationQuality(
             source_type=source_type,
             ocr_confidence=ocr_confidence,
@@ -178,7 +181,17 @@ def _action_type(kind: str) -> str:
         return "pick_relic"
     if kind == "skip":
         return "skip_reward"
+    if kind in {"select_single_player", "select_mode", "select_character", "restart_run"}:
+        return kind
     raise ValueError(f"unsupported recognized option kind: {kind}")
+
+
+def _outcome_from_parsed_screen(kind: str, *, floor: int, hp: int) -> StepOutcome | None:
+    if kind == DetectionKind.VICTORY.value:
+        return StepOutcome(victory=True, floor_reached=floor, hp_remaining=hp, terminal=True)
+    if kind == DetectionKind.GAME_OVER.value:
+        return StepOutcome(victory=False, floor_reached=floor, hp_remaining=hp, terminal=True)
+    return None
 
 
 def _card_type(tags: list[str]) -> str:
