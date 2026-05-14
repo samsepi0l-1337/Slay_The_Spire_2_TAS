@@ -12,6 +12,7 @@
 - `recommend`: 저장된 `.pt` 모델과 현재 `GameStep`으로 후보별 추천 점수를 출력한다.
 - `act`: saved `GameStep`과 명시 action id로 dry-run/input event/native input action을 계획하거나 실행한다.
 - `live-step`: 화면 capture 또는 fixture, OCR parsing, manual/model choice, input planning/execution을 한 번에 수행한다.
+- `live-learn-loop`: `live-step` 경계를 반복해 labeled `GameStep` JSONL을 누적하고, 지정 interval마다 PyTorch 모델을 재학습/저장한다.
 - `save-state backup`: 지정 save 파일을 backup directory로 복사한다.
 - `save-state restore`: exact hashed backup save를 원 위치로 복원하고 기존 save는 pre-restore copy로 보존한다.
 - `run-loop`: seed 목록, optional victory seed 목록, capture fixture/OCR로 seed episode JSONL을 생성한다.
@@ -74,6 +75,15 @@
 - `--model`이 있으면 저장된 추천 모델의 best action id를 사용한다.
 - 결과 JSON에는 `choice`, `action`, `input_plan`, `screenshot_path`가 포함되고, target process 사용 시 `target_window`가 포함된다.
 - native backend는 `--execute` 없이 사용할 수 없다.
+
+## Live Learn Loop
+
+- `--capture-fixture`는 모든 iteration에서 같은 deterministic screenshot을 재사용한다.
+- `--screenshot-out live.png`는 `live-000001.png`, `live-000002.png`처럼 반복 안전한 파일명으로 캡처한다.
+- 반복마다 OCR parsing 후 `--choice` 또는 `--model` 추천으로 action identity를 선택하고, `chosen_action_id`가 채워진 `GameStep`을 `--dataset` JSONL에 append한다.
+- 기본 동작은 dry-run이며 `--execute` 없이는 input controller를 만들지 않는다. `--input-backend native`는 `--execute` 없으면 실패한다.
+- `--train-every N --model-out path.pt` 조합은 N개 신규 labeled row마다 `train_torch_model(load_game_steps(dataset), character, epochs, batch_size, device)` 후 `save_model`을 호출한다.
+- `KeyboardInterrupt`는 traceback 없이 `steps`, `trained`, `interrupted`, `dataset`, `model` summary JSON을 출력하고 정상 종료한다.
 
 ## Runtime And Evaluation
 
