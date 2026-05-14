@@ -286,5 +286,27 @@ def test_parse_ocr_screen_accepts_map_state_without_reward_options(tmp_path: Pat
     assert parsed.state_payload["path_candidates"][0]["node_type"] == "elite"
 
 
+@pytest.mark.parametrize(
+    ("token_text", "expected_kind", "payload_key"),
+    [
+        ("Shop item Strike Plus card price 75 card strike", "shop", "shop_items"),
+        ("Event option Take gold", "event", "event_options"),
+        ("Rest option Smith", "rest", "rest_options"),
+    ],
+)
+def test_parse_ocr_screen_accepts_shop_event_and_rest_state_without_reward_options(
+    tmp_path: Path,
+    token_text: str,
+    expected_kind: str,
+    payload_key: str,
+) -> None:
+    provider = recognition.FakeOcrProvider([_token(token_text, (700, 430, 1120, 520))])
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / f"{expected_kind}.png"), ocr_provider=provider)
+
+    assert parsed.kind == expected_kind
+    assert parsed.state_payload[payload_key]
+
+
 def test_tesseract_tsv_parser_accepts_empty_output() -> None:
     assert recognition._tokens_from_tsv("") == []

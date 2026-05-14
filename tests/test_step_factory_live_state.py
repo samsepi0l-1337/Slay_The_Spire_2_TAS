@@ -35,7 +35,7 @@ def test_step_factory_uses_live_combat_state_for_legal_actions_and_screen_boxes(
         Path("combat.png"),
         (1920, 1080),
         state_payload={
-            "player": {"energy": 1},
+            "player": {"hp": 70, "max_hp": 80, "block": 0, "energy": 1, "turn": 1},
             "cards": [
                 {
                     "instance_id": "hand-0-strike",
@@ -69,6 +69,15 @@ def test_step_factory_uses_live_combat_state_for_legal_actions_and_screen_boxes(
             "card:hand-0-strike": (100, 800, 220, 980),
             "potion:energy_potion:0": (430, 920, 500, 990),
             "monster:jaw_worm:0": (1200, 310, 1520, 620),
+        },
+        field_confidence={
+            "player.hp": 0.99,
+            "player.max_hp": 0.99,
+            "player.block": 0.99,
+            "player.energy": 0.99,
+            "player.turn": 0.99,
+            "cards": 0.99,
+            "monsters": 0.99,
         },
     )
 
@@ -116,6 +125,7 @@ def test_step_factory_uses_live_map_state_for_path_actions_and_floor_override() 
             ],
         },
         state_boxes={"path:node-a": (700, 230, 820, 350)},
+        field_confidence={"path_candidates": 0.99},
     )
 
     step = game_step_from_parsed_screen(
@@ -166,3 +176,82 @@ def test_step_factory_keeps_reward_option_aliases_on_generated_card_reward_actio
     ]
     assert step.actions[0].target_card_id == "reward-0-strike"
     assert _reward_option_binding("external-reward", []) == (None, None)
+
+
+def test_step_factory_binds_live_shop_event_and_rest_action_boxes() -> None:
+    shop = game_step_from_parsed_screen(
+        parsed=ParsedScreen(
+            "shop",
+            [],
+            Path("shop.png"),
+            (1920, 1080),
+            state_payload={
+                "shop_items": [
+                    {"item_id": "strike_plus", "item_type": "card", "price": 75, "card_id": "strike"},
+                    {"item_id": "remove_slot", "item_type": "remove", "price": 100, "card_id": "defend"},
+                ],
+            },
+            state_boxes={
+                "shop_item:strike_plus": (100, 100, 260, 220),
+                "shop_item:remove_slot": (320, 100, 480, 220),
+                "leave_shop": (1700, 930, 1880, 1010),
+            },
+            field_confidence={"shop_items": 0.99},
+        ),
+        game_version="0.105.1",
+        branch="beta",
+        character="ironclad",
+        ascension=0,
+        floor=1,
+        captured_state=_captured(),
+        source_type="fixture",
+    )
+    event = game_step_from_parsed_screen(
+        parsed=ParsedScreen(
+            "event",
+            [],
+            Path("event.png"),
+            (1920, 1080),
+            state_payload={"event_options": [{"option_id": "take_gold", "label": "Take gold"}]},
+            state_boxes={"event_option:take_gold": (500, 720, 1500, 780)},
+            field_confidence={"event_options": 0.99},
+        ),
+        game_version="0.105.1",
+        branch="beta",
+        character="ironclad",
+        ascension=0,
+        floor=1,
+        captured_state=_captured(),
+        source_type="fixture",
+    )
+    rest = game_step_from_parsed_screen(
+        parsed=ParsedScreen(
+            "rest",
+            [],
+            Path("rest.png"),
+            (1920, 1080),
+            state_payload={"rest_options": [{"option_id": "rest"}, {"option_id": "smith"}]},
+            state_boxes={"rest_option:rest": (690, 430, 830, 570), "rest_option:smith": (1000, 430, 1140, 570)},
+            field_confidence={"rest_options": 0.99},
+        ),
+        game_version="0.105.1",
+        branch="beta",
+        character="ironclad",
+        ascension=0,
+        floor=1,
+        captured_state=_captured(),
+        source_type="fixture",
+    )
+
+    assert [(action.identity, action.screen_box) for action in shop.actions] == [
+        ("buy|shop_item=strike_plus", (100, 100, 260, 220)),
+        ("remove_card|target_card=defend", (320, 100, 480, 220)),
+        ("leave_shop", (1700, 930, 1880, 1010)),
+    ]
+    assert [(action.identity, action.screen_box) for action in event.actions] == [
+        ("choose_event_option|event_option=take_gold", (500, 720, 1500, 780)),
+    ]
+    assert [(action.identity, action.screen_box) for action in rest.actions] == [
+        ("rest", (690, 430, 830, 570)),
+        ("smith", (1000, 430, 1140, 570)),
+    ]

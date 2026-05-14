@@ -1,10 +1,13 @@
 from sts2_tas.actions import generate_legal_actions
 from sts2_tas.schema import (
     CardInstance,
+    EventOptionState,
     MonsterState,
     PathCandidate,
     PlayerState,
     PotionState,
+    RestOptionState,
+    ShopItemState,
     StructuredGameState,
 )
 
@@ -16,6 +19,9 @@ def _state(
     monsters: list[MonsterState] | None = None,
     path_candidates: list[PathCandidate] | None = None,
     potions: list[PotionState] | None = None,
+    shop_items: list[ShopItemState] | None = None,
+    event_options: list[EventOptionState] | None = None,
+    rest_options: list[RestOptionState] | None = None,
 ) -> StructuredGameState:
     return StructuredGameState(
         game_version="0.105.1",
@@ -30,6 +36,9 @@ def _state(
         potions=potions or [],
         monsters=monsters or [],
         path_candidates=path_candidates or [],
+        shop_items=shop_items or [],
+        event_options=event_options or [],
+        rest_options=rest_options or [],
     )
 
 
@@ -129,3 +138,61 @@ def test_generate_actions_drops_target_required_actions_without_targets() -> Non
 
     assert [action.identity for action in generate_legal_actions(combat)] == ["end_turn"]
     assert [action.identity for action in generate_legal_actions(combat, include_illegal=True)] == ["end_turn"]
+
+
+def test_generate_shop_actions_from_typed_items() -> None:
+    state = _state(
+        decision_context="shop",
+        shop_items=[
+            ShopItemState("strike_plus", "card", 75, True, "strike"),
+            ShopItemState("expensive_relic", "relic", 999, False),
+            ShopItemState("remove_slot", "remove", 100, True, "defend"),
+            ShopItemState("leave", "leave", 0, True),
+        ],
+    )
+
+    actions = generate_legal_actions(state)
+
+    assert [action.identity for action in actions] == [
+        "buy|shop_item=strike_plus",
+        "remove_card|target_card=defend",
+        "leave_shop",
+    ]
+
+
+def test_generate_shop_actions_adds_leave_fallback_without_leave_item() -> None:
+    state = _state(
+        decision_context="shop",
+        shop_items=[ShopItemState("artifact", "relic", 150, True)],
+    )
+
+    assert [action.identity for action in generate_legal_actions(state)] == [
+        "buy|shop_item=artifact",
+        "leave_shop",
+    ]
+
+
+def test_generate_event_and_rest_actions_from_available_options() -> None:
+    event_state = _state(
+        decision_context="event",
+        event_options=[
+            EventOptionState("take_gold", "Take gold", True),
+            EventOptionState("locked", "Locked", False),
+        ],
+    )
+    rest_state = _state(
+        decision_context="rest",
+        rest_options=[
+            RestOptionState("rest", True),
+            RestOptionState("smith", True),
+            RestOptionState("dig", True),
+        ],
+    )
+
+    assert [action.identity for action in generate_legal_actions(event_state)] == [
+        "choose_event_option|event_option=take_gold",
+    ]
+    assert [action.identity for action in generate_legal_actions(rest_state)] == [
+        "rest",
+        "smith",
+    ]

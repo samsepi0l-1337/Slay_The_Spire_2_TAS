@@ -8,12 +8,15 @@ from typing import Any, Literal
 from .ml_entities import (
     ActionCandidate,
     CardInstance,
+    EventOptionState,
     MonsterState,
     ObservationQuality,
     PathCandidate,
     PlayerState,
     PotionState,
     RelicState,
+    RestOptionState,
+    ShopItemState,
     StepOutcome,
     StructuredGameState,
 )

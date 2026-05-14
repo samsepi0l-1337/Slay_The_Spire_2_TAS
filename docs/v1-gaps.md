@@ -46,13 +46,18 @@ Window capture
 - 기본 학습은 `human`/`search`와 heuristic row만 사용하고 `model_shadow`/`model_self` row를 제외한다.
 - value target은 explicit `value_target`, `discounted_return`, reward/floor/HP/terminal signal을 우선하고, richer signal이 없을 때만 victory boolean으로 fallback한다.
 - `evaluate-model`과 `evaluate-play`를 추가해 model holdout/top-k/legal mask/calibration/value proxy와 play latency/timeout/misclick/illegal action/candidate recall을 리포트한다.
+- `ObservationQuality.field_confidence`와 context별 required field gate를 추가해 combat/map/shop/event/rest 인식이 missing 또는 confidence `<0.60`이면 fail-closed한다.
+- shop/event/rest typed option state, legal action generator, OCR fixture grammar, screen box binding을 추가했다.
+- `live-learn-loop --execute`는 gameplay label/model action에서 transition ack `changed`일 때만 `GameStep`/`TrajectoryStep`을 append하고, ack 없음/no-op/timeout/controller error/perception failure/preflight failure는 failure log만 기록한다.
+- `evaluate-model`은 `--eval-dataset`과 value-head sigmoid score 기반 `value_correlation`을 사용한다.
+- `evaluate-play`는 safety metric이 빠진 row를 기본 실패 지표로 계산하고, `--allow-missing-metrics`에서만 missing row count를 리포트한다.
 
 ## P0 Gaps
 
-- Live state extractor: OCR text grammar 기반 HP/max HP, block, energy, turn, gold, floor, hand, potion, monster, map 추출과 calibrated CV/OCR region filtering은 시작됐다. draw/discard/exhaust, relic counters, field-level confidence는 남아 있다.
-- Legal action integration: combat/card_reward/map은 live OCR state와 generator가 연결됐다. targeted combat/potion multi-click은 구현됐다. shop/event/rest와 non-monster targeting은 남아 있다.
-- Transition acknowledgement: changed/no-op/timeout 분리, fixture sequence retry, live frame polling retry, action-order stable signature는 구현됐다. debounce, latency/error metrics, retry backoff policy는 남아 있다.
-- Trajectory return: terminal outcome을 gameplay rows에 Monte Carlo return으로 전파하고 terminal 직후 재학습한다. `TrajectoryStep` JSONL과 reward/return-aware value target은 시작됐다. TD target과 richer per-step reward shaping은 남아 있다.
+- Live state extractor: OCR text grammar 기반 HP/max HP, block, energy, turn, gold, floor, hand, potion, monster, map, shop/event/rest option 추출과 calibrated CV/OCR region filtering은 시작됐다. draw/discard/exhaust, relic counters, per-entity status detail은 남아 있다.
+- Legal action integration: combat/card_reward/relic_choice/map/shop/event/rest는 live state와 generator가 연결됐다. non-monster targeting과 복합 이벤트/상점 제약은 남아 있다.
+- Transition acknowledgement: changed/no-op/timeout 분리, fixture sequence retry, live frame polling retry, action-order stable signature, execute+changed-only append는 구현됐다. debounce, retry backoff policy, real animation latency tuning은 남아 있다.
+- Trajectory return: terminal outcome을 gameplay rows에 Monte Carlo return으로 전파하고 terminal 직후 재학습한다. `TrajectoryStep` JSONL, reward/return-aware value target, changed-only trajectory append는 구현됐다. TD target과 richer per-step reward shaping은 남아 있다.
 
 ## P1 Gaps
 

@@ -5,6 +5,7 @@ import pytest
 from sts2_tas.schema import (
     ActionCandidate,
     CardInstance,
+    EventOptionState,
     GameStep,
     MonsterState,
     ObservationQuality,
@@ -12,12 +13,21 @@ from sts2_tas.schema import (
     PlayerState,
     PotionState,
     RelicState,
+    RestOptionState,
+    ShopItemState,
     StepOutcome,
     StructuredGameState,
 )
 from sts2_tas.ml_entities import action_choice_aliases, resolve_action_identity
 from sts2_tas.capture_state import CapturedGameState
-from sts2_tas.step_factory import _action_type, _card_type, _state_with_reward_cards
+from sts2_tas.step_factory import (
+    PerceptionQualityError,
+    _action_type,
+    _card_type,
+    _state_with_reward_cards,
+    game_step_from_parsed_screen,
+)
+from sts2_tas.schema import ParsedScreen
 
 
 def _game_step() -> GameStep:
@@ -101,6 +111,9 @@ def _game_step() -> GameStep:
                     forced_elite=True,
                 )
             ],
+            shop_items=[ShopItemState("strike_plus", "card", 75, True, "strike")],
+            event_options=[EventOptionState("take_gold", "Take gold")],
+            rest_options=[RestOptionState("rest")],
         ),
         actions=[
             ActionCandidate(action_type="pick_card", option_id="anger", legal=True),
@@ -114,11 +127,78 @@ def _game_step() -> GameStep:
             ocr_confidence=0.92,
             missing_fields=["draw_pile_order"],
             unknown_tokens=["new_card"],
+            field_confidence={"player.hp": 0.91, "cards": 0.88},
             game_version="0.105.1",
             branch="beta",
             catalog_version="test-catalog",
         ),
         screenshot_path=Path("fixture.png"),
+    )
+
+
+def _captured_state() -> CapturedGameState:
+    return CapturedGameState(
+        player=PlayerState(hp=70, max_hp=80, block=0, energy=3, turn=1),
+        cards=[],
+        relics=[],
+        potions=[],
+        monsters=[],
+        path_candidates=[],
+        missing_fields=[],
+        unknown_tokens=[],
+    )
+
+
+def _combat_parsed(field_confidence: dict[str, float]) -> ParsedScreen:
+    return ParsedScreen(
+        "combat",
+        [],
+        Path("combat.png"),
+        (1920, 1080),
+        state_payload={
+            "player": {"hp": 70, "max_hp": 80, "block": 0, "energy": 3, "turn": 1},
+            "cards": [
+                {
+                    "instance_id": "hand-0-strike",
+                    "card_id": "strike",
+                    "zone": "hand",
+                    "upgraded": False,
+                    "base_cost": 1,
+                    "current_cost": 1,
+                    "type": "attack",
+                    "rarity": "basic",
+                    "tags": ["attack"],
+                }
+            ],
+            "monsters": [
+                {
+                    "monster_id": "jaw_worm",
+                    "slot_index": 0,
+                    "hp": 30,
+                    "max_hp": 44,
+                    "block": 0,
+                    "intent_type": "attack",
+                    "intent_damage": 7,
+                    "hit_count": 1,
+                    "buffs": [],
+                    "debuffs": [],
+                }
+            ],
+        },
+        field_confidence=field_confidence,
+    )
+
+
+def _make_step(parsed: ParsedScreen) -> GameStep:
+    return game_step_from_parsed_screen(
+        parsed=parsed,
+        game_version="0.105.1",
+        branch="beta",
+        character="ironclad",
+        ascension=0,
+        floor=1,
+        captured_state=_captured_state(),
+        source_type="fixture",
     )
 
 
@@ -130,8 +210,12 @@ def test_game_step_round_trips_new_entity_state() -> None:
     assert decoded == step
     assert decoded.state.player.character_resource["stance"] == "neutral"
     assert decoded.state.monsters[0].intent_damage == 11
+    assert decoded.state.shop_items[0].card_id == "strike"
+    assert decoded.state.event_options[0].label == "Take gold"
+    assert decoded.state.rest_options[0].option_id == "rest"
     assert decoded.actions[2].legal is False
     assert decoded.observation.unknown_tokens == ["new_card"]
+    assert decoded.observation.field_confidence == {"player.hp": 0.91, "cards": 0.88}
 
 
 def test_game_step_rejects_empty_actions() -> None:
@@ -156,6 +240,17 @@ def test_game_step_rejects_all_illegal_actions() -> None:
             observation=_game_step().observation,
             screenshot_path=Path("fixture.png"),
         )
+
+
+def test_screen_option_states_validate_required_identifiers() -> None:
+    with pytest.raises(ValueError, match="shop item_id"):
+        ShopItemState("", "card", 75)
+    with pytest.raises(ValueError, match="price"):
+        ShopItemState("strike_plus", "card", -1)
+    with pytest.raises(ValueError, match="event option_id"):
+        EventOptionState("", "Take gold")
+    with pytest.raises(ValueError, match="rest option_id"):
+        RestOptionState("")
 
 
 def test_action_identity_distinguishes_single_entity_action_types_and_targets() -> None:
@@ -249,3 +344,131 @@ def test_step_factory_keeps_state_when_no_reward_cards() -> None:
     )
 
     assert _state_with_reward_cards(captured, []) is captured
+
+
+def test_step_factory_rejects_combat_when_required_field_confidence_is_low() -> None:
+    parsed = _combat_parsed(
+        {
+            "player.hp": 0.95,
+            "player.max_hp": 0.95,
+            "player.block": 0.95,
+            "player.energy": 0.59,
+            "player.turn": 0.95,
+            "cards": 0.95,
+            "monsters": 0.95,
+        }
+    )
+
+    with pytest.raises(PerceptionQualityError, match="player.energy"):
+        _make_step(parsed)
+
+
+def test_step_factory_rejects_map_when_required_path_candidates_are_missing() -> None:
+    parsed = ParsedScreen(
+        "map",
+        [],
+        Path("map.png"),
+        (1920, 1080),
+        state_payload={},
+        missing_fields=["path_candidates"],
+        field_confidence={},
+    )
+
+    with pytest.raises(PerceptionQualityError, match="path_candidates"):
+        _make_step(parsed)
+
+
+def test_step_factory_rejects_combat_when_required_field_confidence_is_missing() -> None:
+    parsed = _combat_parsed(
+        {
+            "player.hp": 0.95,
+            "player.max_hp": 0.95,
+            "player.block": 0.95,
+            "player.turn": 0.95,
+            "cards": 0.95,
+            "monsters": 0.95,
+        }
+    )
+
+    with pytest.raises(PerceptionQualityError, match="player.energy:missing_confidence"):
+        _make_step(parsed)
+
+
+@pytest.mark.parametrize(
+    ("kind", "payload", "missing_field", "confidence"),
+    [
+        (
+            "shop",
+            {"shop_items": [{"item_id": "strike_plus", "item_type": "card", "price": 75}]},
+            "shop_items",
+            {"shop_items": 0.59},
+        ),
+        (
+            "event",
+            {"event_options": [{"option_id": "take_gold", "label": "Take gold"}]},
+            "event_options",
+            {"event_options": 0.59},
+        ),
+        (
+            "rest",
+            {"rest_options": [{"option_id": "rest"}]},
+            "rest_options",
+            {"rest_options": 0.59},
+        ),
+    ],
+)
+def test_step_factory_rejects_shop_event_and_rest_when_required_options_are_low_confidence(
+    kind: str,
+    payload: dict[str, object],
+    missing_field: str,
+    confidence: dict[str, float],
+) -> None:
+    parsed = ParsedScreen(kind, [], Path(f"{kind}.png"), (1920, 1080), state_payload=payload, field_confidence=confidence)
+
+    with pytest.raises(PerceptionQualityError, match=missing_field):
+        _make_step(parsed)
+
+
+@pytest.mark.parametrize(
+    ("kind", "missing_field"),
+    [
+        ("shop", "shop_items"),
+        ("event", "event_options"),
+        ("rest", "rest_options"),
+    ],
+)
+def test_step_factory_rejects_shop_event_and_rest_when_required_options_are_missing(
+    kind: str,
+    missing_field: str,
+) -> None:
+    parsed = ParsedScreen(
+        kind,
+        [],
+        Path(f"{kind}.png"),
+        (1920, 1080),
+        state_payload={},
+        missing_fields=[missing_field],
+        field_confidence={},
+    )
+
+    with pytest.raises(PerceptionQualityError, match=missing_field):
+        _make_step(parsed)
+
+
+@pytest.mark.parametrize(
+    ("kind", "payload", "missing_field"),
+    [
+        ("shop", {"shop_items": [{"item_id": "strike_plus", "item_type": "card", "price": 75}]}, "shop_items"),
+        ("event", {"event_options": [{"option_id": "take_gold", "label": "Take gold"}]}, "event_options"),
+        ("rest", {"rest_options": [{"option_id": "rest"}]}, "rest_options"),
+    ],
+)
+def test_step_factory_rejects_shop_event_and_rest_when_required_confidence_is_missing(
+    kind: str,
+    payload: dict[str, object],
+    missing_field: str,
+) -> None:
+    parsed = ParsedScreen(kind, [], Path(f"{kind}.png"), (1920, 1080), state_payload=payload)
+
+    with pytest.raises(PerceptionQualityError, match=f"{missing_field}:missing_confidence"):
+        _make_step(parsed)

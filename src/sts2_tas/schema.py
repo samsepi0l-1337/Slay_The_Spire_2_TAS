@@ -80,6 +80,7 @@ class ParsedScreen:
     state_boxes: dict[str, Box] | None = None
     missing_fields: list[str] | None = None
     unknown_tokens: list[str] | None = None
+    field_confidence: dict[str, float] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -91,6 +92,7 @@ class ParsedScreen:
         }
         data["missing_fields"] = list(self.missing_fields or [])
         data["unknown_tokens"] = list(self.unknown_tokens or [])
+        data["field_confidence"] = dict(self.field_confidence or {})
         return data
 
 
@@ -186,6 +188,7 @@ class SeedEvaluation:
 from .ml_schema import (  # noqa: E402
     ActionCandidate,
     CardInstance,
+    EventOptionState,
     GameStep,
     LabelSource,
     MonsterState,
@@ -194,6 +197,8 @@ from .ml_schema import (  # noqa: E402
     PlayerState,
     PotionState,
     RelicState,
+    RestOptionState,
+    ShopItemState,
     StepOutcome,
     StructuredGameState,
 )

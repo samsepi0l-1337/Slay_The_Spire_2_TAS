@@ -5,7 +5,17 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .ml_entities import CardInstance, MonsterState, PathCandidate, PlayerState, PotionState, RelicState
+from .ml_entities import (
+    CardInstance,
+    EventOptionState,
+    MonsterState,
+    PathCandidate,
+    PlayerState,
+    PotionState,
+    RelicState,
+    RestOptionState,
+    ShopItemState,
+)
 
 
 @dataclass(frozen=True)
@@ -18,6 +28,9 @@ class CapturedGameState:
     path_candidates: list[PathCandidate]
     missing_fields: list[str]
     unknown_tokens: list[str]
+    shop_items: list[ShopItemState] | None = None
+    event_options: list[EventOptionState] | None = None
+    rest_options: list[RestOptionState] | None = None
 
 
 def overlay_captured_game_state(
@@ -36,6 +49,9 @@ def overlay_captured_game_state(
     potions = _overlay_entities(captured.potions, payload, "potions", PotionState.from_dict)
     monsters = _overlay_entities(captured.monsters, payload, "monsters", MonsterState.from_dict)
     paths = _overlay_entities(captured.path_candidates, payload, "path_candidates", PathCandidate.from_dict)
+    shop_items = _overlay_entities(captured.shop_items or [], payload, "shop_items", ShopItemState.from_dict)
+    event_options = _overlay_entities(captured.event_options or [], payload, "event_options", EventOptionState.from_dict)
+    rest_options = _overlay_entities(captured.rest_options or [], payload, "rest_options", RestOptionState.from_dict)
     return CapturedGameState(
         player=player,
         cards=cards,
@@ -50,6 +66,9 @@ def overlay_captured_game_state(
             ]
         ),
         unknown_tokens=_dedupe([*captured.unknown_tokens, *(unknown_tokens or [])]),
+        shop_items=shop_items,
+        event_options=event_options,
+        rest_options=rest_options,
     )
 
 
@@ -100,6 +119,9 @@ def load_captured_game_state(
     potions = _entities_from_payload(payload, "potions", PotionState.from_dict, missing)
     monsters = _entities_from_payload(payload, "monsters", MonsterState.from_dict, missing)
     path_candidates = _entities_from_payload(payload, "path_candidates", PathCandidate.from_dict, missing)
+    shop_items = _entities_from_payload(payload, "shop_items", ShopItemState.from_dict, missing, optional=True)
+    event_options = _entities_from_payload(payload, "event_options", EventOptionState.from_dict, missing, optional=True)
+    rest_options = _entities_from_payload(payload, "rest_options", RestOptionState.from_dict, missing, optional=True)
     return CapturedGameState(
         player=player,
         cards=cards,
@@ -109,6 +131,9 @@ def load_captured_game_state(
         path_candidates=path_candidates,
         missing_fields=_dedupe([*payload.get("missing_fields", []), *missing]),
         unknown_tokens=list(payload.get("unknown_tokens", [])),
+        shop_items=shop_items,
+        event_options=event_options,
+        rest_options=rest_options,
     )
 
 
@@ -149,7 +174,16 @@ def _unresolved_missing(missing: list[str], payload: dict[str, Any]) -> list[str
                     observed.add(f"player.character_resource.{resource}")
             else:
                 observed.add(f"player.{key}")
-    for key in ("cards", "relics", "potions", "monsters", "path_candidates"):
+    for key in (
+        "cards",
+        "relics",
+        "potions",
+        "monsters",
+        "path_candidates",
+        "shop_items",
+        "event_options",
+        "rest_options",
+    ):
         if key in payload:
             observed.add(key)
     return [field for field in missing if not _missing_field_observed(field, observed)]
@@ -159,7 +193,17 @@ def _missing_field_observed(field: str, observed: set[str]) -> bool:
     if field in observed:
         return True
     entity_root = field.split(".", 1)[0]
-    return entity_root in {"cards", "relics", "potions", "monsters", "path_candidates"} and entity_root in observed
+    entity_roots = {
+        "cards",
+        "relics",
+        "potions",
+        "monsters",
+        "path_candidates",
+        "shop_items",
+        "event_options",
+        "rest_options",
+    }
+    return entity_root in entity_roots and entity_root in observed
 
 
 def _player_from_inputs(
@@ -259,9 +303,12 @@ def _entities_from_payload(
     key: str,
     factory,
     missing: list[str],
+    *,
+    optional: bool = False,
 ) -> list:
     if key not in payload:
-        missing.append(key)
+        if not optional:
+            missing.append(key)
         return []
     return [factory(item) for item in payload[key]]
 

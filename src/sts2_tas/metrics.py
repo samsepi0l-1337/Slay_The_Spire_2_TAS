@@ -7,6 +7,15 @@ from .ml_schema import GameStep
 from .model import Recommendation
 from .trajectory import value_target_for_step
 
+SAFETY_METRIC_KEYS = {
+    "decision_latency_ms",
+    "transition_timeout",
+    "misclicks",
+    "illegal_actions",
+    "candidate_recall",
+}
+MISSING_DECISION_LATENCY_MS = 1_000_000.0
+
 
 def model_evaluation_metrics(rows: Iterable[tuple[GameStep, Recommendation]]) -> dict[str, float | int]:
     total = 0
@@ -36,7 +45,7 @@ def model_evaluation_metrics(rows: Iterable[tuple[GameStep, Recommendation]]) ->
         else:
             incorrect_margins.append(margin)
         if step.outcome is not None:
-            predicted_values.append(selected_score)
+            predicted_values.append(float(recommendation.value_score))
             target_values.append(value_target_for_step(step))
     return {
         "top_1_accuracy": top_1 / total if total else 0.0,
@@ -50,20 +59,56 @@ def model_evaluation_metrics(rows: Iterable[tuple[GameStep, Recommendation]]) ->
     }
 
 
-def play_evaluation_metrics(rows: list[dict[str, Any]]) -> dict[str, float | int]:
+def play_evaluation_metrics(rows: list[dict[str, Any]], *, allow_missing_metrics: bool = False) -> dict[str, float | int]:
     episodes = len(rows)
-    return {
+    missing_metric_rows = sum(1 for row in rows if not SAFETY_METRIC_KEYS.issubset(row))
+    fail_missing = not allow_missing_metrics
+    metrics = {
         "episodes": episodes,
         "win_rate": _mean([1.0 if row.get("victory") is True else 0.0 for row in rows]),
         "average_floor": _mean([float(row.get("floor", row.get("floor_reached", 0))) for row in rows]),
         "average_hp_remaining": _mean([float(row.get("hp_remaining", 0)) for row in rows]),
         "average_steps": _mean([float(row.get("steps", 0)) for row in rows]),
-        "decision_latency_ms": _mean([float(row.get("decision_latency_ms", 0.0)) for row in rows]),
-        "transition_timeout_rate": _mean([1.0 if row.get("transition_timeout") else 0.0 for row in rows]),
-        "misclick_rate": sum(float(row.get("misclicks", 0)) for row in rows) / episodes if episodes else 0.0,
-        "illegal_action_rate": sum(float(row.get("illegal_actions", 0)) for row in rows) / episodes if episodes else 0.0,
-        "candidate_recall": _mean([float(row.get("candidate_recall", 0.0)) for row in rows]),
+        "decision_latency_ms": _mean(
+            [
+                _missing_fail_value(
+                    row,
+                    "decision_latency_ms",
+                    MISSING_DECISION_LATENCY_MS,
+                    fail_missing,
+                )
+                for row in rows
+            ]
+        ),
+        "transition_timeout_rate": _mean(
+            [
+                _bool_metric_value(row, "transition_timeout", failure_value=1.0, fail_missing=fail_missing)
+                for row in rows
+            ]
+        ),
+        "misclick_rate": _rate(rows, "misclicks", fail_missing=fail_missing),
+        "illegal_action_rate": _rate(rows, "illegal_actions", fail_missing=fail_missing),
+        "candidate_recall": _mean([_missing_fail_value(row, "candidate_recall", 0.0, True) for row in rows]),
     }
+    if allow_missing_metrics:
+        metrics["missing_safety_metric_rows"] = missing_metric_rows
+    return metrics
+
+
+def _missing_fail_value(row: dict[str, Any], key: str, failure_value: float, fail_missing: bool) -> float:
+    if key in row:
+        return float(row[key])
+    return failure_value if fail_missing else 0.0
+
+
+def _bool_metric_value(row: dict[str, Any], key: str, *, failure_value: float, fail_missing: bool) -> float:
+    if key in row:
+        return 1.0 if row.get(key) else 0.0
+    return failure_value if fail_missing else 0.0
+
+
+def _rate(rows: list[dict[str, Any]], key: str, *, fail_missing: bool) -> float:
+    return sum(_missing_fail_value(row, key, 1.0, fail_missing) for row in rows) / len(rows) if rows else 0.0
 
 
 def _score_for(candidates, action_id: str) -> float:

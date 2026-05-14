@@ -128,6 +128,12 @@ def parse_ocr_screen(
         return _parsed(DetectionKind.RELIC_CHOICE.value, _slot_ids(non_skip), image_path, (width, height), extraction)
     if extraction.state_payload.get("path_candidates"):
         return _parsed("map", [], image_path, (width, height), extraction)
+    if extraction.state_payload.get("shop_items"):
+        return _parsed("shop", [], image_path, (width, height), extraction)
+    if extraction.state_payload.get("event_options"):
+        return _parsed("event", [], image_path, (width, height), extraction)
+    if extraction.state_payload.get("rest_options"):
+        return _parsed("rest", [], image_path, (width, height), extraction)
     if extraction.state_payload.get("cards") or extraction.state_payload.get("monsters"):
         return _parsed("combat", [], image_path, (width, height), extraction)
     raise ValueError(f"unknown OCR screen layout for {image_path}")
@@ -149,6 +155,7 @@ def _parsed(
         state_boxes=extraction.state_boxes,
         missing_fields=extraction.missing_fields,
         unknown_tokens=extraction.unknown_tokens,
+        field_confidence=extraction.field_confidence,
     )
 
 

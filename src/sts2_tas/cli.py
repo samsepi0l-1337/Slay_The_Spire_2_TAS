@@ -17,7 +17,7 @@ from .model import load_model, recommend
 from .recognition import FakeOcrProvider, OcrProvider, OcrToken, TesseractOcrProvider, detect_screen, parse_ocr_screen
 from .runtime import backup_save, capture_screen, restore_save, run_seed_loop
 from .schema import CoordinateSpace, GameStep, TargetWindow
-from .step_factory import game_step_from_detection, game_step_from_parsed_screen
+from .step_factory import PerceptionQualityError, game_step_from_detection, game_step_from_parsed_screen
 from .torch_dataset import append_game_step, load_game_steps, write_game_steps
 from .transition import acknowledge_transition
 from .windowing import WindowDetector
@@ -90,6 +90,7 @@ def _parser() -> argparse.ArgumentParser:
     live_step.add_argument("--ack-ocr-fixture-sequence", type=Path)
     live_step.add_argument("--ack-live-poll", action="store_true")
     live_step.add_argument("--ack-max-retries", type=int, default=0)
+    live_step.add_argument("--failure-log", type=Path)
     live_step.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_step.add_argument("--ocr-language", default="eng+kor")
     live_step.add_argument("--region-calibration", type=Path)
@@ -116,6 +117,11 @@ def _parser() -> argparse.ArgumentParser:
     live_learn_loop.add_argument("--max-steps", type=int)
     live_learn_loop.add_argument("--ocr-fixture", type=Path)
     live_learn_loop.add_argument("--ocr-fixture-sequence", type=Path)
+    live_learn_loop.add_argument("--ack-ocr-fixture-sequence", type=Path)
+    live_learn_loop.add_argument("--ack-live-poll", action="store_true")
+    live_learn_loop.add_argument("--ack-max-retries", type=int, default=0)
+    live_learn_loop.add_argument("--trajectory-out", type=Path)
+    live_learn_loop.add_argument("--failure-log", type=Path)
     live_learn_loop.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_learn_loop.add_argument("--ocr-language", default="eng+kor")
     live_learn_loop.add_argument("--region-calibration", type=Path)
@@ -250,7 +256,24 @@ def _live_step(args: argparse.Namespace) -> None:
     else:
         screenshot_path = capture_screen(args.screenshot_out, bbox=target_window.bounds.to_bbox())
     coordinate_space: CoordinateSpace = "window_relative" if target_window is not None and not args.capture_fixture else "screen_absolute"
-    step = _step_from_screen(args, screenshot_path)
+    try:
+        step = _step_from_screen(args, screenshot_path)
+    except PerceptionQualityError as error:
+        if args.failure_log is None:
+            raise
+        _append_failure_log(
+            args.failure_log,
+            {
+                "reason": "fail_closed_perception",
+                "action_id": None,
+                "before_signature": None,
+                "after_signature": None,
+                "retry_count": 0,
+                "latency_ms": 0,
+                "controller_error": str(error),
+            },
+        )
+        return
     action_id = _live_step_action_id(args, step)
     action = plan_action(
         step,
@@ -520,3 +543,9 @@ def _frame_tokens(frame) -> list[OcrToken]:
         OcrToken(text=row["text"], box=tuple(row["box"]), confidence=float(row["confidence"]))  # type: ignore[arg-type]
         for row in frame
     ]
+
+
+def _append_failure_log(path: Path, row: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(row, sort_keys=True) + "\n")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -14,11 +15,13 @@ from .model import load_model, recommend, save_model, train_torch_model
 from .recognition import FakeOcrProvider, OcrProvider, OcrToken, TesseractOcrProvider, parse_ocr_screen
 from .runtime import capture_screen
 from .schema import CoordinateSpace, GameStep, StepOutcome, TargetWindow
-from .step_factory import game_step_from_parsed_screen
+from .step_factory import PerceptionQualityError, game_step_from_parsed_screen
 from .torch_dataset import append_game_step, load_game_steps, write_game_steps
+from .trajectory import EpisodeState, TrajectoryStep
+from .transition import TransitionAcknowledgement, acknowledge_transition
 from .windowing import WindowDetector
 
-GAMEPLAY_CONTEXTS = {"combat", "card_reward", "relic_choice", "map"}
+GAMEPLAY_CONTEXTS = {"combat", "card_reward", "relic_choice", "map", "shop", "event", "rest"}
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,7 @@ def run_live_learn_loop(args: argparse.Namespace) -> LiveLearnSummary:
         raise ValueError("native input backend requires --execute")
     if args.train_every is not None and args.train_every <= 0:
         raise ValueError("--train-every must be positive")
+    _validate_ack_max_retries(args)
     state = _LoopState()
     try:
         while args.max_steps is None or state.steps < args.max_steps:
@@ -63,11 +67,33 @@ class _LoopState:
     interrupted: bool = False
 
 
+@dataclass(frozen=True)
+class _ActionResult:
+    changed: bool
+    after_step: GameStep | None = None
+
+
 def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> None:
     target_window = _target_window(args)
     screenshot_path = _iteration_screenshot_path(args, state.steps + 1, target_window)
     coordinate_space: CoordinateSpace = "window_relative" if target_window is not None and not args.capture_fixture else "screen_absolute"
-    step = _step_from_screen(args, screenshot_path, iteration=state.steps + 1)
+    try:
+        step = _step_from_screen(args, screenshot_path, iteration=state.steps + 1)
+    except PerceptionQualityError as error:
+        if args.failure_log is None:
+            raise
+        _append_failure(
+            args,
+            reason="fail_closed_perception",
+            action_id=None,
+            before_signature=None,
+            after_signature=None,
+            retry_count=0,
+            latency_ms=0,
+            controller_error=str(error),
+        )
+        state.steps += 1
+        return
     action_id = _live_learn_action_id(args, step) if _is_gameplay_step(step) else _default_action_id(step)
     label_source = "human" if args.choice is not None else "model_self"
     labeled_step = _with_chosen_action(step, action_id, label_source)
@@ -78,8 +104,33 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
         target_window=target_window,
         coordinate_space=coordinate_space,
     )
+    will_append_label = _is_gameplay_step(labeled_step) and _should_append_training_label(args)
+    if will_append_label and not _preflight_append(args, labeled_step):
+        state.steps += 1
+        return
     controller = _input_controller(args) if args.execute else None
-    apply_action(action, controller)
+    if args.execute and will_append_label and not _uses_transition_ack(args):
+        _apply_without_persistent_ack(
+            args,
+            step=step,
+            action=action,
+            action_id=action_id,
+            controller=controller,
+        )
+        state.steps += 1
+        return
+    action_result = _apply_and_acknowledge(
+        args,
+        step=step,
+        action=action,
+        action_id=action_id,
+        controller=controller,
+        screenshot_path=screenshot_path,
+        target_window=target_window,
+    )
+    if not action_result.changed:
+        state.steps += 1
+        return
     state.steps += 1
     if _is_terminal_step(labeled_step):
         labeled_steps = _append_episode_summary(args, state, labeled_step, action_id)
@@ -90,6 +141,8 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
     if not _should_append_training_label(args):
         return
     append_game_step(args.dataset, labeled_step)
+    if args.trajectory_out is not None and action_result.after_step is not None:
+        _append_trajectory_step(args.trajectory_out, labeled_step, action_result.after_step, action_id, state.steps)
     state.pending_labeled_steps += 1
     state.episode_labeled_steps += 1
     _train_if_due(args, state)
@@ -242,6 +295,261 @@ def _train_model(args: argparse.Namespace, state: _LoopState) -> None:
     save_model(model, args.model_out)
     state.pending_labeled_steps = 0
     state.trained += 1
+
+
+def _apply_and_acknowledge(
+    args: argparse.Namespace,
+    *,
+    step: GameStep,
+    action,
+    action_id: str,
+    controller,
+    screenshot_path: Path,
+    target_window: TargetWindow | None,
+) -> _ActionResult:
+    start = time.perf_counter()
+    try:
+        if not _uses_transition_ack(args):
+            apply_action(action, controller)
+            return _ActionResult(changed=True)
+        final_ack: TransitionAcknowledgement | None = None
+        final_after: GameStep | None = None
+        retry_count = 0
+        for attempt in range(1, args.ack_max_retries + 2):
+            apply_action(action, controller)
+            ack_step = _ack_poll_step(args, screenshot_path, attempt, target_window)
+            final_after = ack_step
+            final_ack = acknowledge_transition(step, [] if ack_step is None else [ack_step], action_id)
+            retry_count = attempt - 1
+            if not final_ack.retry_recommended:
+                break
+        if final_ack is not None and final_ack.status == "changed":
+            return _ActionResult(changed=True, after_step=final_after)
+        if final_ack is not None:
+            _append_failure(
+                args,
+                reason=final_ack.status,
+                action_id=action_id,
+                before_signature=final_ack.before_signature,
+                after_signature=final_ack.after_signature,
+                retry_count=retry_count,
+                latency_ms=_latency_ms(start),
+                controller_error=None,
+            )
+        return _ActionResult(changed=False, after_step=final_after)
+    except Exception as error:
+        before = acknowledge_transition(step, [], action_id)
+        _append_failure(
+            args,
+            reason="controller_error",
+            action_id=action_id,
+            before_signature=before.before_signature,
+            after_signature=None,
+            retry_count=0,
+            latency_ms=_latency_ms(start),
+            controller_error=str(error),
+        )
+        if args.failure_log is None:
+            raise
+        return _ActionResult(changed=False)
+
+
+def _apply_without_persistent_ack(
+    args: argparse.Namespace,
+    *,
+    step: GameStep,
+    action,
+    action_id: str,
+    controller,
+) -> None:
+    start = time.perf_counter()
+    try:
+        apply_action(action, controller)
+    except Exception as error:
+        before = acknowledge_transition(step, [], action_id)
+        _append_failure(
+            args,
+            reason="controller_error",
+            action_id=action_id,
+            before_signature=before.before_signature,
+            after_signature=None,
+            retry_count=0,
+            latency_ms=_latency_ms(start),
+            controller_error=str(error),
+        )
+        if args.failure_log is None:
+            raise
+        return
+    before = acknowledge_transition(step, [], action_id)
+    _append_failure(
+        args,
+        reason="missing_transition_ack",
+        action_id=action_id,
+        before_signature=before.before_signature,
+        after_signature=None,
+        retry_count=0,
+        latency_ms=_latency_ms(start),
+        controller_error=None,
+    )
+
+
+def _uses_transition_ack(args: argparse.Namespace) -> bool:
+    return bool(args.ack_live_poll or args.ack_ocr_fixture_sequence is not None)
+
+
+def _ack_poll_step(
+    args: argparse.Namespace,
+    screenshot_path: Path,
+    attempt: int,
+    target_window: TargetWindow | None,
+) -> GameStep | None:
+    if args.ack_ocr_fixture_sequence is not None:
+        return _ack_fixture_sequence_step(args, screenshot_path, attempt)
+    return _ack_live_poll_step(args, attempt, target_window)
+
+
+def _ack_fixture_sequence_step(args: argparse.Namespace, screenshot_path: Path, attempt: int) -> GameStep | None:
+    frames = json.loads(args.ack_ocr_fixture_sequence.read_text(encoding="utf-8"))
+    if attempt > len(frames):
+        return None
+    provider = FakeOcrProvider(_frame_tokens(frames[attempt - 1]))
+    parsed = parse_ocr_screen(
+        screenshot_path,
+        provider,
+        calibration=load_region_calibration(args.region_calibration) if args.region_calibration is not None else None,
+    )
+    return game_step_from_parsed_screen(
+        parsed=parsed,
+        game_version=args.game_version,
+        branch=args.branch,
+        character=args.character,
+        ascension=args.ascension,
+        floor=args.floor,
+        captured_state=_captured_state(args),
+        source_type=args.ocr_provider,
+    )
+
+
+def _ack_live_poll_step(args: argparse.Namespace, attempt: int, target_window: TargetWindow | None) -> GameStep | None:
+    if args.screenshot_out is None:
+        return None
+    ack_path = args.screenshot_out.with_name(f"{args.screenshot_out.stem}-ack-{attempt:06d}{args.screenshot_out.suffix}")
+    if target_window is None:
+        screenshot_path = capture_screen(ack_path)
+    else:
+        screenshot_path = capture_screen(ack_path, bbox=target_window.bounds.to_bbox())
+    return _step_from_screen(args, screenshot_path, iteration=attempt)
+
+
+def _frame_tokens(frame) -> list[OcrToken]:
+    return [
+        OcrToken(text=row["text"], box=tuple(row["box"]), confidence=float(row["confidence"]))  # type: ignore[arg-type]
+        for row in frame
+    ]
+
+
+def _preflight_append(args: argparse.Namespace, step: GameStep) -> bool:
+    try:
+        _preflight_jsonl_append(args.dataset)
+    except OSError as error:
+        if args.failure_log is None:
+            raise
+        before = acknowledge_transition(step, [], step.chosen_action_id or "")
+        _append_failure(
+            args,
+            reason="dataset_preflight_failed",
+            action_id=step.chosen_action_id,
+            before_signature=before.before_signature,
+            after_signature=None,
+            retry_count=0,
+            latency_ms=0,
+            controller_error=str(error),
+        )
+        return False
+    return True
+
+
+def _preflight_jsonl_append(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    probe = path.parent / f".{path.name}.preflight.tmp"
+    probe.write_text("", encoding="utf-8")
+    probe.unlink()
+
+
+def _append_trajectory_step(
+    trajectory_out: Path,
+    before: GameStep,
+    after: GameStep,
+    action_id: str,
+    turn_index: int,
+) -> None:
+    selected = next(action for action in before.actions if action.identity == action_id)
+    trajectory = TrajectoryStep(
+        run_id="live-learn-loop",
+        seed=0,
+        game_version=before.state.game_version,
+        floor=before.state.floor,
+        room_type=before.state.decision_context,
+        turn_index=turn_index,
+        state_before=_episode_state(before, turn_index),
+        legal_actions=[action for action in before.actions if action.legal],
+        selected_action=selected,
+        state_after=_episode_state(after, turn_index + 1),
+        reward=0.0 if after.outcome is None else after.outcome.immediate_reward,
+        terminal=False if after.outcome is None else after.outcome.terminal,
+        label_source=before.label_source,
+    )
+    trajectory_out.parent.mkdir(parents=True, exist_ok=True)
+    with trajectory_out.open("a", encoding="utf-8") as file:
+        file.write(trajectory.to_json() + "\n")
+
+
+def _episode_state(step: GameStep, turn_index: int) -> EpisodeState:
+    return EpisodeState(
+        run_id="live-learn-loop",
+        seed=0,
+        game_version=step.state.game_version,
+        floor=step.state.floor,
+        room_type=step.state.decision_context,
+        turn_index=turn_index,
+    )
+
+
+def _append_failure(
+    args: argparse.Namespace,
+    *,
+    reason: str,
+    action_id: str | None,
+    before_signature: str | None,
+    after_signature: str | None,
+    retry_count: int,
+    latency_ms: int,
+    controller_error: str | None,
+) -> None:
+    if args.failure_log is None:
+        return
+    row: dict[str, object] = {
+        "reason": reason,
+        "action_id": action_id,
+        "before_signature": before_signature,
+        "after_signature": after_signature,
+        "retry_count": retry_count,
+        "latency_ms": latency_ms,
+    }
+    if controller_error is not None:
+        row["controller_error"] = controller_error
+    args.failure_log.parent.mkdir(parents=True, exist_ok=True)
+    with args.failure_log.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(row, sort_keys=True) + "\n")
+
+
+def _latency_ms(start: float) -> int:
+    return int((time.perf_counter() - start) * 1000)
+
+
+def _validate_ack_max_retries(args: argparse.Namespace) -> None:
+    if getattr(args, "ack_max_retries", 0) < 0:
+        raise ValueError("--ack-max-retries must be non-negative")
 
 
 def _input_controller(args: argparse.Namespace) -> JsonlInputController | NativeInputController:

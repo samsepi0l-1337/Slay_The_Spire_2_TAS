@@ -8,7 +8,7 @@
 
 ## MVP Scope
 
-- 포함: 색상 fixture 감지, calibrated CV/OCR region filtering, OCR fixture/Tesseract provider, 영어/한국어 시작 메뉴·모드·캐릭터·카드·유물·terminal/restart 식별, OCR text 기반 live state extractor, GameStep/TrajectoryStep JSONL, label_source 분리, reward/return-aware value target, 라벨링, PyTorch entity/action ranker 학습, 추천/evaluate-model/evaluate-play CLI, live path에 연결된 state-derived legal action generator, combat target multi-click 입력 계획, 단일 live-step 자동화, live frame polling 기반 retry/transition acknowledgement, 반복 live-learn-loop 수집/재학습/episode 기록/terminal return 전파, dry-run/jsonl/native 입력 계획, macOS/Windows target window 좌표 변환, Windows native click, save backup/restore, save-state branch-and-bound/MCTS 함수, branch outcome scorer, seed episode 평가와 baseline 비교.
+- 포함: 색상 fixture 감지, calibrated CV/OCR region filtering, OCR fixture/Tesseract provider, 영어/한국어 시작 메뉴·모드·캐릭터·카드·유물·terminal/restart 식별, OCR text 기반 live state extractor와 field confidence fail-closed gate, GameStep/TrajectoryStep JSONL, label_source 분리, reward/return-aware value target, 라벨링, PyTorch entity/action ranker 학습, 추천/evaluate-model/evaluate-play CLI, live path에 연결된 combat/card/map/shop/event/rest state-derived legal action generator, combat target multi-click 입력 계획, 단일 live-step 자동화, live frame polling 기반 retry/transition acknowledgement, 반복 live-learn-loop 수집/재학습/episode/failure/trajectory 기록/terminal return 전파, dry-run/jsonl/native 입력 계획, macOS/Windows target window 좌표 변환, Windows native click, save backup/restore, save-state branch-and-bound/MCTS 함수, branch outcome scorer, seed episode 평가와 baseline 비교.
 - 제외: Steam/Godot 내부 상태 직접 읽기, 온라인 co-op, Steam Leaderboards 자동화, neural RL 학습.
 
 ## Verification

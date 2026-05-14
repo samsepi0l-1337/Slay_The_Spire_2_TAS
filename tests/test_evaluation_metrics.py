@@ -46,7 +46,23 @@ def test_evaluate_model_cli_writes_policy_and_value_metrics(tmp_path: Path, monk
         screenshot_path=Path("fixture.png"),
         label_source="model_self",
     )
-    write_game_steps(dataset, [_step("anger"), _step("skip"), self_labeled])
+    anger_step = GameStep(
+        state=_step("anger").state,
+        actions=_step("anger").actions,
+        chosen_action_id=_step("anger").chosen_action_id,
+        outcome=StepOutcome(True, 0, 0, value_target=1.0),
+        observation=_step("anger").observation,
+        screenshot_path=Path("fixture.png"),
+    )
+    skip_step = GameStep(
+        state=_step("skip").state,
+        actions=_step("skip").actions,
+        chosen_action_id=_step("skip").chosen_action_id,
+        outcome=StepOutcome(False, 0, 0, value_target=0.0),
+        observation=_step("skip").observation,
+        screenshot_path=Path("fixture.png"),
+    )
+    write_game_steps(dataset, [anger_step, skip_step, self_labeled])
 
     def fake_recommend(_model, step: GameStep) -> Recommendation:
         anger, skip = step.actions[:2]
@@ -57,12 +73,25 @@ def test_evaluate_model_cli_writes_policy_and_value_metrics(tmp_path: Path, monk
                 CandidateRecommendation(anger.identity, anger.action_type, anger.option_id, scores[0]),
                 CandidateRecommendation(skip.identity, skip.action_type, skip.option_id, scores[1]),
             ],
+            value_score=0.8 if step.chosen_action_id == anger.identity else 0.2,
         )
 
     monkeypatch.setattr("sts2_tas.evaluation_cli.load_model", lambda path: object())
     monkeypatch.setattr("sts2_tas.evaluation_cli.recommend", fake_recommend)
 
-    exit_code = cli.main(["evaluate-model", "--dataset", str(dataset), "--model", str(tmp_path / "m.pt"), "--character", "ironclad", "--out", str(out)])
+    exit_code = cli.main(
+        [
+            "evaluate-model",
+            "--eval-dataset",
+            str(dataset),
+            "--model",
+            str(tmp_path / "m.pt"),
+            "--character",
+            "ironclad",
+            "--out",
+            str(out),
+        ]
+    )
 
     metrics = json.loads(out.read_text(encoding="utf-8"))
     assert exit_code == 0
@@ -74,8 +103,30 @@ def test_evaluate_model_cli_writes_policy_and_value_metrics(tmp_path: Path, monk
         "score_margin_incorrect": 0.39999999999999997,
         "top_1_accuracy": 0.5,
         "top_3_accuracy": 1.0,
-        "value_correlation": 0.0,
+        "value_correlation": 1.0,
     }
+
+
+def test_evaluate_model_cli_keeps_deprecated_dataset_alias(tmp_path: Path, monkeypatch) -> None:
+    dataset = tmp_path / "steps.jsonl"
+    out = tmp_path / "model-eval.json"
+    write_game_steps(dataset, [_step("anger")])
+
+    def fake_recommend(_model, step: GameStep) -> Recommendation:
+        action = step.actions[0]
+        return Recommendation(
+            best=CandidateRecommendation(action.identity, action.action_type, action.option_id, 1.0),
+            candidates=[CandidateRecommendation(action.identity, action.action_type, action.option_id, 1.0)],
+            value_score=0.5,
+        )
+
+    monkeypatch.setattr("sts2_tas.evaluation_cli.load_model", lambda path: object())
+    monkeypatch.setattr("sts2_tas.evaluation_cli.recommend", fake_recommend)
+
+    exit_code = cli.main(["evaluate-model", "--dataset", str(dataset), "--model", str(tmp_path / "m.pt"), "--character", "ironclad", "--out", str(out)])
+
+    assert exit_code == 0
+    assert json.loads(out.read_text(encoding="utf-8"))["evaluated_steps"] == 1
 
 
 def test_evaluate_play_cli_writes_episode_quality_metrics(tmp_path: Path) -> None:
@@ -135,6 +186,39 @@ def test_evaluate_play_cli_writes_episode_quality_metrics(tmp_path: Path) -> Non
     }
 
 
+def test_evaluate_play_missing_safety_metrics_fail_closed(tmp_path: Path) -> None:
+    episodes = tmp_path / "episodes.jsonl"
+    out = tmp_path / "play-eval.json"
+    episodes.write_text(json.dumps({"seed": 7, "victory": True, "floor": 20, "hp_remaining": 44, "steps": 12}) + "\n", encoding="utf-8")
+
+    exit_code = cli.main(["evaluate-play", "--episodes", str(episodes), "--out", str(out)])
+
+    assert exit_code == 0
+    assert json.loads(out.read_text(encoding="utf-8")) == {
+        "average_floor": 20.0,
+        "average_hp_remaining": 44.0,
+        "average_steps": 12.0,
+        "candidate_recall": 0.0,
+        "decision_latency_ms": 1000000.0,
+        "episodes": 1,
+        "illegal_action_rate": 1.0,
+        "misclick_rate": 1.0,
+        "transition_timeout_rate": 1.0,
+        "win_rate": 1.0,
+    }
+
+
+def test_evaluate_play_allow_missing_metrics_reports_missing_count(tmp_path: Path) -> None:
+    episodes = tmp_path / "episodes.jsonl"
+    out = tmp_path / "play-eval.json"
+    episodes.write_text(json.dumps({"seed": 7, "victory": True, "floor": 20, "hp_remaining": 44, "steps": 12}) + "\n", encoding="utf-8")
+
+    exit_code = cli.main(["evaluate-play", "--episodes", str(episodes), "--out", str(out), "--allow-missing-metrics"])
+
+    assert exit_code == 0
+    assert json.loads(out.read_text(encoding="utf-8"))["missing_safety_metric_rows"] == 1
+
+
 def test_model_metrics_cover_empty_missing_scores_and_value_correlation() -> None:
     anger = _step("anger")
     skip = GameStep(
@@ -153,17 +237,23 @@ def test_model_metrics_cover_empty_missing_scores_and_value_correlation() -> Non
         observation=anger.observation,
         screenshot_path=Path("fixture.png"),
     )
-    empty = Recommendation(best=CandidateRecommendation("missing", "missing", None, 0.0), candidates=[])
+    empty = Recommendation(best=CandidateRecommendation("missing", "missing", None, 0.0), candidates=[], value_score=0.0)
     correct = Recommendation(
         best=CandidateRecommendation(anger.chosen_action_id, "pick_card", "anger", 0.8),
         candidates=[CandidateRecommendation(anger.chosen_action_id, "pick_card", "anger", 0.8)],
+        value_score=0.9,
+    )
+    low_value = Recommendation(
+        best=CandidateRecommendation(skip.chosen_action_id, "skip_reward", "skip", 0.8),
+        candidates=[CandidateRecommendation(skip.chosen_action_id, "skip_reward", "skip", 0.8)],
+        value_score=0.1,
     )
 
     assert model_evaluation_metrics([])["evaluated_steps"] == 0
-    metrics = model_evaluation_metrics([(anger, correct), (skip, empty)])
+    metrics = model_evaluation_metrics([(anger, correct), (skip, low_value)])
     assert metrics["value_correlation"] > 0.0
-    assert metrics["legal_action_mask_accuracy"] == 0.5
-    assert metrics["score_margin_incorrect"] == 0.0
+    assert metrics["legal_action_mask_accuracy"] == 1.0
+    assert model_evaluation_metrics([(skip, empty)])["score_margin_incorrect"] == 0.0
     assert play_evaluation_metrics([])["episodes"] == 0
 
 
@@ -180,6 +270,7 @@ def test_model_metrics_skip_unlabeled_rows_and_zero_variance_value_correlation()
     recommendation = Recommendation(
         best=CandidateRecommendation(labeled.chosen_action_id, "pick_card", "anger", 0.8),
         candidates=[CandidateRecommendation(labeled.chosen_action_id, "pick_card", "anger", 0.8)],
+        value_score=0.5,
     )
 
     metrics = model_evaluation_metrics([(unlabeled, recommendation), (labeled, recommendation), (labeled, recommendation)])

@@ -30,6 +30,7 @@ class CandidateRecommendation:
 class Recommendation:
     best: CandidateRecommendation
     candidates: list[CandidateRecommendation]
+    value_score: float = 0.0
 
 
 def train_torch_model(
@@ -118,6 +119,7 @@ def recommend(model: TorchTrainedRecommender, step: GameStep) -> Recommendation:
             action_mask=batch["action_mask"],
         )
         scores = torch.softmax(output.policy_logits, dim=1)[0].tolist()
+        value_score = float(torch.sigmoid(output.value)[0].item())
     candidates = []
     for action, score in zip(step.actions, scores, strict=True):
         if not action.legal:
@@ -131,7 +133,7 @@ def recommend(model: TorchTrainedRecommender, step: GameStep) -> Recommendation:
             )
         )
     ranked = sorted(candidates, key=lambda candidate: candidate.score, reverse=True)
-    return Recommendation(best=ranked[0], candidates=ranked)
+    return Recommendation(best=ranked[0], candidates=ranked, value_score=value_score)
 
 
 def _step_with_query_label(step: GameStep) -> GameStep:

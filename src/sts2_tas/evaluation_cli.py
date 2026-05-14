@@ -13,7 +13,9 @@ from .trajectory import supervised_training_steps
 
 def add_evaluation_parsers(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     evaluate_model = subparsers.add_parser("evaluate-model")
-    evaluate_model.add_argument("--dataset", type=Path, required=True)
+    dataset_group = evaluate_model.add_mutually_exclusive_group(required=True)
+    dataset_group.add_argument("--eval-dataset", dest="eval_dataset", type=Path)
+    dataset_group.add_argument("--dataset", dest="eval_dataset", type=Path)
     evaluate_model.add_argument("--model", type=Path, required=True)
     evaluate_model.add_argument("--character", required=True)
     evaluate_model.add_argument("--out", type=Path, required=True)
@@ -22,6 +24,7 @@ def add_evaluation_parsers(subparsers: argparse._SubParsersAction[argparse.Argum
     evaluate_play = subparsers.add_parser("evaluate-play")
     evaluate_play.add_argument("--episodes", type=Path, required=True)
     evaluate_play.add_argument("--out", type=Path, required=True)
+    evaluate_play.add_argument("--allow-missing-metrics", action="store_true")
     evaluate_play.set_defaults(handler=_evaluate_play)
 
 
@@ -29,7 +32,7 @@ def _evaluate_model(args: argparse.Namespace) -> None:
     model = load_model(args.model)
     steps = [
         step
-        for step in supervised_training_steps(load_game_steps(args.dataset))
+        for step in supervised_training_steps(load_game_steps(args.eval_dataset))
         if step.state.character == args.character
     ]
     _write_json(args.out, model_evaluation_metrics((step, recommend(model, step)) for step in steps))
@@ -37,7 +40,7 @@ def _evaluate_model(args: argparse.Namespace) -> None:
 
 def _evaluate_play(args: argparse.Namespace) -> None:
     rows = [json.loads(line) for line in args.episodes.read_text(encoding="utf-8").splitlines() if line.strip()]
-    _write_json(args.out, play_evaluation_metrics(rows))
+    _write_json(args.out, play_evaluation_metrics(rows, allow_missing_metrics=args.allow_missing_metrics))
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

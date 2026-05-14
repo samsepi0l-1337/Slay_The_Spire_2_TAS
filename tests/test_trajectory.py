@@ -93,6 +93,13 @@ def test_value_target_prefers_richer_reward_signals_before_victory() -> None:
     assert value_target_for_step(fallback) == 1.0
 
 
+def test_step_outcome_rejects_value_targets_outside_unit_interval() -> None:
+    with pytest.raises(ValueError, match="value_target"):
+        StepOutcome(False, 1, 1, value_target=-0.01)
+    with pytest.raises(ValueError, match="discounted_return"):
+        StepOutcome(False, 1, 1, discounted_return=1.01)
+
+
 def test_trajectory_and_label_source_validation_fail_closed() -> None:
     state = EpisodeState("run-1", 7, "0.105.1", 1, "combat", 0)
     action = ActionCandidate(action_type="end_turn")
