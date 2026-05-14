@@ -235,6 +235,7 @@ class ActionCandidate:
     shop_item_id: str | None = None
     event_option_id: str | None = None
     screen_box: Box | None = None
+    target_screen_box: Box | None = None
     legal: bool = True
 
     def __post_init__(self) -> None:
@@ -243,8 +244,9 @@ class ActionCandidate:
 
     @property
     def identity_fields(self) -> tuple[tuple[str, str], ...]:
+        if self.option_id is not None:
+            return (("option", self.option_id),)
         fields = (
-            ("option", self.option_id),
             ("source_card", self.source_card_id),
             ("source_potion", self.source_potion_id),
             ("target_card", self.target_card_id),
@@ -275,6 +277,7 @@ class ActionCandidate:
             shop_item_id=data.get("shop_item_id"),
             event_option_id=data.get("event_option_id"),
             screen_box=tuple(data["screen_box"]) if data.get("screen_box") is not None else None,  # type: ignore[arg-type]
+            target_screen_box=tuple(data["target_screen_box"]) if data.get("target_screen_box") is not None else None,  # type: ignore[arg-type]
             legal=bool(data.get("legal", True)),
         )
 

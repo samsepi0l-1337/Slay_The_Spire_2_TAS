@@ -28,6 +28,25 @@ def _ocr_fixture(path: Path) -> Path:
     return path
 
 
+def _combat_ocr_fixture(path: Path) -> Path:
+    path.write_text(
+        json.dumps(
+            [
+                {"text": "HP 70/80", "box": [80, 930, 220, 980], "confidence": 0.99},
+                {"text": "Energy 3/3", "box": [420, 910, 540, 970], "confidence": 0.99},
+                {"text": "Hand Strike cost 1 attack", "box": [250, 820, 430, 1010], "confidence": 0.99},
+                {
+                    "text": "Monster Jaw Worm 30/44 block 3 attack 7x1",
+                    "box": [1270, 260, 1560, 570],
+                    "confidence": 0.99,
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def _base_args(tmp_path: Path) -> list[str]:
     return [
         "live-learn-loop",
@@ -81,6 +100,59 @@ def test_live_learn_loop_appends_labeled_steps_without_input_by_default(tmp_path
     assert [step.chosen_action_id for step in steps] == ["pick_card|option=strike", "pick_card|option=strike"]
     assert [step.screenshot_path for step in steps] == [tmp_path / "screen.png", tmp_path / "screen.png"]
     assert not input_log.exists()
+
+
+def test_live_learn_loop_treats_combat_choice_as_gameplay_label(tmp_path: Path, capsys) -> None:
+    dataset = tmp_path / "dataset.jsonl"
+    input_log = tmp_path / "inputs.jsonl"
+
+    exit_code = cli.main(
+        [
+            "live-learn-loop",
+            "--capture-fixture",
+            str(_screen(tmp_path / "combat.png")),
+            "--ocr-fixture",
+            str(_combat_ocr_fixture(tmp_path / "combat-ocr.json")),
+            "--dataset",
+            str(dataset),
+            "--choice",
+            "play_card:source_card=hand-0-strike|target_monster=jaw_worm:0",
+            "--input-log",
+            str(input_log),
+            "--execute",
+            "--max-steps",
+            "1",
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    step = _load_steps(dataset)[0]
+    event = json.loads(input_log.read_text(encoding="utf-8").splitlines()[0])
+    assert exit_code == 0
+    assert output["steps"] == 1
+    assert step.state.decision_context == "combat"
+    assert step.chosen_action_id == "play_card|source_card=hand-0-strike|target_monster=jaw_worm:0"
+    assert event["input_plan"] == {
+        "kind": "sequence",
+        "steps": [
+            {"kind": "click", "x": 340, "y": 915},
+            {"kind": "click", "x": 1415, "y": 415},
+        ],
+    }
 
 
 def test_live_learn_loop_rejects_native_backend_without_execute(tmp_path: Path) -> None:
@@ -270,6 +342,7 @@ def test_live_learn_loop_can_use_model_tesseract_and_target_window_capture(tmp_p
             "tesseract",
             "--model",
             str(tmp_path / "model.pt"),
+            "--allow-model-self-labels",
             "--dataset",
             str(tmp_path / "dataset.jsonl"),
             "--input-log",
@@ -299,6 +372,55 @@ def test_live_learn_loop_can_use_model_tesseract_and_target_window_capture(tmp_p
     assert exit_code == 0
     assert capture_calls == [(tmp_path / "target-000001.png", (100, 200, 1380, 920))]
     assert step.chosen_action_id == "skip_reward|option=skip"
+
+
+def test_live_learn_loop_does_not_self_label_model_choices_by_default(tmp_path: Path, monkeypatch, capsys) -> None:
+    import sts2_tas.live_learning as live_learning
+
+    class Result:
+        best = type("Best", (), {"action_id": "skip_reward|option=skip"})()
+
+    monkeypatch.setattr(live_learning, "load_model", lambda path: object())
+    monkeypatch.setattr(live_learning, "recommend", lambda model, step: Result())
+
+    dataset = tmp_path / "dataset.jsonl"
+    exit_code = cli.main(
+        [
+            "live-learn-loop",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture",
+            str(_ocr_fixture(tmp_path / "ocr.json")),
+            "--model",
+            str(tmp_path / "model.pt"),
+            "--dataset",
+            str(dataset),
+            "--input-log",
+            str(tmp_path / "inputs.jsonl"),
+            "--max-steps",
+            "1",
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert output["steps"] == 1
+    assert output["trained"] == 0
+    assert not dataset.exists()
 
 
 def test_live_learn_loop_execute_native_uses_injected_controller(tmp_path: Path, monkeypatch) -> None:

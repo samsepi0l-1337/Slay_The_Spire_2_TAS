@@ -22,18 +22,22 @@ def test_project_requires_python_314() -> None:
 
 def test_dockerignore_excludes_local_state_and_generated_outputs() -> None:
     patterns = set((ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines())
+    gitignore_patterns = set((ROOT / ".gitignore").read_text(encoding="utf-8").splitlines())
 
     assert ".venv/" in patterns
+    assert ".uv-cache/" in patterns
     assert ".omx/" in patterns
     assert "data/" in patterns
     assert "models/" in patterns
     assert ".git/" in patterns
+    assert ".uv-cache/" in gitignore_patterns
+    assert "dist/" in gitignore_patterns
 
 
-def test_docs_explain_windows_docker_and_v1_gaps() -> None:
+def test_docs_explain_windows_docker_and_deferred_scope() -> None:
     docker_doc = (ROOT / "docs" / "docker.md").read_text(encoding="utf-8")
-    gaps_doc = (ROOT / "docs" / "v1-gaps.md").read_text(encoding="utf-8")
     architecture_doc = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+    implemented_doc = (ROOT / "docs" / "implemented-work.md").read_text(encoding="utf-8")
     index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
@@ -41,14 +45,19 @@ def test_docs_explain_windows_docker_and_v1_gaps() -> None:
     assert "Python 3.14" in docker_doc
     assert "docker run --rm" in docker_doc
     assert "volume" in docker_doc
-    assert "OCR" in gaps_doc
-    assert "screen automation" in gaps_doc
-    assert "reinforcement learning" in gaps_doc
-    assert "target-window activation" in gaps_doc
-    assert "Quartz/PyObjC targeted PID input delivery" in gaps_doc
-    assert "window focus management" not in gaps_doc
+    assert "OCR" in implemented_doc
+    assert "Steam/Godot process memory" in implemented_doc
+    assert "--execute" in implemented_doc
+    assert "PPO, GNN map encoder, simulator-backed self-play" in implemented_doc
+    assert "self-label" in implemented_doc
+    assert "state-derived legal action generator" in implemented_doc
+    assert "Quartz/PyObjC targeted PID event delivery" in architecture_doc
+    assert "window focus management" not in implemented_doc
     assert "Docker" in index
-    assert "v1 gaps" in index
+    assert "v1-gaps.md" in index
+    assert "v1-gaps.md" in readme
+    assert "allow-model-self-labels" in architecture_doc
+    assert "--coordinate-space window_relative" in architecture_doc
     assert "Windows executable" in index
     assert "PYTHONPATH=src" in index
     assert "--no-editable" in index

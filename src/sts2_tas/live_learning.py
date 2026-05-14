@@ -8,14 +8,17 @@ from typing import Any
 
 from .automation import JsonlInputController, NativeInputController, apply_action, plan_action
 from .capture_state import load_captured_game_state
+from .cv_calibration import load_region_calibration
 from .ml_entities import resolve_action_identity
 from .model import load_model, recommend, save_model, train_torch_model
 from .recognition import FakeOcrProvider, OcrProvider, OcrToken, TesseractOcrProvider, parse_ocr_screen
 from .runtime import capture_screen
-from .schema import CoordinateSpace, GameStep, TargetWindow
+from .schema import CoordinateSpace, GameStep, StepOutcome, TargetWindow
 from .step_factory import game_step_from_parsed_screen
-from .torch_dataset import append_game_step, load_game_steps
+from .torch_dataset import append_game_step, load_game_steps, write_game_steps
 from .windowing import WindowDetector
+
+GAMEPLAY_CONTEXTS = {"combat", "card_reward", "relic_choice", "map"}
 
 
 @dataclass(frozen=True)
@@ -54,7 +57,9 @@ def run_live_learn_loop(args: argparse.Namespace) -> LiveLearnSummary:
 class _LoopState:
     steps: int = 0
     pending_labeled_steps: int = 0
+    episode_labeled_steps: int = 0
     trained: int = 0
+    episodes: int = 0
     interrupted: bool = False
 
 
@@ -62,8 +67,8 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
     target_window = _target_window(args)
     screenshot_path = _iteration_screenshot_path(args, state.steps + 1, target_window)
     coordinate_space: CoordinateSpace = "window_relative" if target_window is not None and not args.capture_fixture else "screen_absolute"
-    step = _step_from_screen(args, screenshot_path)
-    action_id = _live_learn_action_id(args, step)
+    step = _step_from_screen(args, screenshot_path, iteration=state.steps + 1)
+    action_id = _live_learn_action_id(args, step) if _is_gameplay_step(step) else _default_action_id(step)
     labeled_step = _with_chosen_action(step, action_id)
     action = plan_action(
         labeled_step,
@@ -74,9 +79,18 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
     )
     controller = _input_controller(args) if args.execute else None
     apply_action(action, controller)
-    append_game_step(args.dataset, labeled_step)
     state.steps += 1
+    if _is_terminal_step(labeled_step):
+        labeled_steps = _append_episode_summary(args, state, labeled_step, action_id)
+        _train_after_terminal_return(args, state, labeled_steps)
+        return
+    if not _is_gameplay_step(labeled_step):
+        return
+    if not _should_append_training_label(args):
+        return
+    append_game_step(args.dataset, labeled_step)
     state.pending_labeled_steps += 1
+    state.episode_labeled_steps += 1
     _train_if_due(args, state)
 
 
@@ -90,8 +104,12 @@ def _iteration_screenshot_path(args: argparse.Namespace, iteration: int, target_
     return capture_screen(safe_path, bbox=target_window.bounds.to_bbox())
 
 
-def _step_from_screen(args: argparse.Namespace, screenshot_path: Path) -> GameStep:
-    parsed = parse_ocr_screen(screenshot_path, _ocr_provider(args))
+def _step_from_screen(args: argparse.Namespace, screenshot_path: Path, *, iteration: int = 1) -> GameStep:
+    parsed = parse_ocr_screen(
+        screenshot_path,
+        _ocr_provider(args, iteration=iteration),
+        calibration=load_region_calibration(args.region_calibration) if args.region_calibration is not None else None,
+    )
     return game_step_from_parsed_screen(
         parsed=parsed,
         game_version=args.game_version,
@@ -114,6 +132,13 @@ def _live_learn_action_id(args: argparse.Namespace, step: GameStep) -> str:
     return action_id
 
 
+def _default_action_id(step: GameStep) -> str:
+    legal_actions = [action for action in step.actions if action.legal]
+    if not legal_actions:
+        raise ValueError("screen has no legal action candidates")
+    return legal_actions[0].identity
+
+
 def _with_chosen_action(step: GameStep, action_id: str) -> GameStep:
     return GameStep(
         state=step.state,
@@ -125,11 +150,85 @@ def _with_chosen_action(step: GameStep, action_id: str) -> GameStep:
     )
 
 
+def _is_gameplay_step(step: GameStep) -> bool:
+    return step.state.decision_context in GAMEPLAY_CONTEXTS
+
+
+def _is_terminal_step(step: GameStep) -> bool:
+    return step.outcome is not None and step.outcome.terminal
+
+
+def _should_append_training_label(args: argparse.Namespace) -> bool:
+    return args.choice is not None or bool(getattr(args, "allow_model_self_labels", False))
+
+
+def _append_episode_summary(args: argparse.Namespace, state: _LoopState, step: GameStep, restart_action_id: str) -> int:
+    if step.outcome is None:
+        return 0
+    labeled_steps = state.episode_labeled_steps
+    if labeled_steps <= 0:
+        return 0
+    _propagate_terminal_return(args.dataset, labeled_steps, step.outcome)
+    if args.episodes_out is None:
+        state.episode_labeled_steps = 0
+        return labeled_steps
+    state.episodes += 1
+    row = {
+        "episode": state.episodes,
+        "floor_reached": step.outcome.floor_reached,
+        "hp_remaining": step.outcome.hp_remaining,
+        "restart_action_id": restart_action_id,
+        "steps": labeled_steps,
+        "victory": step.outcome.victory,
+    }
+    state.episode_labeled_steps = 0
+    args.episodes_out.parent.mkdir(parents=True, exist_ok=True)
+    with args.episodes_out.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(row, sort_keys=True) + "\n")
+    return labeled_steps
+
+
+def _propagate_terminal_return(dataset: Path, labeled_steps: int, terminal_outcome: StepOutcome) -> None:
+    if labeled_steps <= 0 or not dataset.exists():
+        return
+    steps = load_game_steps(dataset)
+    episode_return = 1.0 if terminal_outcome.victory else 0.0
+    propagated = StepOutcome(
+        victory=terminal_outcome.victory,
+        floor_reached=terminal_outcome.floor_reached,
+        hp_remaining=terminal_outcome.hp_remaining,
+        immediate_reward=episode_return,
+        terminal=False,
+    )
+    start = max(0, len(steps) - labeled_steps)
+    for index in range(start, len(steps)):
+        step = steps[index]
+        steps[index] = GameStep(
+            state=step.state,
+            actions=step.actions,
+            chosen_action_id=step.chosen_action_id,
+            outcome=propagated,
+            observation=step.observation,
+            screenshot_path=step.screenshot_path,
+        )
+    write_game_steps(dataset, steps)
+
+
 def _train_if_due(args: argparse.Namespace, state: _LoopState) -> None:
     if args.train_every is None or args.model_out is None:
         return
     if state.pending_labeled_steps < args.train_every:
         return
+    _train_model(args, state)
+
+
+def _train_after_terminal_return(args: argparse.Namespace, state: _LoopState, labeled_steps: int) -> None:
+    if labeled_steps <= 0 or args.train_every is None or args.model_out is None:
+        return
+    _train_model(args, state)
+
+
+def _train_model(args: argparse.Namespace, state: _LoopState) -> None:
     model = train_torch_model(
         load_game_steps(args.dataset),
         character=args.character,
@@ -190,9 +289,11 @@ def _split_csv(value: str) -> list[str]:
     return [item for item in value.split(",") if item]
 
 
-def _ocr_provider(args: argparse.Namespace) -> OcrProvider:
+def _ocr_provider(args: argparse.Namespace, *, iteration: int = 1) -> OcrProvider:
     if args.ocr_provider == "tesseract":
         return TesseractOcrProvider(language=args.ocr_language)
+    if args.ocr_fixture_sequence is not None:
+        return FakeOcrProvider(_ocr_sequence_tokens(args.ocr_fixture_sequence, iteration))
     if args.ocr_fixture is None:
         raise ValueError("ocr fixture is required for fixture OCR provider")
     return FakeOcrProvider(
@@ -201,3 +302,14 @@ def _ocr_provider(args: argparse.Namespace) -> OcrProvider:
             for row in json.loads(args.ocr_fixture.read_text(encoding="utf-8"))
         ]
     )
+
+
+def _ocr_sequence_tokens(path: Path, iteration: int) -> list[OcrToken]:
+    frames = json.loads(path.read_text(encoding="utf-8"))
+    if not frames:
+        raise ValueError("ocr fixture sequence must contain at least one frame")
+    frame = frames[min(iteration - 1, len(frames) - 1)]
+    return [
+        OcrToken(text=row["text"], box=tuple(row["box"]), confidence=float(row["confidence"]))  # type: ignore[arg-type]
+        for row in frame
+    ]

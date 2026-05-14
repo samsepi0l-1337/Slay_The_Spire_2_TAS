@@ -20,6 +20,39 @@ class CapturedGameState:
     unknown_tokens: list[str]
 
 
+def overlay_captured_game_state(
+    captured: CapturedGameState,
+    payload: dict[str, Any] | None,
+    *,
+    missing_fields: list[str] | None = None,
+    unknown_tokens: list[str] | None = None,
+) -> CapturedGameState:
+    if not payload and not missing_fields and not unknown_tokens:
+        return captured
+    payload = payload or {}
+    player = _overlay_player(captured.player, payload.get("player", {}))
+    cards = _overlay_entities(captured.cards, payload, "cards", CardInstance.from_dict)
+    relics = _overlay_entities(captured.relics, payload, "relics", RelicState.from_dict)
+    potions = _overlay_entities(captured.potions, payload, "potions", PotionState.from_dict)
+    monsters = _overlay_entities(captured.monsters, payload, "monsters", MonsterState.from_dict)
+    paths = _overlay_entities(captured.path_candidates, payload, "path_candidates", PathCandidate.from_dict)
+    return CapturedGameState(
+        player=player,
+        cards=cards,
+        relics=relics,
+        potions=potions,
+        monsters=monsters,
+        path_candidates=paths,
+        missing_fields=_dedupe(
+            [
+                *_unresolved_missing(captured.missing_fields, payload),
+                *(missing_fields or []),
+            ]
+        ),
+        unknown_tokens=_dedupe([*captured.unknown_tokens, *(unknown_tokens or [])]),
+    )
+
+
 def load_captured_game_state(
     *,
     state_json: Path | None,
@@ -86,6 +119,47 @@ def _load_payload(path: Path | None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("state json must be an object")
     return payload
+
+
+def _overlay_player(player: PlayerState, payload: dict[str, Any]) -> PlayerState:
+    if not payload:
+        return player
+    data = player.to_dict()
+    resources = dict(data.get("character_resource", {}))
+    resources.update(dict(payload.get("character_resource", {})))
+    for key, value in payload.items():
+        if key != "character_resource":
+            data[key] = value
+    data["character_resource"] = resources
+    return PlayerState.from_dict(data)
+
+
+def _overlay_entities(current: list, payload: dict[str, Any], key: str, factory) -> list:
+    if key not in payload:
+        return current
+    return [factory(item) for item in payload[key]]
+
+
+def _unresolved_missing(missing: list[str], payload: dict[str, Any]) -> list[str]:
+    observed = set()
+    if "player" in payload:
+        for key in payload["player"]:
+            if key == "character_resource":
+                for resource in payload["player"]["character_resource"]:
+                    observed.add(f"player.character_resource.{resource}")
+            else:
+                observed.add(f"player.{key}")
+    for key in ("cards", "relics", "potions", "monsters", "path_candidates"):
+        if key in payload:
+            observed.add(key)
+    return [field for field in missing if not _missing_field_observed(field, observed)]
+
+
+def _missing_field_observed(field: str, observed: set[str]) -> bool:
+    if field in observed:
+        return True
+    entity_root = field.split(".", 1)[0]
+    return entity_root in {"cards", "relics", "potions", "monsters", "path_candidates"} and entity_root in observed
 
 
 def _player_from_inputs(

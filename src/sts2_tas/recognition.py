@@ -8,12 +8,17 @@ from typing import Callable, Protocol
 
 from PIL import Image
 
+from .cv_calibration import RegionCalibration
+from .live_state import LiveStateExtraction, extract_live_state
 from .schema import OcrResult, ParsedScreen, RecognizedOption
 
 Box = tuple[int, int, int, int]
 PixelPredicate = Callable[[tuple[int, int, int]], bool]
 OcrToken = OcrResult
 REFERENCE_RESOLUTION = (1920, 1080)
+MIN_OCR_OPTION_CONFIDENCE = 0.60
+VICTORY_TERMS = {"victory", "victory!", "clear", "run clear", "승리", "승리!", "클리어"}
+GAME_OVER_TERMS = {"game over", "defeat", "defeated", "게임 오버", "게임오버", "패배"}
 
 
 class OcrProvider(Protocol):
@@ -37,12 +42,21 @@ CATALOG = (
     CatalogEntry("burning_blood", "Burning Blood", "relic", ("burning blood", "\ud0c0\uc624\ub974\ub294 \ud53c")),
     CatalogEntry("tiny_house", "Tiny House", "relic", ("tiny house", "\uc791\uc740 \uc9d1")),
     CatalogEntry("skip", "Skip", "skip", ("skip", "\ub118\uae30\uae30")),
+    CatalogEntry("single_player", "Single Player", "select_single_player", ("single player", "\uc2f1\uae00 \ud50c\ub808\uc774")),
+    CatalogEntry("standard", "Standard", "select_mode", ("standard", "\ud45c\uc900", "\uc77c\ubc18")),
+    CatalogEntry("ironclad", "Ironclad", "select_character", ("ironclad", "\uc544\uc774\uc5b8\ud074\ub798\ub4dc")),
+    CatalogEntry("new_run", "New Run", "restart_run", ("new run", "play again", "retry", "\uc0c8 \ub7f0", "\ub2e4\uc2dc \uc2dc\uc791")),
 )
 
 
 class DetectionKind(str, Enum):
     CARD_REWARD = "card_reward"
     RELIC_CHOICE = "relic_choice"
+    MAIN_MENU = "main_menu"
+    MODE_SELECT = "mode_select"
+    CHARACTER_SELECT = "character_select"
+    VICTORY = "victory"
+    GAME_OVER = "game_over"
     UNKNOWN = "unknown"
 
 
@@ -76,29 +90,78 @@ class TesseractOcrProvider:
         return _tokens_from_tsv(result.stdout)
 
 
-def parse_ocr_screen(image_path: Path, ocr_provider: OcrProvider) -> ParsedScreen:
+def parse_ocr_screen(
+    image_path: Path,
+    ocr_provider: OcrProvider,
+    *,
+    calibration: RegionCalibration | None = None,
+) -> ParsedScreen:
     image = Image.open(image_path)
     width, height = image.size
+    tokens = ocr_provider.recognize(image_path)
+    extraction = extract_live_state(tokens)
     options = [
         option
-        for token in ocr_provider.recognize(image_path)
-        if (option := _recognized_option(token, (width, height))) is not None
+        for token in tokens
+        if (option := _recognized_option(token, (width, height), calibration)) is not None
     ]
     non_skip = sorted((option for option in options if option.kind != "skip"), key=lambda option: option.box[0])
     skip = sorted((option for option in options if option.kind == "skip"), key=lambda option: option.box[0])
     cards = [option for option in non_skip if option.kind == "card"]
+    terminal_kind = _terminal_kind(tokens)
+    if terminal_kind is not None:
+        restarts = [option for option in non_skip if option.kind == "restart_run"]
+        if restarts:
+            return _parsed(terminal_kind.value, _slot_ids(restarts), image_path, (width, height), extraction)
+    menu_kind = _menu_kind(non_skip)
+    if menu_kind is not None:
+        return _parsed(menu_kind.value, _slot_ids(non_skip), image_path, (width, height), extraction)
     if len(cards) == 3 and len(cards) == len(non_skip) and skip:
-        return ParsedScreen(DetectionKind.CARD_REWARD.value, [*_slot_ids(cards), skip[0]], image_path, (width, height))
+        return _parsed(
+            DetectionKind.CARD_REWARD.value,
+            [*_slot_ids(cards), skip[0]],
+            image_path,
+            (width, height),
+            extraction,
+        )
     if non_skip and all(option.kind == "relic" for option in non_skip):
-        return ParsedScreen(DetectionKind.RELIC_CHOICE.value, _slot_ids(non_skip), image_path, (width, height))
+        return _parsed(DetectionKind.RELIC_CHOICE.value, _slot_ids(non_skip), image_path, (width, height), extraction)
+    if extraction.state_payload.get("path_candidates"):
+        return _parsed("map", [], image_path, (width, height), extraction)
+    if extraction.state_payload.get("cards") or extraction.state_payload.get("monsters"):
+        return _parsed("combat", [], image_path, (width, height), extraction)
     raise ValueError(f"unknown OCR screen layout for {image_path}")
 
 
-def detect_screen(image_path: Path) -> ScreenDetection:
+def _parsed(
+    kind: str,
+    options: list[RecognizedOption],
+    image_path: Path,
+    resolution: tuple[int, int],
+    extraction: LiveStateExtraction,
+) -> ParsedScreen:
+    return ParsedScreen(
+        kind,
+        options,
+        image_path,
+        resolution,
+        state_payload=extraction.state_payload,
+        state_boxes=extraction.state_boxes,
+        missing_fields=extraction.missing_fields,
+        unknown_tokens=extraction.unknown_tokens,
+    )
+
+
+def detect_screen(image_path: Path, *, calibration: RegionCalibration | None = None) -> ScreenDetection:
     image = Image.open(image_path).convert("RGB")
     card_boxes = _components(image, _is_card_blue)
     relic_boxes = _components(image, _is_relic_gold)
     skip_boxes = _components(image, _is_skip_gray)
+    if calibration is not None:
+        resolution = image.size
+        card_boxes = [box for box in card_boxes if calibration.contains_center("card", box, resolution)]
+        relic_boxes = [box for box in relic_boxes if calibration.contains_center("relic", box, resolution)]
+        skip_boxes = [box for box in skip_boxes if calibration.contains_center("skip", box, resolution)]
 
     if len(card_boxes) >= 3 and skip_boxes:
         return ScreenDetection(DetectionKind.CARD_REWARD, card_boxes[:3], skip_boxes[0])
@@ -162,9 +225,15 @@ def _is_skip_gray(pixel: tuple[int, int, int]) -> bool:
     return 70 <= red <= 105 and 70 <= green <= 105 and 70 <= blue <= 105
 
 
-def _recognized_option(token: OcrToken, resolution: tuple[int, int]) -> RecognizedOption | None:
+def _recognized_option(
+    token: OcrToken,
+    resolution: tuple[int, int],
+    calibration: RegionCalibration | None,
+) -> RecognizedOption | None:
+    if token.confidence < MIN_OCR_OPTION_CONFIDENCE:
+        return None
     entry = _catalog_match(token.text)
-    if entry is None or not _in_layout_region(token, entry.kind, resolution):
+    if entry is None or not _in_layout_region(token, entry.kind, resolution, calibration):
         return None
     return RecognizedOption(
         id=entry.id,
@@ -200,11 +269,54 @@ def _catalog_match(text: str) -> CatalogEntry | None:
     return None
 
 
+def _terminal_kind(tokens: list[OcrToken]) -> DetectionKind | None:
+    normalized = _terminal_candidates(tokens)
+    if normalized & VICTORY_TERMS:
+        return DetectionKind.VICTORY
+    if normalized & GAME_OVER_TERMS:
+        return DetectionKind.GAME_OVER
+    return None
+
+
+def _terminal_candidates(tokens: list[OcrToken]) -> set[str]:
+    ordered = sorted(
+        (token for token in tokens if token.confidence >= MIN_OCR_OPTION_CONFIDENCE),
+        key=lambda token: (token.box[1], token.box[0]),
+    )
+    texts = [_normalize_text(token.text) for token in ordered]
+    candidates = {text for text in texts if text}
+    for size in (2, 3):
+        for start in range(0, len(texts) - size + 1):
+            phrase = _normalize_text(" ".join(texts[start : start + size]))
+            if phrase:
+                candidates.add(phrase)
+    return candidates
+
+
+def _menu_kind(options: list[RecognizedOption]) -> DetectionKind | None:
+    kinds = {option.kind for option in options}
+    if "select_single_player" in kinds:
+        return DetectionKind.MAIN_MENU
+    if "select_mode" in kinds:
+        return DetectionKind.MODE_SELECT
+    if "select_character" in kinds:
+        return DetectionKind.CHARACTER_SELECT
+    return None
+
+
 def _normalize_text(text: str) -> str:
     return " ".join(text.casefold().strip().split())
 
 
-def _in_layout_region(token: OcrToken, kind: str, resolution: tuple[int, int]) -> bool:
+def _in_layout_region(
+    token: OcrToken,
+    kind: str,
+    resolution: tuple[int, int],
+    calibration: RegionCalibration | None,
+) -> bool:
+    if calibration is not None:
+        region = "menu" if kind in {"select_single_player", "select_mode", "select_character", "restart_run"} else kind
+        return calibration.contains_center(region, token.box, resolution)
     width, height = resolution
     center_x = (token.box[0] + token.box[2]) / 2 / width
     center_y = (token.box[1] + token.box[3]) / 2 / height
@@ -212,6 +324,8 @@ def _in_layout_region(token: OcrToken, kind: str, resolution: tuple[int, int]) -
         return 0.35 <= center_x <= 0.65 and center_y >= 0.75
     if kind == "card":
         return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.55
+    if kind in {"select_single_player", "select_mode", "select_character", "restart_run"}:
+        return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.90
     return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.70
 
 

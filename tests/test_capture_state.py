@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from sts2_tas.capture_state import _player_value, load_captured_game_state
+from sts2_tas.capture_state import _player_value, load_captured_game_state, overlay_captured_game_state
 
 
 def test_load_captured_game_state_uses_full_state_json(tmp_path: Path) -> None:
@@ -137,6 +137,135 @@ def test_load_captured_game_state_records_missing_defaulted_fields() -> None:
     assert "cards.metadata" in captured.missing_fields
     assert "relics.counters" in captured.missing_fields
     assert "monsters" in captured.missing_fields
+
+
+def test_overlay_captured_game_state_replaces_live_entities_and_clears_observed_missing_fields() -> None:
+    captured = load_captured_game_state(
+        state_json=None,
+        deck=[],
+        relics=[],
+        hp=70,
+        gold=0,
+        max_hp=None,
+        block=None,
+        energy=None,
+        turn=None,
+        strength=None,
+        dexterity=None,
+        vulnerable=None,
+        weak=None,
+        frail=None,
+        artifact=None,
+        poison=None,
+        regen=None,
+        intangible=None,
+    )
+
+    overlay = overlay_captured_game_state(
+        captured,
+        {
+            "player": {"hp": 65, "max_hp": 80, "energy": 2, "character_resource": {"gold": 99}},
+            "cards": [
+                {
+                    "instance_id": "hand-strike",
+                    "card_id": "strike",
+                    "zone": "hand",
+                    "upgraded": False,
+                    "base_cost": 1,
+                    "current_cost": 1,
+                    "type": "attack",
+                    "rarity": "basic",
+                    "tags": ["attack"],
+                }
+            ],
+            "potions": [{"potion_id": "fire_potion", "slot": 0, "requires_target": True, "usable": True}],
+            "monsters": [
+                {
+                    "monster_id": "jaw_worm",
+                    "slot_index": 0,
+                    "hp": 20,
+                    "max_hp": 44,
+                    "block": 0,
+                    "intent_type": "attack",
+                    "intent_damage": 7,
+                    "hit_count": 1,
+                    "buffs": [],
+                    "debuffs": [],
+                }
+            ],
+            "path_candidates": [
+                {
+                    "node_id": "node-a",
+                    "node_type": "elite",
+                    "depth": 1,
+                    "elite_count_ahead": 1,
+                    "rest_count_ahead": 0,
+                    "shop_count_ahead": 0,
+                    "event_count_ahead": 1,
+                    "boss_distance": 5,
+                }
+            ],
+        },
+        missing_fields=["live_state.partial"],
+        unknown_tokens=["new token"],
+    )
+
+    assert overlay_captured_game_state(captured, None) is captured
+    assert overlay.player.hp == 65
+    assert overlay.player.character_resource == {"gold": 99}
+    assert overlay.cards[0].zone == "hand"
+    assert overlay.potions[0].potion_id == "fire_potion"
+    assert overlay.monsters[0].monster_id == "jaw_worm"
+    assert overlay.path_candidates[0].node_id == "node-a"
+    assert "player.max_hp" not in overlay.missing_fields
+    assert "cards" not in overlay.missing_fields
+    assert "live_state.partial" in overlay.missing_fields
+    assert overlay.unknown_tokens == ["new token"]
+
+
+def test_overlay_captured_game_state_clears_nested_entity_missing_fields() -> None:
+    captured = load_captured_game_state(
+        state_json=None,
+        deck=["strike"],
+        relics=[],
+        hp=70,
+        gold=0,
+        max_hp=80,
+        block=0,
+        energy=3,
+        turn=1,
+        strength=0,
+        dexterity=0,
+        vulnerable=0,
+        weak=0,
+        frail=0,
+        artifact=0,
+        poison=0,
+        regen=0,
+        intangible=0,
+    )
+
+    overlay = overlay_captured_game_state(
+        captured,
+        {
+            "cards": [
+                {
+                    "instance_id": "hand-strike",
+                    "card_id": "strike",
+                    "zone": "hand",
+                    "upgraded": False,
+                    "base_cost": 1,
+                    "current_cost": 1,
+                    "type": "attack",
+                    "rarity": "basic",
+                    "tags": ["attack"],
+                }
+            ],
+        },
+    )
+
+    assert "cards.metadata" in captured.missing_fields
+    assert "cards.metadata" not in overlay.missing_fields
 
 
 def test_load_captured_game_state_handles_empty_and_invalid_payload(tmp_path: Path) -> None:
