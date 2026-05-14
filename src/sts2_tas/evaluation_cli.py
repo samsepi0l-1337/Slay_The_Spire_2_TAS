@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -15,11 +16,11 @@ def add_evaluation_parsers(subparsers: argparse._SubParsersAction[argparse.Argum
     evaluate_model = subparsers.add_parser("evaluate-model")
     dataset_group = evaluate_model.add_mutually_exclusive_group(required=True)
     dataset_group.add_argument("--eval-dataset", dest="eval_dataset", type=Path)
-    dataset_group.add_argument("--dataset", dest="eval_dataset", type=Path)
+    dataset_group.add_argument("--dataset", dest="eval_dataset", type=Path, action=_DeprecatedDatasetAction)
     evaluate_model.add_argument("--model", type=Path, required=True)
     evaluate_model.add_argument("--character", required=True)
     evaluate_model.add_argument("--out", type=Path, required=True)
-    evaluate_model.set_defaults(handler=_evaluate_model)
+    evaluate_model.set_defaults(handler=_evaluate_model, deprecated_dataset_alias=False)
 
     evaluate_play = subparsers.add_parser("evaluate-play")
     evaluate_play.add_argument("--episodes", type=Path, required=True)
@@ -29,6 +30,8 @@ def add_evaluation_parsers(subparsers: argparse._SubParsersAction[argparse.Argum
 
 
 def _evaluate_model(args: argparse.Namespace) -> None:
+    if args.deprecated_dataset_alias:
+        warnings.warn("--dataset is deprecated; use --eval-dataset", DeprecationWarning, stacklevel=2)
     model = load_model(args.model)
     steps = [
         step
@@ -46,3 +49,15 @@ def _evaluate_play(args: argparse.Namespace) -> None:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+
+class _DeprecatedDatasetAction(argparse.Action):
+    def __call__(
+        self,
+        parser: argparse.ArgumentParser,
+        namespace: argparse.Namespace,
+        values: Any,
+        option_string: str | None = None,
+    ) -> None:
+        setattr(namespace, self.dest, values)
+        setattr(namespace, "deprecated_dataset_alias", True)

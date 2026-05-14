@@ -57,8 +57,10 @@ def _card_reward_actions(state: StructuredGameState) -> list[ActionCandidate]:
 
 def _shop_actions(items: list[ShopItemState]) -> list[ActionCandidate]:
     actions: list[ActionCandidate] = []
+    can_leave = False
     for item in items:
         if item.item_type == "leave":
+            can_leave = can_leave or item.purchasable
             continue
         if not item.purchasable:
             continue
@@ -73,7 +75,8 @@ def _shop_actions(items: list[ShopItemState]) -> list[ActionCandidate]:
                 )
             continue
         actions.append(ActionCandidate(action_type="buy", shop_item_id=item.item_id))
-    actions.append(ActionCandidate(action_type="leave_shop"))
+    if can_leave:
+        actions.append(ActionCandidate(action_type="leave_shop"))
     return actions
 
 

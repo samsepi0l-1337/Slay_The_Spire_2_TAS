@@ -299,7 +299,7 @@ def _with_screen_binding(
     if action.action_type == "remove_card" and action.shop_item_id is not None:
         return replace(action, screen_box=boxes.get(f"shop_item:{action.shop_item_id}"))
     if action.action_type == "leave_shop":
-        return replace(action, screen_box=boxes.get("leave_shop"))
+        return replace(action, screen_box=boxes.get("shop_item:leave_shop") or boxes.get("leave_shop"))
     if action.action_type == "choose_event_option" and action.event_option_id is not None:
         return replace(action, screen_box=boxes.get(f"event_option:{action.event_option_id}"))
     if action.action_type in {"rest", "smith"}:

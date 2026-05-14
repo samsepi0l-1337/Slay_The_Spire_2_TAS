@@ -90,6 +90,15 @@ def test_cli_act_native_execute_sends_click_without_jsonl_event(monkeypatch, tmp
     assert not input_log.exists()
 
 
+def test_deferred_jsonl_input_controller_empty_commit_is_noop(tmp_path: Path) -> None:
+    log_path = tmp_path / "inputs.jsonl"
+    controller = automation.DeferredJsonlInputController(log_path)
+
+    controller.commit()
+
+    assert not log_path.exists()
+
+
 def test_cli_act_target_process_requires_explicit_window_relative_coordinates(
     monkeypatch, tmp_path: Path
 ) -> None:

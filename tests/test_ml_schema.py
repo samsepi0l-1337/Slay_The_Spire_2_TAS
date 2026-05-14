@@ -259,6 +259,9 @@ def test_action_identity_distinguishes_single_entity_action_types_and_targets() 
     discard = ActionCandidate(action_type="discard_card", source_card_id="strike")
     first_target = ActionCandidate(action_type="play_card", source_card_id="strike", target_monster_id="jaw_worm")
     second_target = ActionCandidate(action_type="play_card", source_card_id="strike", target_monster_id="cultist")
+    legacy_remove = ActionCandidate(action_type="remove_card", target_card_id="strike")
+    legacy_defend_remove = ActionCandidate(action_type="remove_card", target_card_id="defend")
+    slotted_remove = ActionCandidate(action_type="remove_card", target_card_id="strike", shop_item_id="remove_slot")
 
     assert pick.identity == "pick_card|option=anger"
     assert play.identity == "play_card|source_card=strike"
@@ -266,6 +269,9 @@ def test_action_identity_distinguishes_single_entity_action_types_and_targets() 
     assert play.identity != discard.identity
     assert first_target.identity != second_target.identity
     assert first_target.identity == "play_card|source_card=strike|target_monster=jaw_worm"
+    assert legacy_remove.identity == "remove_card|target_card=strike"
+    assert legacy_defend_remove.identity == "remove_card|target_card=defend"
+    assert slotted_remove.identity == "remove_card|target_card=strike"
 
 
 def test_action_choice_aliases_resolve_unique_legacy_choices() -> None:

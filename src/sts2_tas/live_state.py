@@ -89,6 +89,8 @@ def extract_live_state(tokens: list[OcrResult]) -> LiveStateExtraction:
     rest_options: list[dict[str, Any]] = []
     boxes: dict[str, Box] = {}
     field_confidence: dict[str, float] = {}
+    shop_item_ids: dict[str, int] = {}
+    event_option_ids: dict[str, int] = {}
     floor: int | None = None
     consumed: set[int] = set()
 
@@ -122,16 +124,21 @@ def extract_live_state(tokens: list[OcrResult]) -> LiveStateExtraction:
             consumed.add(index)
             continue
         if shop_item := _shop_item_from_text(text):
+            shop_item["item_id"] = _slotted_id(str(shop_item["item_id"]), shop_item_ids)
             shop_items.append(shop_item)
             boxes[f"shop_item:{shop_item['item_id']}"] = token.box
             _record_confidence(field_confidence, "shop_items", token.confidence)
             consumed.add(index)
             continue
         if _LEAVE_SHOP_RE.match(text):
-            boxes["leave_shop"] = token.box
+            leave_item = {"item_id": _slotted_id("leave_shop", shop_item_ids), "item_type": "leave", "price": 0}
+            shop_items.append(leave_item)
+            boxes[f"shop_item:{leave_item['item_id']}"] = token.box
+            _record_confidence(field_confidence, "shop_items", token.confidence)
             consumed.add(index)
             continue
         if event_option := _event_option_from_text(text):
+            event_option["option_id"] = _slotted_id(str(event_option["option_id"]), event_option_ids)
             event_options.append(event_option)
             boxes[f"event_option:{event_option['option_id']}"] = token.box
             _record_confidence(field_confidence, "event_options", token.confidence)
@@ -344,6 +351,14 @@ def _unknown_tokens(tokens: list[OcrResult], consumed: set[int]) -> list[str]:
 
 def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
+
+
+def _slotted_id(base: str, counts: dict[str, int]) -> str:
+    count = counts.get(base, 0) + 1
+    counts[base] = count
+    if count == 1:
+        return base
+    return f"{base}_{count}"
 
 
 def _normalize(value: str) -> str:

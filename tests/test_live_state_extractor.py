@@ -96,18 +96,45 @@ def test_extract_live_state_reads_shop_event_and_rest_options() -> None:
     assert extraction.state_payload["shop_items"] == [
         {"item_id": "strike_plus", "item_type": "card", "price": 75, "card_id": "strike"},
         {"item_id": "remove_slot", "item_type": "remove", "price": 100, "target_card_id": "defend"},
+        {"item_id": "leave_shop", "item_type": "leave", "price": 0},
     ]
     assert extraction.state_payload["event_options"] == [{"option_id": "take_gold", "label": "Take gold"}]
     assert extraction.state_payload["rest_options"] == [{"option_id": "rest"}, {"option_id": "smith"}]
     assert extraction.state_boxes["shop_item:strike_plus"] == (100, 100, 260, 220)
     assert extraction.state_boxes["shop_item:remove_slot"] == (320, 100, 480, 220)
-    assert extraction.state_boxes["leave_shop"] == (1700, 930, 1880, 1010)
+    assert extraction.state_boxes["shop_item:leave_shop"] == (1700, 930, 1880, 1010)
     assert extraction.state_boxes["event_option:take_gold"] == (500, 720, 1500, 780)
     assert extraction.state_boxes["rest_option:rest"] == (690, 430, 830, 570)
     assert extraction.state_boxes["rest_option:smith"] == (1000, 430, 1140, 570)
     assert extraction.field_confidence["shop_items"] == 0.92
     assert extraction.field_confidence["event_options"] == 0.89
     assert extraction.field_confidence["rest_options"] == 0.88
+
+
+def test_extract_live_state_slots_duplicate_shop_item_labels_without_box_collision() -> None:
+    extraction = extract_live_state(
+        [
+            _token_with_confidence("Shop item Strike Plus card price 75 card strike", 0.92, (100, 100, 260, 220)),
+            _token_with_confidence("Shop item Strike Plus card price 75 card strike", 0.91, (320, 100, 480, 220)),
+        ]
+    )
+
+    assert [item["item_id"] for item in extraction.state_payload["shop_items"]] == ["strike_plus", "strike_plus_2"]
+    assert extraction.state_boxes["shop_item:strike_plus"] == (100, 100, 260, 220)
+    assert extraction.state_boxes["shop_item:strike_plus_2"] == (320, 100, 480, 220)
+
+
+def test_extract_live_state_slots_duplicate_event_option_labels_without_box_collision() -> None:
+    extraction = extract_live_state(
+        [
+            _token_with_confidence("Event option Take gold", 0.92, (500, 720, 1500, 780)),
+            _token_with_confidence("Event option Take gold", 0.91, (500, 820, 1500, 880)),
+        ]
+    )
+
+    assert [option["option_id"] for option in extraction.state_payload["event_options"]] == ["take_gold", "take_gold_2"]
+    assert extraction.state_boxes["event_option:take_gold"] == (500, 720, 1500, 780)
+    assert extraction.state_boxes["event_option:take_gold_2"] == (500, 820, 1500, 880)
 
 
 def test_extract_live_state_marks_unavailable_shop_event_and_rest_options() -> None:

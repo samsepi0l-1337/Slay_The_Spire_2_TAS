@@ -69,6 +69,7 @@ def test_cli_live_step_with_fixture_choice_reports_verifiable_action(tmp_path: P
 
 
 def test_cli_live_step_can_acknowledge_post_input_state_change(tmp_path: Path, capsys) -> None:
+    input_log = tmp_path / "inputs.jsonl"
     ack_fixture = tmp_path / "ack.json"
     ack_fixture.write_text(
         json.dumps([{"text": "Single Player", "box": [780, 360, 1140, 430], "confidence": 0.99}]),
@@ -87,7 +88,8 @@ def test_cli_live_step_can_acknowledge_post_input_state_change(tmp_path: Path, c
             "--choice",
             "pick:strike",
             "--input-log",
-            str(tmp_path / "inputs.jsonl"),
+            str(input_log),
+            "--execute",
             "--game-version",
             "0.105.1",
             "--branch",
@@ -109,6 +111,7 @@ def test_cli_live_step_can_acknowledge_post_input_state_change(tmp_path: Path, c
     assert exit_code == 0
     assert output["transition_ack"]["status"] == "changed"
     assert output["transition_ack"]["retry_recommended"] is False
+    assert len(input_log.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_cli_live_step_with_model_recommendation_executes_jsonl(tmp_path: Path, monkeypatch, capsys) -> None:

@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from sts2_tas import cli
 from sts2_tas.metrics import model_evaluation_metrics, play_evaluation_metrics
 from sts2_tas.model import CandidateRecommendation, Recommendation
@@ -107,7 +109,7 @@ def test_evaluate_model_cli_writes_policy_and_value_metrics(tmp_path: Path, monk
     }
 
 
-def test_evaluate_model_cli_keeps_deprecated_dataset_alias(tmp_path: Path, monkeypatch) -> None:
+def test_evaluate_model_cli_keeps_deprecated_dataset_alias_and_warns(tmp_path: Path, monkeypatch) -> None:
     dataset = tmp_path / "steps.jsonl"
     out = tmp_path / "model-eval.json"
     write_game_steps(dataset, [_step("anger")])
@@ -123,11 +125,23 @@ def test_evaluate_model_cli_keeps_deprecated_dataset_alias(tmp_path: Path, monke
     monkeypatch.setattr("sts2_tas.evaluation_cli.load_model", lambda path: object())
     monkeypatch.setattr("sts2_tas.evaluation_cli.recommend", fake_recommend)
 
-    exit_code = cli.main(["evaluate-model", "--dataset", str(dataset), "--model", str(tmp_path / "m.pt"), "--character", "ironclad", "--out", str(out)])
+    with pytest.warns(DeprecationWarning, match="--dataset is deprecated; use --eval-dataset"):
+        exit_code = cli.main(
+            [
+                "evaluate-model",
+                "--dataset",
+                str(dataset),
+                "--model",
+                str(tmp_path / "m.pt"),
+                "--character",
+                "ironclad",
+                "--out",
+                str(out),
+            ]
+        )
 
     assert exit_code == 0
     assert json.loads(out.read_text(encoding="utf-8"))["evaluated_steps"] == 1
-
 
 def test_evaluate_play_cli_writes_episode_quality_metrics(tmp_path: Path) -> None:
     episodes = tmp_path / "episodes.jsonl"
@@ -217,6 +231,99 @@ def test_evaluate_play_allow_missing_metrics_reports_missing_count(tmp_path: Pat
 
     assert exit_code == 0
     assert json.loads(out.read_text(encoding="utf-8"))["missing_safety_metric_rows"] == 1
+
+
+def test_evaluate_play_allow_missing_candidate_recall_does_not_lower_average(tmp_path: Path) -> None:
+    episodes = tmp_path / "episodes.jsonl"
+    out = tmp_path / "play-eval.json"
+    episodes.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "seed": 7,
+                        "victory": True,
+                        "floor": 20,
+                        "hp_remaining": 44,
+                        "steps": 12,
+                        "decision_latency_ms": 30,
+                        "transition_timeout": False,
+                        "misclicks": 0,
+                        "illegal_actions": 0,
+                        "candidate_recall": 1.0,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "seed": 8,
+                        "victory": False,
+                        "floor": 10,
+                        "hp_remaining": 0,
+                        "steps": 8,
+                        "decision_latency_ms": 50,
+                        "transition_timeout": True,
+                        "misclicks": 1,
+                        "illegal_actions": 2,
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = cli.main(["evaluate-play", "--episodes", str(episodes), "--out", str(out), "--allow-missing-metrics"])
+
+    metrics = json.loads(out.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert metrics["candidate_recall"] == 1.0
+    assert metrics["missing_safety_metric_rows"] == 1
+
+
+def test_evaluate_play_missing_candidate_recall_fails_closed_by_default(tmp_path: Path) -> None:
+    episodes = tmp_path / "episodes.jsonl"
+    out = tmp_path / "play-eval.json"
+    episodes.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "seed": 7,
+                        "victory": True,
+                        "floor": 20,
+                        "hp_remaining": 44,
+                        "steps": 12,
+                        "decision_latency_ms": 30,
+                        "transition_timeout": False,
+                        "misclicks": 0,
+                        "illegal_actions": 0,
+                        "candidate_recall": 1.0,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "seed": 8,
+                        "victory": False,
+                        "floor": 10,
+                        "hp_remaining": 0,
+                        "steps": 8,
+                        "decision_latency_ms": 50,
+                        "transition_timeout": True,
+                        "misclicks": 1,
+                        "illegal_actions": 2,
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = cli.main(["evaluate-play", "--episodes", str(episodes), "--out", str(out)])
+
+    metrics = json.loads(out.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert metrics["candidate_recall"] == 0.5
 
 
 def test_model_metrics_cover_empty_missing_scores_and_value_correlation() -> None:

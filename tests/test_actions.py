@@ -160,7 +160,7 @@ def test_generate_shop_actions_from_typed_items() -> None:
     ]
 
 
-def test_generate_shop_actions_adds_leave_fallback_without_leave_item() -> None:
+def test_generate_shop_actions_fail_closed_without_observed_leave_shop_item() -> None:
     state = _state(
         decision_context="shop",
         shop_items=[ShopItemState("artifact", "relic", 150, True)],
@@ -168,7 +168,21 @@ def test_generate_shop_actions_adds_leave_fallback_without_leave_item() -> None:
 
     assert [action.identity for action in generate_legal_actions(state)] == [
         "buy|shop_item=artifact",
-        "leave_shop",
+    ]
+
+
+def test_generate_shop_actions_keeps_duplicate_shop_item_id_actions_distinct() -> None:
+    state = _state(
+        decision_context="shop",
+        shop_items=[
+            ShopItemState("strike_plus", "card", 75, True, "strike"),
+            ShopItemState("strike_plus_2", "card", 75, True, "strike"),
+        ],
+    )
+
+    assert [action.identity for action in generate_legal_actions(state)] == [
+        "buy|shop_item=strike_plus",
+        "buy|shop_item=strike_plus_2",
     ]
 
 
@@ -195,4 +209,19 @@ def test_generate_event_and_rest_actions_from_available_options() -> None:
     assert [action.identity for action in generate_legal_actions(rest_state)] == [
         "rest",
         "smith",
+    ]
+
+
+def test_generate_event_actions_keep_duplicate_slotted_options_distinct() -> None:
+    event_state = _state(
+        decision_context="event",
+        event_options=[
+            EventOptionState("take_gold", "Take gold", True),
+            EventOptionState("take_gold_2", "Take gold", True),
+        ],
+    )
+
+    assert [action.identity for action in generate_legal_actions(event_state)] == [
+        "choose_event_option|event_option=take_gold",
+        "choose_event_option|event_option=take_gold_2",
     ]

@@ -189,12 +189,13 @@ def test_step_factory_binds_live_shop_event_and_rest_action_boxes() -> None:
                 "shop_items": [
                     {"item_id": "strike_plus", "item_type": "card", "price": 75, "card_id": "strike"},
                     {"item_id": "remove_slot", "item_type": "remove", "price": 100, "card_id": "defend"},
+                    {"item_id": "leave_shop", "item_type": "leave", "price": 0},
                 ],
             },
             state_boxes={
                 "shop_item:strike_plus": (100, 100, 260, 220),
                 "shop_item:remove_slot": (320, 100, 480, 220),
-                "leave_shop": (1700, 930, 1880, 1010),
+                "shop_item:leave_shop": (1700, 930, 1880, 1010),
             },
             field_confidence={"shop_items": 0.99},
         ),
@@ -254,4 +255,72 @@ def test_step_factory_binds_live_shop_event_and_rest_action_boxes() -> None:
     assert [(action.identity, action.screen_box) for action in rest.actions] == [
         ("rest", (690, 430, 830, 570)),
         ("smith", (1000, 430, 1140, 570)),
+    ]
+
+
+def test_step_factory_fail_closed_excludes_leave_shop_action_without_observed_leave_shop_box() -> None:
+    step = game_step_from_parsed_screen(
+        parsed=ParsedScreen(
+            "shop",
+            [],
+            Path("shop.png"),
+            (1920, 1080),
+            state_payload={
+                "shop_items": [
+                    {"item_id": "strike_plus", "item_type": "card", "price": 75, "card_id": "strike"},
+                    {"item_id": "strike_plus_2", "item_type": "card", "price": 75, "card_id": "strike"},
+                ],
+            },
+            state_boxes={
+                "shop_item:strike_plus": (100, 100, 260, 220),
+                "shop_item:strike_plus_2": (320, 100, 480, 220),
+            },
+            field_confidence={"shop_items": 0.99},
+        ),
+        game_version="0.105.1",
+        branch="beta",
+        character="ironclad",
+        ascension=0,
+        floor=1,
+        captured_state=_captured(),
+        source_type="fixture",
+    )
+
+    assert [(action.identity, action.screen_box) for action in step.actions] == [
+        ("buy|shop_item=strike_plus", (100, 100, 260, 220)),
+        ("buy|shop_item=strike_plus_2", (320, 100, 480, 220)),
+    ]
+
+
+def test_step_factory_binds_duplicate_event_option_ids_to_separate_boxes() -> None:
+    step = game_step_from_parsed_screen(
+        parsed=ParsedScreen(
+            "event",
+            [],
+            Path("event.png"),
+            (1920, 1080),
+            state_payload={
+                "event_options": [
+                    {"option_id": "take_gold", "label": "Take gold"},
+                    {"option_id": "take_gold_2", "label": "Take gold"},
+                ],
+            },
+            state_boxes={
+                "event_option:take_gold": (500, 720, 1500, 780),
+                "event_option:take_gold_2": (500, 820, 1500, 880),
+            },
+            field_confidence={"event_options": 0.99},
+        ),
+        game_version="0.105.1",
+        branch="beta",
+        character="ironclad",
+        ascension=0,
+        floor=1,
+        captured_state=_captured(),
+        source_type="fixture",
+    )
+
+    assert [(action.identity, action.screen_box) for action in step.actions] == [
+        ("choose_event_option|event_option=take_gold", (500, 720, 1500, 780)),
+        ("choose_event_option|event_option=take_gold_2", (500, 820, 1500, 880)),
     ]

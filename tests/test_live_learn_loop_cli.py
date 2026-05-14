@@ -1007,6 +1007,7 @@ def test_live_learn_loop_blocks_dataset_and_trajectory_append_when_ack_does_not_
     assert output["steps"] == 1
     assert not (tmp_path / "dataset.jsonl").exists()
     assert not trajectory_out.exists()
+    assert not (tmp_path / "inputs.jsonl").exists()
     assert failure["reason"] == "no_op"
     assert failure["action_id"] == "pick_card|option=strike"
     assert failure["before_signature"] == failure["after_signature"]
@@ -1048,6 +1049,45 @@ def test_live_learn_loop_preflights_dataset_before_controller_input(tmp_path: Pa
     assert sent == []
     assert failure["reason"] == "dataset_preflight_failed"
     assert failure["action_id"] == "pick_card|option=strike"
+
+
+def test_live_learn_loop_preflights_dataset_file_path_before_controller_input(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    import sts2_tas.live_learning as live_learning
+
+    dataset_dir = tmp_path / "dataset.jsonl"
+    dataset_dir.mkdir()
+    sent = []
+
+    class Controller:
+        def send(self, action) -> None:
+            sent.append(action.to_event())
+
+    monkeypatch.setattr(live_learning, "JsonlInputController", lambda path: Controller())
+    failure_log = tmp_path / "failures.jsonl"
+
+    exit_code = cli.main(
+        [
+            *_base_args(tmp_path),
+            "--dataset",
+            str(dataset_dir),
+            "--max-steps",
+            "1",
+            "--execute",
+            "--failure-log",
+            str(failure_log),
+        ]
+    )
+
+    failure = json.loads(failure_log.read_text(encoding="utf-8").splitlines()[0])
+    output = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert output["steps"] == 1
+    assert sent == []
+    assert failure["reason"] == "dataset_preflight_failed"
+    assert failure["action_id"] == "pick_card|option=strike"
+    assert "directory" in failure["controller_error"]
 
 
 def test_live_step_logs_fail_closed_perception_without_input(tmp_path: Path) -> None:

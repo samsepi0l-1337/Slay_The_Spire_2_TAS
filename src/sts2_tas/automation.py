@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import platform
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -28,6 +28,27 @@ class JsonlInputController:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with self.log_path.open("a", encoding="utf-8") as file:
             file.write(json.dumps(action.to_event(), sort_keys=True) + "\n")
+
+
+@dataclass
+class DeferredJsonlInputController:
+    log_path: Path
+    events: list[dict[str, object]] = field(default_factory=list)
+
+    def send(self, action: AutomationAction) -> None:
+        self.events.append(action.to_event())
+
+    def commit(self) -> None:
+        if not self.events:
+            return
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.log_path.open("a", encoding="utf-8") as file:
+            for event in self.events:
+                file.write(json.dumps(event, sort_keys=True) + "\n")
+        self.events.clear()
+
+    def rollback(self) -> None:
+        self.events.clear()
 
 
 @dataclass(frozen=True)

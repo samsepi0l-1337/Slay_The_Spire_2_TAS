@@ -4,8 +4,9 @@ import argparse
 from dataclasses import asdict
 import json
 from pathlib import Path
+import time
 
-from .automation import JsonlInputController, NativeInputController, apply_action, plan_action
+from .automation import DeferredJsonlInputController, JsonlInputController, NativeInputController, apply_action, plan_action
 from .capture_state import load_captured_game_state
 from .cv_calibration import RegionCalibration, load_region_calibration
 from .evaluation import write_evaluation_report
@@ -285,15 +286,35 @@ def _live_step(args: argparse.Namespace) -> None:
     if args.input_backend == "native" and not args.execute:
         raise ValueError("native input backend requires --execute")
     controller = _input_controller(args) if args.execute else None
-    action_report, transition_ack = _apply_live_step_action(
-        args,
-        step=step,
-        action=action,
-        action_id=action_id,
-        controller=controller,
-        screenshot_path=screenshot_path,
-        target_window=target_window,
-    )
+    start = time.perf_counter()
+    try:
+        action_report, transition_ack = _apply_live_step_action(
+            args,
+            step=step,
+            action=action,
+            action_id=action_id,
+            controller=controller,
+            screenshot_path=screenshot_path,
+            target_window=target_window,
+        )
+    except Exception as error:
+        if args.failure_log is None:
+            raise
+        before = acknowledge_transition(step, [], action_id)
+        _append_live_step_failure(
+            args.failure_log,
+            reason="controller_error",
+            action_id=action_id,
+            before_signature=before.before_signature,
+            after_signature=None,
+            retry_count=0,
+            latency_ms=_latency_ms(start),
+            controller_error=str(error),
+        )
+        action_report = action.to_report()
+        action_report["controller_error"] = str(error)
+        action_report["success"] = False
+        transition_ack = None
     report = {
         "choice": _automation_choice(action),
         "action": action_report,
@@ -302,6 +323,18 @@ def _live_step(args: argparse.Namespace) -> None:
     }
     if transition_ack is not None:
         report["transition_ack"] = transition_ack
+        if transition_ack.get("status") in {"no_op", "timeout"}:
+            _append_live_step_failure(
+                args.failure_log,
+                reason=str(transition_ack["status"]),
+                action_id=action_id,
+                before_signature=_optional_str(transition_ack.get("before_signature")),
+                after_signature=_optional_str(transition_ack.get("after_signature")),
+                retry_count=int(transition_ack.get("retry_count", 0)),
+                latency_ms=_latency_ms(start),
+                controller_error=None,
+            )
+            report["failure"] = {"reason": transition_ack["status"]}
     if target_window is not None:
         report["target_window"] = target_window.to_dict()
     print(json.dumps(report, sort_keys=True))
@@ -476,27 +509,56 @@ def _apply_live_step_action(
 ) -> tuple[dict[str, object], dict[str, object] | None]:
     _validate_ack_max_retries(args)
     if args.ack_ocr_fixture_sequence is None and not args.ack_live_poll:
-        action_report = apply_action(action, controller)
         if args.ack_ocr_fixture is None:
+            action_report = apply_action(action, controller)
             return action_report, None
-        ack_step = _step_from_screen_with_provider(args, screenshot_path, _fixture_ocr_provider(args.ack_ocr_fixture))
-        return action_report, asdict(acknowledge_transition(step, [ack_step], action_id))
+        deferred_controller = _deferred_input_controller(controller)
+        try:
+            action_report = apply_action(action, deferred_controller)
+            ack_step = _step_from_screen_with_provider(args, screenshot_path, _fixture_ocr_provider(args.ack_ocr_fixture))
+            ack = acknowledge_transition(step, [ack_step], action_id)
+            _finish_deferred_input(deferred_controller, changed=ack.status == "changed")
+            return action_report, asdict(ack)
+        except Exception:
+            _finish_deferred_input(deferred_controller, changed=False)
+            raise
 
     history: list[dict[str, object]] = []
     action_report: dict[str, object] = {}
-    for attempt in range(1, args.ack_max_retries + 2):
-        action_report = apply_action(action, controller)
-        ack_step = _ack_poll_step(args, screenshot_path, attempt, target_window)
-        ack = acknowledge_transition(step, [] if ack_step is None else [ack_step], action_id)
-        ack_report = asdict(ack)
-        history.append(ack_report)
-        if not ack.retry_recommended:
-            break
-    final = dict(history[-1])
-    final["attempts"] = len(history)
-    final["retry_count"] = len(history) - 1
-    final["history"] = history
-    return action_report, final
+    deferred_controller = _deferred_input_controller(controller)
+    try:
+        for attempt in range(1, args.ack_max_retries + 2):
+            action_report = apply_action(action, deferred_controller)
+            ack_step = _ack_poll_step(args, screenshot_path, attempt, target_window)
+            ack = acknowledge_transition(step, [] if ack_step is None else [ack_step], action_id)
+            ack_report = asdict(ack)
+            history.append(ack_report)
+            if not ack.retry_recommended:
+                break
+        final = dict(history[-1])
+        final["attempts"] = len(history)
+        final["retry_count"] = len(history) - 1
+        final["history"] = history
+        _finish_deferred_input(deferred_controller, changed=final.get("status") == "changed")
+        return action_report, final
+    except Exception:
+        _finish_deferred_input(deferred_controller, changed=False)
+        raise
+
+
+def _deferred_input_controller(controller):
+    controller_type = JsonlInputController
+    if isinstance(controller_type, type) and isinstance(controller, controller_type):
+        return DeferredJsonlInputController(controller.log_path)
+    return controller
+
+
+def _finish_deferred_input(controller, *, changed: bool) -> None:
+    if isinstance(controller, DeferredJsonlInputController):
+        if changed:
+            controller.commit()
+        else:
+            controller.rollback()
 
 
 def _validate_ack_max_retries(args: argparse.Namespace) -> None:
@@ -549,3 +611,37 @@ def _append_failure_log(path: Path, row: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as file:
         file.write(json.dumps(row, sort_keys=True) + "\n")
+
+
+def _append_live_step_failure(
+    path: Path | None,
+    *,
+    reason: str,
+    action_id: str | None,
+    before_signature: str | None,
+    after_signature: str | None,
+    retry_count: int,
+    latency_ms: int,
+    controller_error: str | None,
+) -> None:
+    if path is None:
+        return
+    row: dict[str, object] = {
+        "reason": reason,
+        "action_id": action_id,
+        "before_signature": before_signature,
+        "after_signature": after_signature,
+        "retry_count": retry_count,
+        "latency_ms": latency_ms,
+    }
+    if controller_error is not None:
+        row["controller_error"] = controller_error
+    _append_failure_log(path, row)
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _latency_ms(start: float) -> int:
+    return int((time.perf_counter() - start) * 1000)

@@ -47,10 +47,10 @@ Window capture
 - value target은 explicit `value_target`, `discounted_return`, reward/floor/HP/terminal signal을 우선하고, richer signal이 없을 때만 victory boolean으로 fallback한다.
 - `evaluate-model`과 `evaluate-play`를 추가해 model holdout/top-k/legal mask/calibration/value proxy와 play latency/timeout/misclick/illegal action/candidate recall을 리포트한다.
 - `ObservationQuality.field_confidence`와 context별 required field gate를 추가해 combat/map/shop/event/rest 인식이 missing 또는 confidence `<0.60`이면 fail-closed한다.
-- shop/event/rest typed option state, legal action generator, OCR fixture grammar, screen box binding을 추가했다.
+- shop/event/rest typed option state, legal action generator, OCR fixture grammar, screen box binding을 추가했다. 중복 shop/event option은 slot id로 분리하고, shop `leave_shop`은 관측된 leave option이 있을 때만 후보로 생성한다.
 - `live-learn-loop --execute`는 gameplay label/model action에서 transition ack `changed`일 때만 `GameStep`/`TrajectoryStep`을 append하고, ack 없음/no-op/timeout/controller error/perception failure/preflight failure는 failure log만 기록한다.
 - `evaluate-model`은 `--eval-dataset`과 value-head sigmoid score 기반 `value_correlation`을 사용한다.
-- `evaluate-play`는 safety metric이 빠진 row를 기본 실패 지표로 계산하고, `--allow-missing-metrics`에서만 missing row count를 리포트한다.
+- `evaluate-play`는 safety metric이 빠진 row를 기본 실패 지표로 계산하고, `--allow-missing-metrics`에서만 missing row count를 리포트한다. 이 허용 모드에서는 missing candidate recall을 평균에서 제외한다.
 
 ## P0 Gaps
 

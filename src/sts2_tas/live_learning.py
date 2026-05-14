@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .automation import JsonlInputController, NativeInputController, apply_action, plan_action
+from .automation import DeferredJsonlInputController, JsonlInputController, NativeInputController, apply_action, plan_action
 from .capture_state import load_captured_game_state
 from .cv_calibration import load_region_calibration
 from .ml_entities import resolve_action_identity
@@ -315,14 +315,20 @@ def _apply_and_acknowledge(
         final_ack: TransitionAcknowledgement | None = None
         final_after: GameStep | None = None
         retry_count = 0
-        for attempt in range(1, args.ack_max_retries + 2):
-            apply_action(action, controller)
-            ack_step = _ack_poll_step(args, screenshot_path, attempt, target_window)
-            final_after = ack_step
-            final_ack = acknowledge_transition(step, [] if ack_step is None else [ack_step], action_id)
-            retry_count = attempt - 1
-            if not final_ack.retry_recommended:
-                break
+        deferred_controller = _deferred_input_controller(controller)
+        try:
+            for attempt in range(1, args.ack_max_retries + 2):
+                apply_action(action, deferred_controller)
+                ack_step = _ack_poll_step(args, screenshot_path, attempt, target_window)
+                final_after = ack_step
+                final_ack = acknowledge_transition(step, [] if ack_step is None else [ack_step], action_id)
+                retry_count = attempt - 1
+                if not final_ack.retry_recommended:
+                    break
+            _finish_deferred_input(deferred_controller, changed=final_ack is not None and final_ack.status == "changed")
+        except Exception:
+            _finish_deferred_input(deferred_controller, changed=False)
+            raise
         if final_ack is not None and final_ack.status == "changed":
             return _ActionResult(changed=True, after_step=final_after)
         if final_ack is not None:
@@ -471,6 +477,12 @@ def _preflight_append(args: argparse.Namespace, step: GameStep) -> bool:
 
 def _preflight_jsonl_append(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        if path.is_dir():
+            raise IsADirectoryError(f"dataset path is a directory: {path}")
+        with path.open("a", encoding="utf-8"):
+            pass
+        return
     probe = path.parent / f".{path.name}.preflight.tmp"
     probe.write_text("", encoding="utf-8")
     probe.unlink()
@@ -556,6 +568,21 @@ def _input_controller(args: argparse.Namespace) -> JsonlInputController | Native
     if args.input_backend == "native":
         return NativeInputController()
     return JsonlInputController(args.input_log)
+
+
+def _deferred_input_controller(controller):
+    controller_type = JsonlInputController
+    if isinstance(controller_type, type) and isinstance(controller, controller_type):
+        return DeferredJsonlInputController(controller.log_path)
+    return controller
+
+
+def _finish_deferred_input(controller, *, changed: bool) -> None:
+    if isinstance(controller, DeferredJsonlInputController):
+        if changed:
+            controller.commit()
+        else:
+            controller.rollback()
 
 
 def _target_window(args: argparse.Namespace) -> TargetWindow | None:

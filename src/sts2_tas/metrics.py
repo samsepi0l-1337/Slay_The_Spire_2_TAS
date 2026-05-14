@@ -88,7 +88,9 @@ def play_evaluation_metrics(rows: list[dict[str, Any]], *, allow_missing_metrics
         ),
         "misclick_rate": _rate(rows, "misclicks", fail_missing=fail_missing),
         "illegal_action_rate": _rate(rows, "illegal_actions", fail_missing=fail_missing),
-        "candidate_recall": _mean([_missing_fail_value(row, "candidate_recall", 0.0, True) for row in rows]),
+        "candidate_recall": _mean_present(
+            [_optional_missing_fail_value(row, "candidate_recall", 0.0, fail_missing) for row in rows]
+        ),
     }
     if allow_missing_metrics:
         metrics["missing_safety_metric_rows"] = missing_metric_rows
@@ -99,6 +101,12 @@ def _missing_fail_value(row: dict[str, Any], key: str, failure_value: float, fai
     if key in row:
         return float(row[key])
     return failure_value if fail_missing else 0.0
+
+
+def _optional_missing_fail_value(row: dict[str, Any], key: str, failure_value: float, fail_missing: bool) -> float | None:
+    if key in row:
+        return float(row[key])
+    return failure_value if fail_missing else None
 
 
 def _bool_metric_value(row: dict[str, Any], key: str, *, failure_value: float, fail_missing: bool) -> float:
@@ -129,6 +137,11 @@ def _top_margin(candidates, action_id: str, selected_score: float) -> float:
 
 def _mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
+
+
+def _mean_present(values: list[float | None]) -> float:
+    present = [value for value in values if value is not None]
+    return _mean(present)
 
 
 def _correlation(xs: list[float], ys: list[float]) -> float:
