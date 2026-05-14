@@ -16,7 +16,7 @@ uv run sts2-tas train --dataset data/steps.jsonl --model models/ironclad.pt --ch
 uv run sts2-tas recommend --model models/ironclad.pt --step query.json
 uv run sts2-tas evaluate-model --eval-dataset data/steps.jsonl --model models/ironclad.pt --character ironclad --out model-eval.json
 uv run sts2-tas parse-screen --screenshot reward.png --ocr-fixture ocr.json --out parsed.json
-uv run sts2-tas parse-screen --screenshot reward.png --ocr-provider tesseract --ocr-language eng+kor --out parsed.json
+uv run sts2-tas parse-screen --screenshot reward.png --ocr-provider tesseract --ocr-language eng+kor --tessdata-dir tessdata --out parsed.json
 uv run sts2-tas parse-screen --screenshot reward.png --ocr-provider tesseract --region-calibration regions.json --out parsed.json
 uv run sts2-tas act --step query.json --choice pick_card:strike --input-log inputs.jsonl
 uv run sts2-tas act --step query.json --choice pick_card:strike --input-log inputs.jsonl --input-backend native --execute
@@ -38,7 +38,7 @@ uv run sts2-tas evaluate-play --episodes episodes.jsonl --out play-eval.json
 
 로컬 Python 3.14 editable install이 `sts2_tas`를 import하지 못하는 환경에서는 `.venv` hidden flag를 정리한 뒤 다시 실행합니다. 임시 우회가 필요하면 `PYTHONPATH=src uv run ...` 또는 `uv run --no-editable ...`로 실행할 수 있습니다.
 
-`--target-process --input-backend native --execute` 조합은 실제 OS 입력을 보내는 production 경로입니다. 먼저 같은 명령에서 `--input-backend native --execute`를 빼고 dry-run/JSONL 계획과 target window metadata가 맞는지 확인합니다.
+`--target-process --input-backend native --execute` 조합은 실제 OS 입력을 보내는 production 경로입니다. Windows borderless/no-title 게임 창은 process name인 `SlayTheSpire2`로 지정하면 EnumWindows 기반 target guard가 빈 title과 window bounds를 재검증합니다. 먼저 같은 명령에서 `--input-backend native --execute`를 빼고 dry-run/JSONL 계획과 target window metadata가 맞는지 확인합니다.
 
 `live-learn-loop`는 `live-step`과 같은 capture/OCR/action 선택 경계를 반복합니다. Gameplay 화면은 combat/card reward/relic choice/map/shop/event/rest이며, `--choice` 라벨이 있거나 `--allow-model-self-labels`를 명시한 실험에서만 `chosen_action_id`가 채워진 `GameStep`을 JSONL dataset에 누적합니다. `--execute`로 gameplay label/model action을 보낸 경우에는 transition ack가 `changed`일 때만 `GameStep`과 `TrajectoryStep`을 append합니다. ack가 없거나 `no_op`/`timeout`/controller error/fail-closed perception/preflight failure이면 `--failure-log` JSONL에 실패만 기록하고 dataset/trajectory append는 하지 않습니다. JSONL input backend는 transition ack가 `changed`일 때만 input log를 commit합니다. 메뉴/모드/캐릭터/재시작 화면은 학습 row로 저장하지 않고 입력 계획만 만들며, terminal 화면은 `--episodes-out`에 승패 요약을 남긴 뒤 `New Run` 액션으로 다음 run을 시작합니다. fixture JSON은 Windows PowerShell 5.1의 UTF-8 BOM이 있어도 읽을 수 있습니다. terminal return 전파 후에는 모델을 한 번 더 재학습해 최종 reward가 반영된 row를 저장 모델에 반영하고, 같은 terminal frame 반복은 steps=0 episode row로 중복 기록하지 않습니다. `--max-steps` 없이 실행하면 사용자가 중단할 때까지 반복하고, `KeyboardInterrupt`는 traceback 대신 summary JSON으로 종료합니다. `--screenshot-out live.png`는 반복마다 `live-000001.png`처럼 충돌 없는 파일명을 사용합니다.
 

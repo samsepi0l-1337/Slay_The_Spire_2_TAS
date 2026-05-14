@@ -80,10 +80,15 @@ class FakeOcrProvider:
 class TesseractOcrProvider:
     language: str = "eng"
     binary: str = "tesseract"
+    tessdata_dir: Path | None = None
 
     def recognize(self, image_path: Path) -> list[OcrToken]:
+        command = [self.binary, str(image_path), "stdout", "-l", self.language]
+        if self.tessdata_dir is not None:
+            command.extend(["--tessdata-dir", str(self.tessdata_dir)])
+        command.append("tsv")
         result = subprocess.run(
-            [self.binary, str(image_path), "stdout", "-l", self.language, "tsv"],
+            command,
             capture_output=True,
             check=True,
             text=True,

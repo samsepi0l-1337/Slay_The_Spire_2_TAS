@@ -119,7 +119,7 @@ uv sync --extra dev
 
 마지막 확인 결과는 `31 passed in 9.48s`였습니다.
 
-SSH service session은 Windows SessionId `0`에서 실행되므로 실제 desktop capture/input 경로가 아닙니다. 직접 SSH에서 `ImageGrab.grab()`은 `OSError: screen grab failed`가 날 수 있고, `WindowDetector().detect('SlayTheSpire2')`는 게임 창을 찾지 못할 수 있습니다. 실제 게임 화면 테스트는 로그인된 Windows interactive session에서 직접 실행하거나, `Interactive` scheduled task로 실행합니다. scheduled task는 `-WindowStyle Hidden`으로 실행해 PowerShell 콘솔 창이 게임 화면 캡처와 클릭 좌표를 가리지 않게 합니다.
+SSH service session은 Windows SessionId `0`에서 실행되므로 실제 desktop capture/input 경로가 아닙니다. 직접 SSH에서 `ImageGrab.grab()`은 `OSError: screen grab failed`가 날 수 있고, desktop window enumeration도 interactive session window를 보지 못할 수 있습니다. 실제 게임 화면 테스트는 로그인된 Windows interactive session에서 직접 실행하거나, `Interactive` scheduled task로 실행합니다. scheduled task는 `-WindowStyle Hidden`으로 실행해 PowerShell 콘솔 창이 게임 화면 캡처와 클릭 좌표를 가리지 않게 합니다.
 
 ```powershell
 $taskName = 'STS2TASRemoteSmoke'
@@ -131,12 +131,14 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Pr
 Start-ScheduledTask -TaskName $taskName
 ```
 
-interactive task에서 확인된 게임 process는 `SlayTheSpire2`, title은 `Slay the Spire 2`, SessionId는 `1`이었습니다. 이 경로에서는 `ImageGrab.grab()`이 `1920x1080` capture를 만들었고, `live-step --target-process SlayTheSpire2` dry-run은 target window metadata와 click plan을 출력했습니다.
+interactive task에서 확인된 게임 process는 `SlayTheSpire2`, SessionId는 `1`이었습니다. borderless/no-title 상태에서는 `MainWindowTitle`과 `MainWindowHandle`이 비어 있을 수 있으므로 `--target-process SlayTheSpire2`를 사용합니다. Windows target guard는 `EnumWindows`/`GetWindowThreadProcessId`로 해당 process의 top-level visible window를 다시 찾고, 빈 title과 bounds를 입력 직전 재검증합니다. 이 경로에서는 `ImageGrab.grab()`이 `1920x1080` capture를 만들고 target window metadata와 click plan을 출력합니다.
 
 ```powershell
 .\.venv\Scripts\sts2-tas.exe live-step `
   --screenshot-out remote-smoke\interactive-live.png `
-  --ocr-fixture remote-smoke\ocr.json `
+  --ocr-provider tesseract `
+  --ocr-language eng+kor `
+  --tessdata-dir remote-smoke\tessdata `
   --choice pick:strike `
   --input-log remote-smoke\inputs.jsonl `
   --target-process SlayTheSpire2 `
@@ -160,7 +162,24 @@ tesseract --version
 tesseract --list-langs
 ```
 
-마지막 확인된 설치는 `v5.4.0.20240606`, language는 `eng`, `osd`였습니다. Korean main menu OCR은 아직 이 repo의 screen catalog와 OCR language set에 완전히 맞지 않습니다. 확인된 실패는 `parse-screen --ocr-provider tesseract --ocr-language eng`에서 `unknown OCR screen layout`입니다.
+관리자 권한 없이 language pack을 보강해야 하면 실행 디렉터리 안에 tessdata를 둡니다.
+
+```powershell
+$tessdata = 'C:\Users\steep\sts2-tas-run\remote-smoke\tessdata'
+New-Item -ItemType Directory -Force $tessdata | Out-Null
+Copy-Item 'C:\Program Files\Tesseract-OCR\tessdata\eng.traineddata' $tessdata -Force
+Invoke-WebRequest `
+  -Uri 'https://github.com/tesseract-ocr/tessdata_fast/raw/main/kor.traineddata' `
+  -OutFile (Join-Path $tessdata 'kor.traineddata')
+.\.venv\Scripts\sts2-tas.exe parse-screen `
+  --screenshot remote-smoke\interactive-live.png `
+  --ocr-provider tesseract `
+  --ocr-language eng+kor `
+  --tessdata-dir $tessdata `
+  --out remote-smoke\parsed.json
+```
+
+마지막 확인된 기본 설치는 `v5.4.0.20240606`, language는 `eng`, `osd`였습니다. `kor.traineddata`는 host tessdata 또는 `--tessdata-dir` 경로에 있어야 `--ocr-language eng+kor`가 fixture 없이 동작합니다.
 
 ## Windows Executable
 

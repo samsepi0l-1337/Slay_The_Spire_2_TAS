@@ -15,6 +15,7 @@ from sts2_tas.schema import (
 def _state(
     *,
     decision_context: str,
+    gold: int = 999,
     cards: list[CardInstance] | None = None,
     monsters: list[MonsterState] | None = None,
     path_candidates: list[PathCandidate] | None = None,
@@ -31,7 +32,7 @@ def _state(
         ascension=0,
         floor=1,
         decision_context=decision_context,
-        player=PlayerState(hp=70, max_hp=80, block=0, energy=2, turn=1),
+        player=PlayerState(hp=70, max_hp=80, block=0, energy=2, turn=1, character_resource={"gold": gold}),
         cards=cards or [],
         potions=potions or [],
         monsters=monsters or [],
@@ -156,6 +157,29 @@ def test_generate_shop_actions_from_typed_items() -> None:
     assert [action.identity for action in actions] == [
         "buy|shop_item=strike_plus",
         "remove_card|target_card=defend",
+        "leave_shop",
+    ]
+
+
+def test_generate_shop_actions_require_gold_for_buy_and_remove_but_keep_leave() -> None:
+    state = _state(
+        decision_context="shop",
+        gold=80,
+        shop_items=[
+            ShopItemState("affordable_potion", "potion", 40, True),
+            ShopItemState("expensive_card", "card", 90, True, "strike"),
+            ShopItemState("expensive_relic", "relic", 150, True),
+            ShopItemState("expensive_potion", "potion", 100, True),
+            ShopItemState("remove_slot", "remove", 100, True, "defend"),
+            ShopItemState("sold_card", "card", 10, False, "defend"),
+            ShopItemState("leave", "leave", 0, False),
+        ],
+    )
+
+    actions = generate_legal_actions(state)
+
+    assert [action.identity for action in actions] == [
+        "buy|shop_item=affordable_potion",
         "leave_shop",
     ]
 

@@ -42,6 +42,7 @@
 
 - synthetic/stable screenshot용 색상 기반 detector가 card reward, relic choice, skip button layout을 구분한다.
 - OCR provider protocol을 통해 fixture OCR과 Tesseract TSV adapter를 같은 parsing 경로로 사용한다.
+- Tesseract provider는 host 설치 language pack 외에 `--tessdata-dir`로 per-run `eng+kor` traineddata directory를 지정할 수 있다.
 - 영어/한국어 alias catalog로 카드, 유물, skip text를 canonical id로 매핑한다.
 - OCR로 시작 메뉴의 `Continue`/`계속`/`Single Player`, 모드 선택의 `Standard`, 캐릭터 선택의 `Ironclad`, terminal 화면의 `Victory!`/`Game Over`/`승리`/`게임 오버`와 `New Run`/`다시 시작` 재시작 버튼을 매핑한다.
 - 카드 보상 OCR은 3개 카드와 skip button이 모두 인식될 때만 `card_reward`로 처리한다.
@@ -84,6 +85,7 @@
 
 - `--capture-fixture`로 deterministic screenshot을 사용하거나, `--screenshot-out`으로 Pillow `ImageGrab.grab()` 결과를 저장한다.
 - target window가 있으면 `--screenshot-out` capture는 Pillow `ImageGrab.grab(bbox=...)` 경로로 window bounds를 캡처한다.
+- Windows target window detection은 `EnumWindows`/process id lookup을 사용해 borderless/no-title 창도 빈 title metadata로 보존한다.
 - OCR parsing으로 현재 선택지를 만들고 `GameStep`을 구성한다.
 - OCR state payload가 있으면 `step_factory`가 capture/state-json 값 위에 병합하고 legal action generator 결과에 screen box를 연결한다.
 - `--choice`가 있으면 manual action id를 사용한다.

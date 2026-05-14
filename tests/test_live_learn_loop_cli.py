@@ -489,7 +489,18 @@ def test_live_learn_loop_execute_native_uses_injected_controller(tmp_path: Path,
 
     monkeypatch.setattr(live_learning, "NativeInputController", Controller)
 
-    exit_code = cli.main([*_base_args(tmp_path), "--max-steps", "1", "--input-backend", "native", "--execute"])
+    exit_code = cli.main(
+        [
+            *_base_args(tmp_path),
+            "--max-steps",
+            "1",
+            "--input-backend",
+            "native",
+            "--execute",
+            "--ack-ocr-fixture-sequence",
+            str(_changed_ack_sequence(tmp_path / "ack-sequence.json")),
+        ]
+    )
 
     assert exit_code == 0
     assert sent[0]["input_plan"] == {"kind": "click", "x": 340, "y": 295}
@@ -505,7 +516,18 @@ def test_live_learn_loop_does_not_label_failed_execute_action(tmp_path: Path, mo
     monkeypatch.setattr(live_learning, "NativeInputController", Controller)
 
     with pytest.raises(RuntimeError, match="input failed"):
-        cli.main([*_base_args(tmp_path), "--max-steps", "1", "--input-backend", "native", "--execute"])
+        cli.main(
+            [
+                *_base_args(tmp_path),
+                "--max-steps",
+                "1",
+                "--input-backend",
+                "native",
+                "--execute",
+                "--ack-ocr-fixture-sequence",
+                str(_changed_ack_sequence(tmp_path / "ack-sequence.json")),
+            ]
+        )
 
     assert not (tmp_path / "dataset.jsonl").exists()
 
@@ -513,16 +535,26 @@ def test_live_learn_loop_does_not_label_failed_execute_action(tmp_path: Path, mo
 def test_live_learn_loop_execute_jsonl_writes_input_event(tmp_path: Path) -> None:
     input_log = tmp_path / "inputs.jsonl"
 
-    exit_code = cli.main([*_base_args(tmp_path), "--max-steps", "1", "--execute"])
+    exit_code = cli.main(
+        [
+            *_base_args(tmp_path),
+            "--max-steps",
+            "1",
+            "--execute",
+            "--ack-ocr-fixture-sequence",
+            str(_changed_ack_sequence(tmp_path / "ack-sequence.json")),
+        ]
+    )
 
     event = json.loads(input_log.read_text(encoding="utf-8").splitlines()[0])
     assert exit_code == 0
     assert event["input_plan"] == {"kind": "click", "x": 340, "y": 295}
-    assert not (tmp_path / "dataset.jsonl").exists()
+    assert (tmp_path / "dataset.jsonl").exists()
 
 
 def test_live_learn_loop_logs_missing_ack_without_dataset_append(tmp_path: Path, capsys) -> None:
     failure_log = tmp_path / "failures.jsonl"
+    input_log = tmp_path / "inputs.jsonl"
 
     exit_code = cli.main([*_base_args(tmp_path), "--max-steps", "1", "--execute", "--failure-log", str(failure_log)])
 
@@ -530,6 +562,7 @@ def test_live_learn_loop_logs_missing_ack_without_dataset_append(tmp_path: Path,
     output = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert output["steps"] == 1
+    assert not input_log.exists()
     assert not (tmp_path / "dataset.jsonl").exists()
     assert failure["reason"] == "missing_transition_ack"
     assert failure["action_id"] == "pick_card|option=strike"
@@ -689,8 +722,9 @@ def test_live_learn_loop_logs_no_ack_controller_error_without_raise(tmp_path: Pa
     assert exit_code == 0
     assert output["steps"] == 1
     assert not (tmp_path / "dataset.jsonl").exists()
-    assert failure["reason"] == "controller_error"
-    assert failure["controller_error"] == "missing ack input failed"
+    assert not (tmp_path / "inputs.jsonl").exists()
+    assert failure["reason"] == "missing_transition_ack"
+    assert "controller_error" not in failure
 
 
 def test_live_learn_loop_live_ack_poll_uses_target_window_capture_and_blocks_no_op(

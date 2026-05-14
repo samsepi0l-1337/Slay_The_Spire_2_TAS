@@ -45,8 +45,6 @@ class TargetWindow:
     def __post_init__(self) -> None:
         if not self.process:
             raise ValueError("target window process is required")
-        if not self.title:
-            raise ValueError("target window title is required")
 
     def to_dict(self) -> dict[str, Any]:
         return {"process": self.process, "title": self.title, "bounds": self.bounds.to_dict()}

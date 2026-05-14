@@ -75,3 +75,6 @@ def test_docs_explain_windows_docker_and_deferred_scope() -> None:
         'live-step --screenshot-out ... --target-process "Slay the Spire 2" '
         "--input-backend native --execute"
     ) in architecture_doc
+    assert "SlayTheSpire2" in docker_doc
+    assert "--tessdata-dir" in docker_doc
+    assert "kor.traineddata" in docker_doc

@@ -395,6 +395,44 @@ def test_windows_native_input_keeps_target_guard_and_click_in_one_script() -> No
     assert script.index("target window changed before input") < script.index("[Win32Input]::mouse_event")
 
 
+def test_windows_native_input_accepts_borderless_no_title_target_window() -> None:
+    commands = []
+    target_window = TargetWindow(
+        process="SlayTheSpire2",
+        title="",
+        bounds=WindowBounds(left=0, top=0, width=1920, height=1080),
+    )
+
+    class Detector:
+        def detect(self, process: str) -> TargetWindow:
+            assert process == "SlayTheSpire2"
+            return target_window
+
+    controller = automation.NativeInputController(
+        platform_name="Windows",
+        runner=commands.append,
+        window_detector=Detector(),
+    )
+
+    controller.send(
+        AutomationAction(
+            action="pick",
+            option_id="continue",
+            dry_run=False,
+            target=(480, 960, 560, 1030),
+            coordinate_space="window_relative",
+            target_window=target_window,
+        )
+    )
+
+    script = commands[0][-1]
+    assert "EnumWindows" in script
+    assert "GetWindowThreadProcessId" in script
+    assert "$window.Title -eq $expectedTitle" in script
+    assert "SetForegroundWindow($targetWindow.Handle)" in script
+    assert script.index("target window changed before input") < script.index("[Win32Input]::mouse_event")
+
+
 def test_windows_native_input_keeps_target_guard_and_keypress_in_one_script() -> None:
     commands = []
     target_window = _target_window()

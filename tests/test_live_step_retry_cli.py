@@ -106,7 +106,7 @@ def test_cli_live_step_retries_until_polled_frame_acknowledges_change(tmp_path: 
     output = json.loads(capsys.readouterr().out)
     events = [json.loads(line) for line in input_log.read_text(encoding="utf-8").splitlines()]
     assert exit_code == 0
-    assert len(events) == 2
+    assert len(events) == 1
     assert output["transition_ack"]["status"] == "changed"
     assert output["transition_ack"]["attempts"] == 2
     assert output["transition_ack"]["retry_count"] == 1

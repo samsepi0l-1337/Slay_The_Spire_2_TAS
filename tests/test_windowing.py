@@ -44,6 +44,24 @@ def test_window_detector_parses_single_windows_window() -> None:
     assert "Slay the Spire 2" in commands[0][-1]
 
 
+def test_window_detector_accepts_windows_borderless_no_title_window() -> None:
+    commands = []
+
+    def runner(command: list[str]) -> str:
+        commands.append(command)
+        return "SlayTheSpire2\t\t0\t0\t1920\t1080\n"
+
+    detector = WindowDetector(platform_name="Windows", runner=runner)
+
+    window = detector.detect("SlayTheSpire2")
+
+    assert window.process == "SlayTheSpire2"
+    assert window.title == ""
+    assert window.bounds == WindowBounds(left=0, top=0, width=1920, height=1080)
+    assert "EnumWindows" in commands[0][-1]
+    assert "GetWindowThreadProcessId" in commands[0][-1]
+
+
 def test_window_detector_escapes_windows_process_query() -> None:
     commands = []
     detector = WindowDetector(
@@ -109,8 +127,12 @@ def test_window_schema_rejects_invalid_values() -> None:
         WindowBounds(left=0, top=0, width=0, height=10)
     with pytest.raises(ValueError, match="process is required"):
         TargetWindow(process="", title="Main", bounds=WindowBounds(left=0, top=0, width=1, height=1))
-    with pytest.raises(ValueError, match="title is required"):
-        TargetWindow(process="Slay the Spire 2", title="", bounds=WindowBounds(left=0, top=0, width=1, height=1))
+
+
+def test_window_schema_allows_empty_title_for_borderless_windows() -> None:
+    window = TargetWindow(process="SlayTheSpire2", title="", bounds=WindowBounds(left=0, top=0, width=1920, height=1080))
+
+    assert window.to_dict()["title"] == ""
 
 
 def test_window_detector_rejects_unsupported_platform() -> None:

@@ -61,6 +61,7 @@ def _parser() -> argparse.ArgumentParser:
     parse_screen.add_argument("--ocr-fixture", type=Path)
     parse_screen.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     parse_screen.add_argument("--ocr-language", default="eng+kor")
+    parse_screen.add_argument("--tessdata-dir", type=Path)
     parse_screen.add_argument("--region-calibration", type=Path)
     parse_screen.add_argument("--out", type=Path, required=True)
     parse_screen.set_defaults(handler=_parse_screen)
@@ -70,6 +71,7 @@ def _parser() -> argparse.ArgumentParser:
     capture_live.add_argument("--ocr-fixture", type=Path)
     capture_live.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     capture_live.add_argument("--ocr-language", default="eng+kor")
+    capture_live.add_argument("--tessdata-dir", type=Path)
     capture_live.add_argument("--region-calibration", type=Path)
     capture_live.add_argument("--out", type=Path, required=True)
     capture_live.add_argument("--game-version", required=True)
@@ -95,6 +97,7 @@ def _parser() -> argparse.ArgumentParser:
     live_step.add_argument("--failure-log", type=Path)
     live_step.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_step.add_argument("--ocr-language", default="eng+kor")
+    live_step.add_argument("--tessdata-dir", type=Path)
     live_step.add_argument("--region-calibration", type=Path)
     live_step.add_argument("--input-log", type=Path, required=True)
     live_step.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
@@ -126,6 +129,7 @@ def _parser() -> argparse.ArgumentParser:
     live_learn_loop.add_argument("--failure-log", type=Path)
     live_learn_loop.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_learn_loop.add_argument("--ocr-language", default="eng+kor")
+    live_learn_loop.add_argument("--tessdata-dir", type=Path)
     live_learn_loop.add_argument("--region-calibration", type=Path)
     live_learn_loop.add_argument("--input-log", type=Path, required=True)
     live_learn_loop.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
@@ -172,6 +176,7 @@ def _parser() -> argparse.ArgumentParser:
     run_loop.add_argument("--ocr-fixture", type=Path)
     run_loop.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     run_loop.add_argument("--ocr-language", default="eng+kor")
+    run_loop.add_argument("--tessdata-dir", type=Path)
     run_loop.add_argument("--episodes-out", type=Path, required=True)
     run_loop.add_argument("--max-steps", type=int, required=True)
     run_loop.add_argument("--victory-seeds", default="")
@@ -477,7 +482,7 @@ def _captured_state(args: argparse.Namespace):
 
 def _ocr_provider(args: argparse.Namespace) -> OcrProvider:
     if args.ocr_provider == "tesseract":
-        return TesseractOcrProvider(language=args.ocr_language)
+        return TesseractOcrProvider(language=args.ocr_language, tessdata_dir=args.tessdata_dir)
     if args.ocr_fixture is None:
         raise ValueError("ocr fixture is required for fixture OCR provider")
     return _fixture_ocr_provider(args.ocr_fixture)
@@ -528,8 +533,8 @@ def _apply_live_step_action(
     action_report: dict[str, object] = {}
     deferred_controller = _deferred_input_controller(controller)
     try:
+        action_report = apply_action(action, deferred_controller)
         for attempt in range(1, args.ack_max_retries + 2):
-            action_report = apply_action(action, deferred_controller)
             ack_step = _ack_poll_step(args, screenshot_path, attempt, target_window)
             ack = acknowledge_transition(step, [] if ack_step is None else [ack_step], action_id)
             ack_report = asdict(ack)

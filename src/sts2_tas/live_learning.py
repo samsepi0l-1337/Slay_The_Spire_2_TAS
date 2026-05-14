@@ -109,17 +109,15 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
     if will_append_label and not _preflight_append(args, labeled_step):
         state.steps += 1
         return
-    controller = _input_controller(args) if args.execute else None
     if args.execute and will_append_label and not _uses_transition_ack(args):
-        _apply_without_persistent_ack(
+        _record_missing_transition_ack(
             args,
             step=step,
-            action=action,
             action_id=action_id,
-            controller=controller,
         )
         state.steps += 1
         return
+    controller = _input_controller(args) if args.execute else None
     action_result = _apply_and_acknowledge(
         args,
         step=step,
@@ -318,8 +316,8 @@ def _apply_and_acknowledge(
         retry_count = 0
         deferred_controller = _deferred_input_controller(controller)
         try:
+            apply_action(action, deferred_controller)
             for attempt in range(1, args.ack_max_retries + 2):
-                apply_action(action, deferred_controller)
                 ack_step = _ack_poll_step(args, screenshot_path, attempt, target_window)
                 final_after = ack_step
                 final_ack = acknowledge_transition(step, [] if ack_step is None else [ack_step], action_id)
@@ -361,32 +359,13 @@ def _apply_and_acknowledge(
         return _ActionResult(changed=False)
 
 
-def _apply_without_persistent_ack(
+def _record_missing_transition_ack(
     args: argparse.Namespace,
     *,
     step: GameStep,
-    action,
     action_id: str,
-    controller,
 ) -> None:
     start = time.perf_counter()
-    try:
-        apply_action(action, controller)
-    except Exception as error:
-        before = acknowledge_transition(step, [], action_id)
-        _append_failure(
-            args,
-            reason="controller_error",
-            action_id=action_id,
-            before_signature=before.before_signature,
-            after_signature=None,
-            retry_count=0,
-            latency_ms=_latency_ms(start),
-            controller_error=str(error),
-        )
-        if args.failure_log is None:
-            raise
-        return
     before = acknowledge_transition(step, [], action_id)
     _append_failure(
         args,
@@ -398,6 +377,8 @@ def _apply_without_persistent_ack(
         latency_ms=_latency_ms(start),
         controller_error=None,
     )
+    if args.failure_log is None:
+        raise ValueError("live-learn-loop --execute requires transition ack for gameplay labels")
 
 
 def _uses_transition_ack(args: argparse.Namespace) -> bool:
@@ -630,7 +611,7 @@ def _split_csv(value: str) -> list[str]:
 
 def _ocr_provider(args: argparse.Namespace, *, iteration: int = 1) -> OcrProvider:
     if args.ocr_provider == "tesseract":
-        return TesseractOcrProvider(language=args.ocr_language)
+        return TesseractOcrProvider(language=args.ocr_language, tessdata_dir=args.tessdata_dir)
     if args.ocr_fixture_sequence is not None:
         return FakeOcrProvider(_ocr_sequence_tokens(args.ocr_fixture_sequence, iteration))
     if args.ocr_fixture is None:

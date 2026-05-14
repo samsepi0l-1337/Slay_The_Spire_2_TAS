@@ -15,7 +15,7 @@ def generate_legal_actions(state: StructuredGameState, *, include_illegal: bool 
             for path in state.path_candidates or []
         ]
     if state.decision_context == "shop":
-        return _shop_actions(state.shop_items or [])
+        return _shop_actions(state.shop_items or [], gold=_player_gold(state))
     if state.decision_context == "event":
         return [
             ActionCandidate(action_type="choose_event_option", event_option_id=option.option_id)
@@ -55,14 +55,14 @@ def _card_reward_actions(state: StructuredGameState) -> list[ActionCandidate]:
     return actions
 
 
-def _shop_actions(items: list[ShopItemState]) -> list[ActionCandidate]:
+def _shop_actions(items: list[ShopItemState], *, gold: int) -> list[ActionCandidate]:
     actions: list[ActionCandidate] = []
     can_leave = False
     for item in items:
         if item.item_type == "leave":
-            can_leave = can_leave or item.purchasable
+            can_leave = True
             continue
-        if not item.purchasable:
+        if not item.purchasable or item.price > gold:
             continue
         if item.item_type == "remove":
             if item.removal_target is not None:
@@ -78,6 +78,14 @@ def _shop_actions(items: list[ShopItemState]) -> list[ActionCandidate]:
     if can_leave:
         actions.append(ActionCandidate(action_type="leave_shop"))
     return actions
+
+
+def _player_gold(state: StructuredGameState) -> int:
+    resources = state.player.character_resource or {}
+    try:
+        return int(resources.get("gold", 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _hand_cards(cards: list[CardInstance]) -> list[CardInstance]:

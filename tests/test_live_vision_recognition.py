@@ -168,6 +168,34 @@ def test_tesseract_provider_parses_cli_tsv(monkeypatch, tmp_path: Path) -> None:
     assert tokens == [_token("Strike", (250, 260, 430, 330))]
 
 
+def test_tesseract_provider_passes_tessdata_dir(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+
+    def fake_run(command, *, capture_output, check, text):
+        calls.append((command, capture_output, check, text))
+
+        class Result:
+            stdout = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+
+        return Result()
+
+    monkeypatch.setattr(recognition.subprocess, "run", fake_run)
+
+    provider = recognition.TesseractOcrProvider(language="eng+kor", tessdata_dir=tmp_path / "tessdata")
+    provider.recognize(_blank_screen(tmp_path / "screen.png"))
+
+    assert calls[0][0] == [
+        "tesseract",
+        str(tmp_path / "screen.png"),
+        "stdout",
+        "-l",
+        "eng+kor",
+        "--tessdata-dir",
+        str(tmp_path / "tessdata"),
+        "tsv",
+    ]
+
+
 def test_tesseract_tsv_parser_adds_multiword_line_tokens() -> None:
     tokens = recognition._tokens_from_tsv(
         "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
