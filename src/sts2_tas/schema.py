@@ -100,6 +100,7 @@ class AutomationAction:
     option_id: str | None
     dry_run: bool
     target: Box | None = None
+    targets: list[Box] | None = None
     coordinate_space: CoordinateSpace = "screen_absolute"
     target_window: TargetWindow | None = None
 
@@ -110,24 +111,26 @@ class AutomationAction:
             raise ValueError("target_window input requires window_relative coordinate_space")
         if self.coordinate_space == "window_relative" and self.target_window is None:
             raise ValueError("window_relative actions require target_window metadata")
+        if self.targets is not None and not self.targets:
+            raise ValueError("target sequence cannot be empty")
 
-    def input_plan(self) -> dict[str, int | str]:
-        if self.target is None:
+    def input_plan(self) -> dict[str, Any]:
+        target_boxes = self.targets or ([] if self.target is None else [self.target])
+        if not target_boxes:
             if self.action == "pick":
                 raise ValueError("pick automation actions require target")
             return {"kind": "keypress", "key": "escape"}
-        left, top, right, bottom = self.target
-        x = (left + right) // 2
-        y = (top + bottom) // 2
-        if self.coordinate_space == "window_relative" and self.target_window is not None:
-            x += self.target_window.bounds.left
-            y += self.target_window.bounds.top
-        return {"kind": "click", "x": x, "y": y}
+        steps = [_click_step(box, self.coordinate_space, self.target_window) for box in target_boxes]
+        if len(steps) > 1:
+            return {"kind": "sequence", "steps": steps}
+        return steps[0]
 
     def to_event(self) -> dict[str, Any]:
         event: dict[str, Any] = {"action": self.action, "option_id": self.option_id}
         if self.target is not None:
             event["target"] = list(self.target)
+        if self.targets is not None:
+            event["targets"] = [list(target) for target in self.targets]
         event["coordinate_space"] = self.coordinate_space
         if self.target_window is not None:
             event["target_window"] = self.target_window.to_dict()
@@ -137,6 +140,20 @@ class AutomationAction:
     def to_report(self) -> dict[str, Any]:
         report = {"dry_run": self.dry_run, **self.to_event()}
         return report
+
+
+def _click_step(
+    target: Box,
+    coordinate_space: CoordinateSpace,
+    target_window: TargetWindow | None,
+) -> dict[str, int | str]:
+    left, top, right, bottom = target
+    x = (left + right) // 2
+    y = (top + bottom) // 2
+    if coordinate_space == "window_relative" and target_window is not None:
+        x += target_window.bounds.left
+        y += target_window.bounds.top
+    return {"kind": "click", "x": x, "y": y}
 
 
 @dataclass(frozen=True)

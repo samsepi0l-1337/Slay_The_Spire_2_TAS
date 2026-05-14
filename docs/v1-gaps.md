@@ -29,19 +29,23 @@ Window capture
 - Windows native target input은 process/title/bounds recheck, `SetForegroundWindow`, input 실행을 한 PowerShell script 안에 묶는다.
 - OCR catalog match는 confidence `0.60` 미만 token을 action option으로 쓰지 않는다.
 - source artifact hygiene를 위해 `.uv-cache/`, `build/`, `dist/`, `*.spec`을 ignore 대상에 추가했다.
+- `cv_calibration.RegionCalibration`과 `--region-calibration`을 추가해 OCR option filtering과 color component detection이 calibrated card/relic/skip/menu regions를 사용한다.
+- targeted combat card/potion action에 `target_screen_box`를 연결하고 source+monster multi-click sequence를 `AutomationAction`/jsonl/native backend까지 전달한다.
+- `live-step --ack-ocr-fixture-sequence`와 `--ack-live-poll`에 `--ack-max-retries`를 연결해 no-op/timeout acknowledgement에서 실제 retry input을 수행한다.
+- `score_branch_outcome()`과 `mcts_seed_search()`를 추가해 branch outcome scorer와 UCT-style MCTS candidate search를 제공한다.
 
 ## P0 Gaps
 
-- Live state extractor: OCR text grammar 기반 HP/max HP, block, energy, turn, gold, floor, hand, potion, monster, map 추출은 시작됐다. draw/discard/exhaust, relic counters, field-level confidence, CV region detector, real screenshot calibration은 남아 있다.
-- Legal action integration: combat/card_reward/map은 live OCR state와 generator가 연결됐다. shop/event/rest, multi-click combat input plan, potion target click sequence는 남아 있다.
-- Transition acknowledgement: changed/no-op/timeout 분리와 retry 권고 경계는 생겼다. 실제 live frame polling, debounce, retry execution policy는 남아 있다.
+- Live state extractor: OCR text grammar 기반 HP/max HP, block, energy, turn, gold, floor, hand, potion, monster, map 추출과 calibrated CV/OCR region filtering은 시작됐다. draw/discard/exhaust, relic counters, field-level confidence는 남아 있다.
+- Legal action integration: combat/card_reward/map은 live OCR state와 generator가 연결됐다. targeted combat/potion multi-click은 구현됐다. shop/event/rest와 non-monster targeting은 남아 있다.
+- Transition acknowledgement: changed/no-op/timeout 분리, fixture sequence retry, live frame polling retry는 구현됐다. debounce, latency/error metrics, retry backoff policy는 남아 있다.
 - Trajectory return: terminal outcome을 gameplay rows에 Monte Carlo return으로 전파한다. TD target, discounted return, per-step reward shaping은 남아 있다.
 
 ## P1 Gaps
 
 - Versioned catalog: catalog를 외부 JSON으로 분리하고 Early Access patch drift를 기록해야 한다.
 - Unknown OCR logging: unknown token, fuzzy match 후보, confidence threshold 통계를 field-level report로 남겨야 한다.
-- Search/TAS loop: save-state restore 기반 branch-and-bound 함수는 생겼다. CLI orchestration, reward/map branch scorer, combat shallow rollout/MCTS는 남아 있다.
+- Search/TAS loop: save-state restore 기반 branch-and-bound, outcome scorer, MCTS 함수는 생겼다. CLI orchestration, real save-state rollout driver, richer reward/map scorer는 남아 있다.
 - Numeric encoding: HP/gold/floor 등 numeric scale normalization과 observed/missing mask 결합이 필요하다.
 - Windows DPI/hit-test: DPI scaling, clickable region margin, screenshot id, pre/post state hash, latency/error logging을 더해야 한다.
 

@@ -183,6 +183,36 @@ def test_plan_action_accepts_window_relative_step(tmp_path: Path) -> None:
     assert action.input_plan() == {"kind": "click", "x": 440, "y": 495}
 
 
+def test_plan_action_builds_multi_click_sequence_for_targeted_combat_action(tmp_path: Path) -> None:
+    step = GameStep.from_json(
+        _step(
+            tmp_path / "step.json",
+            actions=[
+                ActionCandidate(
+                    action_type="play_card",
+                    source_card_id="hand-0-strike",
+                    target_monster_id="jaw_worm:0",
+                    screen_box=(100, 800, 220, 980),
+                    target_screen_box=(1200, 310, 1520, 620),
+                )
+            ],
+        ).read_text(encoding="utf-8")
+    )
+
+    action = automation.plan_action(step, "play_card:source_card=hand-0-strike|target_monster=jaw_worm:0", dry_run=True)
+
+    assert action.target == (100, 800, 220, 980)
+    assert action.targets == [(100, 800, 220, 980), (1200, 310, 1520, 620)]
+    assert action.to_event()["targets"] == [[100, 800, 220, 980], [1200, 310, 1520, 620]]
+    assert action.input_plan() == {
+        "kind": "sequence",
+        "steps": [
+            {"kind": "click", "x": 160, "y": 890},
+            {"kind": "click", "x": 1360, "y": 465},
+        ],
+    }
+
+
 def test_plan_action_rejects_window_relative_without_current_target_window(tmp_path: Path) -> None:
     step = GameStep.from_json(_step(tmp_path / "step.json").read_text(encoding="utf-8"))
 
@@ -197,6 +227,13 @@ def test_plan_action_rejects_missing_illegal_or_targetless_actions(tmp_path: Pat
             actions=[
                 ActionCandidate(action_type="pick_card", option_id="strike", legal=False, screen_box=(1, 2, 3, 4)),
                 ActionCandidate(action_type="pick_card", option_id="bash", legal=True),
+                ActionCandidate(
+                    action_type="play_card",
+                    source_card_id="hand-0-strike",
+                    target_monster_id="jaw_worm:0",
+                    legal=True,
+                    screen_box=(100, 800, 220, 980),
+                ),
             ],
         ).read_text(encoding="utf-8")
     )
@@ -207,6 +244,8 @@ def test_plan_action_rejects_missing_illegal_or_targetless_actions(tmp_path: Pat
         automation.plan_action(step, "strike", dry_run=True)
     with pytest.raises(ValueError, match="no screen target"):
         automation.plan_action(step, "bash", dry_run=True)
+    with pytest.raises(ValueError, match="no target screen box"):
+        automation.plan_action(step, "play_card:source_card=hand-0-strike|target_monster=jaw_worm:0", dry_run=True)
 
 
 def test_native_input_controller_verifies_target_window_before_input() -> None:
@@ -413,6 +452,44 @@ def test_native_input_controller_maps_platform_commands(monkeypatch) -> None:
             True,
         )
     ]
+
+
+def test_native_input_controller_maps_multi_click_sequence() -> None:
+    commands = []
+    action = AutomationAction(
+        action="pick",
+        option_id="play_card|source_card=hand-0-strike|target_monster=jaw_worm:0",
+        dry_run=False,
+        target=(100, 800, 220, 980),
+        targets=[(100, 800, 220, 980), (1200, 310, 1520, 620)],
+    )
+
+    automation.NativeInputController(platform_name="Darwin", runner=commands.append).send(action)
+    automation.NativeInputController(platform_name="Linux", runner=commands.append).send(action)
+    automation.NativeInputController(platform_name="Windows", runner=commands.append).send(action)
+
+    assert commands[0] == [
+        "osascript",
+        "-e",
+        'tell application "System Events"\n  click at {160, 890}\n  click at {1360, 465}\nend tell',
+    ]
+    assert commands[1] == [
+        "xdotool",
+        "mousemove",
+        "160",
+        "890",
+        "click",
+        "1",
+        "mousemove",
+        "1360",
+        "465",
+        "click",
+        "1",
+    ]
+    assert commands[2][:3] == ["powershell", "-NoProfile", "-Command"]
+    assert commands[2][-1].count("[Win32Input]::mouse_event(0x0002") == 2
+    assert "SetCursorPos(160, 890)" in commands[2][-1]
+    assert "SetCursorPos(1360, 465)" in commands[2][-1]
 
 
 def test_native_input_controller_rejects_unsupported_platforms() -> None:

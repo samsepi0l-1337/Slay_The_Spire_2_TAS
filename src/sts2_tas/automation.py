@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from .ml_entities import resolve_action_identity
-from .schema import AutomationAction, CoordinateSpace, GameStep, TargetWindow
+from .schema import AutomationAction, Box, CoordinateSpace, GameStep, TargetWindow
 from .windowing import WindowDetector, WindowDetectorProtocol
 
 
@@ -67,11 +67,15 @@ def plan_action(
     target = candidate.screen_box
     if automation_action == "pick" and target is None:
         raise ValueError(f"action_id has no screen target: {action_id}")
+    if automation_action == "pick" and candidate.target_monster_id is not None and candidate.target_screen_box is None:
+        raise ValueError(f"action_id has no target screen box: {action_id}")
+    targets = _input_targets(candidate, target)
     return AutomationAction(
         action=automation_action,
         option_id=option_id,
         dry_run=dry_run,
         target=target,
+        targets=targets,
         coordinate_space=coordinate_space,
         target_window=target_window,
     )
@@ -90,6 +94,12 @@ def _run_command(command: list[str]) -> None:
     subprocess.run(command, check=True)
 
 
+def _input_targets(candidate, target: Box | None) -> list[Box] | None:
+    if target is None or candidate.target_screen_box is None:
+        return None
+    return [target, candidate.target_screen_box]
+
+
 def _native_command(action: AutomationAction, platform_name: str) -> list[str]:
     system = platform_name.lower()
     plan = _native_input_plan(action, system)
@@ -102,7 +112,7 @@ def _native_command(action: AutomationAction, platform_name: str) -> list[str]:
     raise RuntimeError(f"unsupported native input platform: {platform_name}")
 
 
-def _native_input_plan(action: AutomationAction, system: str) -> dict[str, int | str]:
+def _native_input_plan(action: AutomationAction, system: str) -> dict[str, object]:
     if system == "windows" and action.action == "skip":
         plan = {"kind": "keypress", "key": "escape"}
     else:
@@ -117,30 +127,38 @@ def _native_input_plan(action: AutomationAction, system: str) -> dict[str, int |
     return plan
 
 
-def _macos_command(plan: dict[str, int | str]) -> list[str]:
+def _macos_command(plan: dict[str, object]) -> list[str]:
     target_process = plan.get("target_process")
-    if plan["kind"] == "click":
-        action = f'click at {{{plan["x"]}, {plan["y"]}}}'
-    else:
-        action = "key code 53"
+    action = _macos_action(plan)
     if isinstance(target_process, str):
         return ["osascript", "-e", _macos_target_guard(plan, action)]
-    if plan["kind"] == "click":
-        return ["osascript", "-e", f'tell application "System Events" to {action}']
+    if plan["kind"] == "sequence":
+        return ["osascript", "-e", f'tell application "System Events"\n{_indent_applescript(action)}\nend tell']
     return ["osascript", "-e", f'tell application "System Events" to {action}']
 
 
-def _linux_command(plan: dict[str, int | str]) -> list[str]:
+def _linux_command(plan: dict[str, object]) -> list[str]:
+    if plan["kind"] == "sequence":
+        command = ["xdotool"]
+        for step in plan["steps"]:
+            command.extend(_linux_step_args(step))
+        return command
+    return ["xdotool", *_linux_step_args(plan)]
+
+
+def _linux_step_args(plan: dict[str, object]) -> list[str]:
     if plan["kind"] == "click":
-        return ["xdotool", "mousemove", str(plan["x"]), str(plan["y"]), "click", "1"]
-    return ["xdotool", "key", str(plan["key"])]
+        return ["mousemove", str(plan["x"]), str(plan["y"]), "click", "1"]
+    return ["key", str(plan["key"])]
 
 
-def _windows_command(plan: dict[str, int | str]) -> list[str]:
+def _windows_command(plan: dict[str, object]) -> list[str]:
     if "target_process" in plan:
         return ["powershell", "-NoProfile", "-Command", _windows_target_guard_script(plan)]
     if plan["kind"] == "click":
         return ["powershell", "-NoProfile", "-Command", _windows_click_script(int(plan["x"]), int(plan["y"]))]
+    if plan["kind"] == "sequence":
+        return ["powershell", "-NoProfile", "-Command", _windows_sequence_script(plan)]
     return [
         "powershell",
         "-NoProfile",
@@ -153,14 +171,10 @@ def _windows_click_script(x: int, y: int) -> str:
     return _windows_win32_signature() + _windows_click_action_script(x, y)
 
 
-def _windows_target_guard_script(plan: dict[str, int | str]) -> str:
+def _windows_target_guard_script(plan: dict[str, object]) -> str:
     process = _escape_powershell_single_quoted(str(plan["target_process"]))
     title = _escape_powershell_single_quoted(str(plan["target_title"]))
-    action = (
-        _windows_click_action_script(int(plan["x"]), int(plan["y"]))
-        if plan["kind"] == "click"
-        else _windows_keypress_action_script()
-    )
+    action = _windows_action_script(plan)
     return (
         _windows_win32_signature()
         + f"$expectedProcess = '{process}'\n"
@@ -218,6 +232,18 @@ def _windows_click_action_script(x: int, y: int) -> str:
     )
 
 
+def _windows_sequence_script(plan: dict[str, object]) -> str:
+    return _windows_win32_signature() + _windows_action_script(plan)
+
+
+def _windows_action_script(plan: dict[str, object]) -> str:
+    if plan["kind"] == "click":
+        return _windows_click_action_script(int(plan["x"]), int(plan["y"]))
+    if plan["kind"] == "sequence":
+        return "".join(_windows_action_script(step) for step in plan["steps"])  # type: ignore[arg-type]
+    return _windows_keypress_action_script()
+
+
 def _windows_keypress_action_script() -> str:
     return "Add-Type -AssemblyName System.Windows.Forms\n[System.Windows.Forms.SendKeys]::SendWait('{ESC}')\n"
 
@@ -237,7 +263,7 @@ def _validate_target_window(coordinate_space: CoordinateSpace, target_window: Ta
         raise ValueError("target-process coordinate translation requires a window_relative step")
 
 
-def _macos_target_guard(plan: dict[str, int | str], action: str) -> str:
+def _macos_target_guard(plan: dict[str, object], action: str) -> str:
     process = _escape_applescript(str(plan["target_process"]))
     title = _escape_applescript(str(plan["target_title"]))
     return (
@@ -261,6 +287,18 @@ def _macos_target_guard(plan: dict[str, int | str], action: str) -> str:
         '  if item 2 of windowPosition is not expectedTop then error "target window changed before input"\n'
         '  if item 1 of windowSize is not expectedWidth then error "target window changed before input"\n'
         '  if item 2 of windowSize is not expectedHeight then error "target window changed before input"\n'
-        f"  {action}\n"
+        f"{_indent_applescript(action)}\n"
         "end tell\n"
     )
+
+
+def _macos_action(plan: dict[str, object]) -> str:
+    if plan["kind"] == "click":
+        return f'click at {{{plan["x"]}, {plan["y"]}}}'
+    if plan["kind"] == "sequence":
+        return "\n".join(_macos_action(step) for step in plan["steps"])  # type: ignore[arg-type]
+    return "key code 53"
+
+
+def _indent_applescript(script: str) -> str:
+    return "\n".join(f"  {line}" for line in script.splitlines())

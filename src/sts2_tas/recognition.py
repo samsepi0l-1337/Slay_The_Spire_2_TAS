@@ -8,6 +8,7 @@ from typing import Callable, Protocol
 
 from PIL import Image
 
+from .cv_calibration import RegionCalibration
 from .live_state import LiveStateExtraction, extract_live_state
 from .schema import OcrResult, ParsedScreen, RecognizedOption
 
@@ -87,7 +88,12 @@ class TesseractOcrProvider:
         return _tokens_from_tsv(result.stdout)
 
 
-def parse_ocr_screen(image_path: Path, ocr_provider: OcrProvider) -> ParsedScreen:
+def parse_ocr_screen(
+    image_path: Path,
+    ocr_provider: OcrProvider,
+    *,
+    calibration: RegionCalibration | None = None,
+) -> ParsedScreen:
     image = Image.open(image_path)
     width, height = image.size
     tokens = ocr_provider.recognize(image_path)
@@ -95,7 +101,7 @@ def parse_ocr_screen(image_path: Path, ocr_provider: OcrProvider) -> ParsedScree
     options = [
         option
         for token in tokens
-        if (option := _recognized_option(token, (width, height))) is not None
+        if (option := _recognized_option(token, (width, height), calibration)) is not None
     ]
     non_skip = sorted((option for option in options if option.kind != "skip"), key=lambda option: option.box[0])
     skip = sorted((option for option in options if option.kind == "skip"), key=lambda option: option.box[0])
@@ -144,11 +150,16 @@ def _parsed(
     )
 
 
-def detect_screen(image_path: Path) -> ScreenDetection:
+def detect_screen(image_path: Path, *, calibration: RegionCalibration | None = None) -> ScreenDetection:
     image = Image.open(image_path).convert("RGB")
     card_boxes = _components(image, _is_card_blue)
     relic_boxes = _components(image, _is_relic_gold)
     skip_boxes = _components(image, _is_skip_gray)
+    if calibration is not None:
+        resolution = image.size
+        card_boxes = [box for box in card_boxes if calibration.contains_center("card", box, resolution)]
+        relic_boxes = [box for box in relic_boxes if calibration.contains_center("relic", box, resolution)]
+        skip_boxes = [box for box in skip_boxes if calibration.contains_center("skip", box, resolution)]
 
     if len(card_boxes) >= 3 and skip_boxes:
         return ScreenDetection(DetectionKind.CARD_REWARD, card_boxes[:3], skip_boxes[0])
@@ -212,11 +223,15 @@ def _is_skip_gray(pixel: tuple[int, int, int]) -> bool:
     return 70 <= red <= 105 and 70 <= green <= 105 and 70 <= blue <= 105
 
 
-def _recognized_option(token: OcrToken, resolution: tuple[int, int]) -> RecognizedOption | None:
+def _recognized_option(
+    token: OcrToken,
+    resolution: tuple[int, int],
+    calibration: RegionCalibration | None,
+) -> RecognizedOption | None:
     if token.confidence < MIN_OCR_OPTION_CONFIDENCE:
         return None
     entry = _catalog_match(token.text)
-    if entry is None or not _in_layout_region(token, entry.kind, resolution):
+    if entry is None or not _in_layout_region(token, entry.kind, resolution, calibration):
         return None
     return RecognizedOption(
         id=entry.id,
@@ -276,7 +291,15 @@ def _normalize_text(text: str) -> str:
     return " ".join(text.casefold().strip().split())
 
 
-def _in_layout_region(token: OcrToken, kind: str, resolution: tuple[int, int]) -> bool:
+def _in_layout_region(
+    token: OcrToken,
+    kind: str,
+    resolution: tuple[int, int],
+    calibration: RegionCalibration | None,
+) -> bool:
+    if calibration is not None:
+        region = "menu" if kind in {"select_single_player", "select_mode", "select_character", "restart_run"} else kind
+        return calibration.contains_center(region, token.box, resolution)
     width, height = resolution
     center_x = (token.box[0] + token.box[2]) / 2 / width
     center_y = (token.box[1] + token.box[3]) / 2 / height

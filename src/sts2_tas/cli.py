@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .automation import JsonlInputController, NativeInputController, apply_action, plan_action
 from .capture_state import load_captured_game_state
+from .cv_calibration import RegionCalibration, load_region_calibration
 from .evaluation import write_evaluation_report
 from .live_learning import run_live_learn_loop
 from .ml_cli import add_ml_parsers
@@ -56,6 +57,7 @@ def _parser() -> argparse.ArgumentParser:
     parse_screen.add_argument("--ocr-fixture", type=Path)
     parse_screen.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     parse_screen.add_argument("--ocr-language", default="eng+kor")
+    parse_screen.add_argument("--region-calibration", type=Path)
     parse_screen.add_argument("--out", type=Path, required=True)
     parse_screen.set_defaults(handler=_parse_screen)
 
@@ -64,6 +66,7 @@ def _parser() -> argparse.ArgumentParser:
     capture_live.add_argument("--ocr-fixture", type=Path)
     capture_live.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     capture_live.add_argument("--ocr-language", default="eng+kor")
+    capture_live.add_argument("--region-calibration", type=Path)
     capture_live.add_argument("--out", type=Path, required=True)
     capture_live.add_argument("--game-version", required=True)
     capture_live.add_argument("--branch", required=True)
@@ -82,8 +85,12 @@ def _parser() -> argparse.ArgumentParser:
     decision_source.add_argument("--model", type=Path)
     live_step.add_argument("--ocr-fixture", type=Path)
     live_step.add_argument("--ack-ocr-fixture", type=Path)
+    live_step.add_argument("--ack-ocr-fixture-sequence", type=Path)
+    live_step.add_argument("--ack-live-poll", action="store_true")
+    live_step.add_argument("--ack-max-retries", type=int, default=0)
     live_step.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_step.add_argument("--ocr-language", default="eng+kor")
+    live_step.add_argument("--region-calibration", type=Path)
     live_step.add_argument("--input-log", type=Path, required=True)
     live_step.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
     live_step.add_argument("--execute", action="store_true")
@@ -109,6 +116,7 @@ def _parser() -> argparse.ArgumentParser:
     live_learn_loop.add_argument("--ocr-fixture-sequence", type=Path)
     live_learn_loop.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_learn_loop.add_argument("--ocr-language", default="eng+kor")
+    live_learn_loop.add_argument("--region-calibration", type=Path)
     live_learn_loop.add_argument("--input-log", type=Path, required=True)
     live_learn_loop.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
     live_learn_loop.add_argument("--execute", action="store_true")
@@ -219,7 +227,7 @@ def _label(args: argparse.Namespace) -> None:
 
 
 def _parse_screen(args: argparse.Namespace) -> None:
-    parsed = parse_ocr_screen(args.screenshot, _ocr_provider(args))
+    parsed = parse_ocr_screen(args.screenshot, _ocr_provider(args), calibration=_region_calibration(args))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(parsed.to_dict(), sort_keys=True), encoding="utf-8")
 
@@ -250,15 +258,23 @@ def _live_step(args: argparse.Namespace) -> None:
     if args.input_backend == "native" and not args.execute:
         raise ValueError("native input backend requires --execute")
     controller = _input_controller(args) if args.execute else None
+    action_report, transition_ack = _apply_live_step_action(
+        args,
+        step=step,
+        action=action,
+        action_id=action_id,
+        controller=controller,
+        screenshot_path=screenshot_path,
+        target_window=target_window,
+    )
     report = {
         "choice": _automation_choice(action),
-        "action": apply_action(action, controller),
+        "action": action_report,
         "input_plan": action.input_plan(),
         "screenshot_path": str(screenshot_path),
     }
-    if args.ack_ocr_fixture is not None:
-        ack_step = _step_from_screen_with_provider(args, screenshot_path, _fixture_ocr_provider(args.ack_ocr_fixture))
-        report["transition_ack"] = asdict(acknowledge_transition(step, [ack_step], action_id))
+    if transition_ack is not None:
+        report["transition_ack"] = transition_ack
     if target_window is not None:
         report["target_window"] = target_window.to_dict()
     print(json.dumps(report, sort_keys=True))
@@ -335,7 +351,7 @@ def _step_from_screen_with_provider(
     screenshot_path: Path,
     ocr_provider: OcrProvider,
 ) -> GameStep:
-    parsed = parse_ocr_screen(screenshot_path, ocr_provider)
+    parsed = parse_ocr_screen(screenshot_path, ocr_provider, calibration=_region_calibration(args))
     return game_step_from_parsed_screen(
         parsed=parsed,
         game_version=args.game_version,
@@ -413,3 +429,84 @@ def _fixture_ocr_provider(path: Path) -> FakeOcrProvider:
             for row in json.loads(path.read_text(encoding="utf-8"))
         ]
     )
+
+
+def _region_calibration(args: argparse.Namespace) -> RegionCalibration | None:
+    if getattr(args, "region_calibration", None) is None:
+        return None
+    return load_region_calibration(args.region_calibration)
+
+
+def _apply_live_step_action(
+    args: argparse.Namespace,
+    *,
+    step: GameStep,
+    action,
+    action_id: str,
+    controller,
+    screenshot_path: Path,
+    target_window: TargetWindow | None,
+) -> tuple[dict[str, object], dict[str, object] | None]:
+    if args.ack_ocr_fixture_sequence is None and not args.ack_live_poll:
+        action_report = apply_action(action, controller)
+        if args.ack_ocr_fixture is None:
+            return action_report, None
+        ack_step = _step_from_screen_with_provider(args, screenshot_path, _fixture_ocr_provider(args.ack_ocr_fixture))
+        return action_report, asdict(acknowledge_transition(step, [ack_step], action_id))
+
+    history: list[dict[str, object]] = []
+    action_report: dict[str, object] = {}
+    for attempt in range(1, args.ack_max_retries + 2):
+        action_report = apply_action(action, controller)
+        ack_step = _ack_poll_step(args, screenshot_path, attempt, target_window)
+        ack = acknowledge_transition(step, [] if ack_step is None else [ack_step], action_id)
+        ack_report = asdict(ack)
+        history.append(ack_report)
+        if not ack.retry_recommended:
+            break
+    final = dict(history[-1])
+    final["attempts"] = len(history)
+    final["retry_count"] = len(history) - 1
+    final["history"] = history
+    return action_report, final
+
+
+def _ack_poll_step(
+    args: argparse.Namespace,
+    screenshot_path: Path,
+    attempt: int,
+    target_window: TargetWindow | None,
+) -> GameStep | None:
+    if args.ack_ocr_fixture_sequence is not None:
+        return _ack_fixture_sequence_step(args, screenshot_path, attempt)
+    return _ack_live_poll_step(args, attempt, target_window)
+
+
+def _ack_fixture_sequence_step(args: argparse.Namespace, screenshot_path: Path, attempt: int) -> GameStep | None:
+    frames = json.loads(args.ack_ocr_fixture_sequence.read_text(encoding="utf-8"))
+    if attempt > len(frames):
+        return None
+    provider = FakeOcrProvider(_frame_tokens(frames[attempt - 1]))
+    return _step_from_screen_with_provider(args, screenshot_path, provider)
+
+
+def _ack_live_poll_step(
+    args: argparse.Namespace,
+    attempt: int,
+    target_window: TargetWindow | None,
+) -> GameStep | None:
+    if args.screenshot_out is None:
+        return None
+    ack_path = args.screenshot_out.with_name(f"{args.screenshot_out.stem}-ack-{attempt:06d}{args.screenshot_out.suffix}")
+    if target_window is None:
+        screenshot_path = capture_screen(ack_path)
+    else:
+        screenshot_path = capture_screen(ack_path, bbox=target_window.bounds.to_bbox())
+    return _step_from_screen(args, screenshot_path)
+
+
+def _frame_tokens(frame) -> list[OcrToken]:
+    return [
+        OcrToken(text=row["text"], box=tuple(row["box"]), confidence=float(row["confidence"]))  # type: ignore[arg-type]
+        for row in frame
+    ]

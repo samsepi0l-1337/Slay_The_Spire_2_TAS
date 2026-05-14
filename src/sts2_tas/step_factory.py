@@ -237,10 +237,27 @@ def _with_screen_binding(
     if action.action_type == "choose_path" and action.path_node_id is not None:
         return replace(action, screen_box=boxes.get(f"path:{action.path_node_id}"))
     if action.action_type == "play_card" and action.source_card_id is not None:
-        return replace(action, screen_box=boxes.get(f"card:{action.source_card_id}"))
+        return replace(
+            action,
+            screen_box=boxes.get(f"card:{action.source_card_id}"),
+            target_screen_box=_target_monster_box(action.target_monster_id, boxes),
+        )
     if action.action_type == "use_potion" and action.source_potion_id is not None:
-        return replace(action, screen_box=boxes.get(f"potion:{action.source_potion_id}"))
+        return replace(
+            action,
+            screen_box=boxes.get(f"potion:{action.source_potion_id}"),
+            target_screen_box=_target_monster_box(action.target_monster_id, boxes),
+        )
     return action
+
+
+def _target_monster_box(
+    target_monster_id: str | None,
+    boxes: dict[str, tuple[int, int, int, int]],
+) -> tuple[int, int, int, int] | None:
+    if target_monster_id is None:
+        return None
+    return boxes.get(f"monster:{target_monster_id}")
 
 
 def _reward_option_binding(target_card_id: str, fallback: list[ActionCandidate]) -> tuple[str | None, tuple[int, int, int, int] | None]:

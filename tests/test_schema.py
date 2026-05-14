@@ -34,6 +34,11 @@ def test_skip_automation_action_without_target_uses_escape_input_plan() -> None:
     assert action.input_plan() == {"kind": "keypress", "key": "escape"}
 
 
+def test_automation_action_rejects_empty_target_sequence() -> None:
+    with pytest.raises(ValueError, match="target sequence"):
+        AutomationAction(action="pick", option_id="strike", dry_run=True, target=(1, 2, 3, 4), targets=[])
+
+
 def test_action_translates_window_relative_box_to_screen_coordinates() -> None:
     action = AutomationAction(
         action="pick",

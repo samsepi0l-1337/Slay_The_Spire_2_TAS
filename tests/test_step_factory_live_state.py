@@ -68,6 +68,7 @@ def test_step_factory_uses_live_combat_state_for_legal_actions_and_screen_boxes(
         state_boxes={
             "card:hand-0-strike": (100, 800, 220, 980),
             "potion:energy_potion:0": (430, 920, 500, 990),
+            "monster:jaw_worm:0": (1200, 310, 1520, 620),
         },
     )
 
@@ -88,6 +89,7 @@ def test_step_factory_uses_live_combat_state_for_legal_actions_and_screen_boxes(
         "end_turn",
     ]
     assert step.actions[0].screen_box == (100, 800, 220, 980)
+    assert step.actions[0].target_screen_box == (1200, 310, 1520, 620)
     assert step.actions[1].screen_box == (430, 920, 500, 990)
 
 

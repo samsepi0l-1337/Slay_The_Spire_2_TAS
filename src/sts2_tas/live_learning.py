@@ -8,6 +8,7 @@ from typing import Any
 
 from .automation import JsonlInputController, NativeInputController, apply_action, plan_action
 from .capture_state import load_captured_game_state
+from .cv_calibration import load_region_calibration
 from .ml_entities import resolve_action_identity
 from .model import load_model, recommend, save_model, train_torch_model
 from .recognition import FakeOcrProvider, OcrProvider, OcrToken, TesseractOcrProvider, parse_ocr_screen
@@ -100,7 +101,11 @@ def _iteration_screenshot_path(args: argparse.Namespace, iteration: int, target_
 
 
 def _step_from_screen(args: argparse.Namespace, screenshot_path: Path, *, iteration: int = 1) -> GameStep:
-    parsed = parse_ocr_screen(screenshot_path, _ocr_provider(args, iteration=iteration))
+    parsed = parse_ocr_screen(
+        screenshot_path,
+        _ocr_provider(args, iteration=iteration),
+        calibration=load_region_calibration(args.region_calibration) if args.region_calibration is not None else None,
+    )
     return game_step_from_parsed_screen(
         parsed=parsed,
         game_version=args.game_version,

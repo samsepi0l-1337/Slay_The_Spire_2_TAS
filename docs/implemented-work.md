@@ -5,14 +5,14 @@
 ## CLI Commands
 
 - `capture`: 색상 기반 화면 fixture를 감지해 unlabeled `GameStep` JSONL을 기록한다.
-- `parse-screen`: screenshot과 OCR provider 결과를 catalog-matched option JSON으로 변환한다.
-- `capture-live`: OCR 결과를 `GameStep` JSONL로 저장한다.
+- `parse-screen`: screenshot과 OCR provider 결과를 catalog-matched option JSON으로 변환한다. `--region-calibration`으로 calibrated OCR region filtering을 적용할 수 있다.
+- `capture-live`: OCR 결과를 `GameStep` JSONL로 저장한다. `--region-calibration`을 같은 parse path에 전달한다.
 - `label`: dataset의 특정 `GameStep` row에 고유 action identity 라벨을 붙인다. `pick:card_1`, `pick_card:card_1`, `skip` 같은 짧은 별칭은 한 legal action으로 해석될 때만 허용한다.
 - `train`: 라벨된 `GameStep`으로 PyTorch ranker를 학습한다.
 - `recommend`: 저장된 `.pt` 모델과 현재 `GameStep`으로 후보별 추천 점수를 출력한다.
 - `act`: saved `GameStep`과 명시 action id로 dry-run/input event/native input action을 계획하거나 실행한다.
-- `live-step`: 화면 capture 또는 fixture, OCR parsing, manual/model choice, input planning/execution을 한 번에 수행한다.
-- `live-learn-loop`: 최초 시작 메뉴부터 gameplay, terminal, restart까지 `live-step` 경계를 반복한다. gameplay 화면은 `--choice` 또는 `--allow-model-self-labels`일 때만 labeled `GameStep` JSONL에 누적하고, terminal return을 같은 episode의 gameplay row에 전파하며, 지정 interval마다 PyTorch 모델을 재학습/저장한다.
+- `live-step`: 화면 capture 또는 fixture, OCR parsing, manual/model choice, input planning/execution을 한 번에 수행한다. post-input OCR fixture, fixture sequence, live frame polling 기반 acknowledgement/retry를 지원한다.
+- `live-learn-loop`: 최초 시작 메뉴부터 gameplay, terminal, restart까지 `live-step` 경계를 반복한다. gameplay 화면은 `--choice` 또는 `--allow-model-self-labels`일 때만 labeled `GameStep` JSONL에 누적하고, terminal return을 같은 episode의 gameplay row에 전파하며, 지정 interval마다 PyTorch 모델을 재학습/저장한다. `--region-calibration`은 반복 OCR parse에도 적용된다.
 - `save-state backup`: 지정 save 파일을 backup directory로 복사한다.
 - `save-state restore`: exact hashed backup save를 원 위치로 복원하고 기존 save는 pre-restore copy로 보존한다.
 - `run-loop`: seed 목록, optional victory seed 목록, capture fixture/OCR로 seed episode JSONL을 생성한다.
@@ -24,13 +24,13 @@
 - `PlayerState`: HP, max HP, block, energy, turn, strength/dexterity, vulnerable/weak/frail/artifact, poison/regen/intangible, character-specific resources를 보존한다.
 - `CardInstance`: card id, zone, upgrade state, cost, type, rarity, temporary/generated/retain/exhaust/ethereal/innate flags를 보존한다.
 - `RelicState`: acquisition order, counter, cooldown, combat/turn activation flags를 보존한다.
-- `ActionCandidate`: 현재 가능한 행동 후보, legal flag/mask, source/target ids, path/shop/event ids, optional screen box를 보존한다. identity는 action type과 entity field를 포함해 `play_card`/`discard_card`처럼 같은 카드 id를 쓰는 서로 다른 행동이 충돌하지 않게 한다.
+- `ActionCandidate`: 현재 가능한 행동 후보, legal flag/mask, source/target ids, path/shop/event ids, source `screen_box`, optional `target_screen_box`를 보존한다. identity는 action type과 entity field를 포함해 `play_card`/`discard_card`처럼 같은 카드 id를 쓰는 서로 다른 행동이 충돌하지 않게 한다.
 - `ObservationQuality`: OCR confidence, missing field, unknown token, catalog version을 저장해 Early Access catalog drift를 추적한다.
 - `capture`/`capture-live`/`live-step`은 `--state-json`으로 플레이어, 카드, 유물, 포션, 몬스터, 경로 후보 상태를 입력받고, 미제공 필드는 `missing_fields`에 기록한다.
 - `RecognizedOption`/`ParsedScreen`: OCR에서 인식한 canonical option과 화면 resolution을 구조화한다.
 - `live_state.extract_live_state`: OCR text에서 player HP/energy/block/turn/gold/floor, hand card, potion, monster HP/intent, map node를 typed state payload와 screen box로 추출한다.
 - `actions.generate_legal_actions`: structured state에서 combat, card reward, map context의 state-derived legal action generator를 제공한다. Combat은 hand card, living monster target, usable potion, end turn을 entity-linked action으로 만든다.
-- `AutomationAction`: action, option id, dry-run state, coordinate space, target box를 기반으로 click 또는 keypress `input_plan`을 만든다.
+- `AutomationAction`: action, option id, dry-run state, coordinate space, target box 또는 target sequence를 기반으로 click/keypress/sequence `input_plan`을 만든다.
 - `WindowBounds`/`TargetWindow`: macOS target application/window identity와 bounds를 구조화해 relative option box를 screen absolute input plan으로 변환한다.
 - 좌표 없는 `pick` action은 실행 계획 생성 시 실패한다. 좌표 없는 `skip`만 escape keypress 계획을 허용한다.
 
@@ -44,6 +44,7 @@
 - 같은 catalog id가 여러 슬롯에 나오면 option id는 `strike_1`, `strike_2`처럼 slot-specific으로 분리하고, reward `CardInstance.card_id`는 canonical id인 `strike`로 유지한다.
 - Tesseract TSV의 단어 row를 catalog-matched multi-word span으로 합쳐 `Burning Blood`, `Tiny House` 같은 인접 multi-word 항목을 별도 option으로 매칭한다.
 - reward layout은 resolution-independent 위치 조건으로 필터링한다.
+- calibrated region JSON은 `reference_resolution`과 `card`/`relic`/`skip`/`menu` region boxes를 받아 현재 screenshot resolution으로 scale한다. `parse-screen`, `capture-live`, `live-step`, `live-learn-loop`의 OCR option filtering과 `detect_screen()`의 color component filtering에 적용된다.
 - catalog-matched OCR token confidence가 `0.60` 미만이면 option으로 쓰지 않고 fail-closed 경로에 남긴다.
 - 알 수 없는 layout이나 catalog에 없는 텍스트는 빈 학습 row로 저장하지 않고 실패하거나 무시한다.
 
@@ -68,6 +69,7 @@
 - Windows native backend는 target process가 있으면 하나의 PowerShell script 안에서 process/title/bounds 재조회, `SetForegroundWindow`, click/key 실행을 순서대로 수행한다.
 - Linux native backend는 `xdotool`을 사용한다.
 - Windows native backend는 PowerShell/user32 `SetCursorPos`/`mouse_event`로 click을 보내고, keypress는 기존 PowerShell SendKeys 경로를 유지한다.
+- targeted combat card/potion action은 source box와 monster target box를 모두 가진 경우 source click 후 target click sequence로 실행한다. target id가 있는데 target screen box가 없으면 planning 단계에서 실패한다.
 - 테스트에서는 runner/monkeypatch를 주입해 실제 OS 입력을 보내지 않는다.
 - Quartz/PyObjC PID-targeted input은 dependency 추가 없이 향후 확장 지점으로만 남겼다.
 
@@ -80,6 +82,8 @@
 - `--choice`가 있으면 manual action id를 사용한다.
 - `--model`이 있으면 저장된 추천 모델의 best action id를 사용한다.
 - `--ack-ocr-fixture`가 있으면 입력 후 parsed frame과 이전 frame signature를 비교해 `changed`/`no_op`/`timeout` transition acknowledgement를 포함한다.
+- `--ack-ocr-fixture-sequence --ack-max-retries N`은 fixture frame을 poll frame처럼 순서대로 소비하면서 no-op/timeout이면 action을 다시 보낸다.
+- `--ack-live-poll --ack-max-retries N`은 `--screenshot-out` 기반 live frame을 재캡처하고 같은 OCR parser로 acknowledgement를 계산한 뒤 retry한다. target window mode에서는 ack frame도 같은 bbox로 캡처한다.
 - 결과 JSON에는 `choice`, `action`, `input_plan`, `screenshot_path`가 포함되고, target process 사용 시 `target_window`가 포함된다.
 - native backend는 `--execute` 없이 사용할 수 없다.
 
@@ -100,6 +104,8 @@
 
 - `capture_screen()`은 화면 캡처 실패를 OS screen recording permission/setup error로 감싸 보고한다.
 - save backup/restore는 명시된 파일과 backup directory만 조작하며, save path hash를 포함한 exact backup 이름으로 같은 파일명 충돌과 old basename 오복원을 막는다.
+- `score_branch_outcome()`은 victory/floor/HP/step weight로 terminal branch score를 계산한다.
+- `mcts_seed_search()`는 UCT score로 branch path를 반복 sampling하고 가장 높은 observed rollout score를 반환한다.
 - seed loop는 현재 v1 boundary로, fixture/OCR 기반 episode row를 생성하고 실제 수행한 parsed choice 수를 `steps`, declared terminal result를 `victory`로 기록한다.
 - seed evaluation은 victories, win rate, average steps를 계산한다.
 
@@ -114,7 +120,7 @@
 
 ## Tests And Verification
 
-- 현재 test suite는 schema, GameStep encoding/dataset/model, recognition, live OCR, automation CLI, native input backend, live-step CLI, Docker asset을 검증한다.
+- 현재 test suite는 schema, GameStep encoding/dataset/model, recognition, calibrated CV/OCR regions, live OCR, automation CLI, native input backend, live-step retry polling, branch scorer/MCTS, Docker asset을 검증한다.
 - coverage gate는 `sts2_tas` 전체 100%를 요구한다.
 - 최종 검증 명령:
 
