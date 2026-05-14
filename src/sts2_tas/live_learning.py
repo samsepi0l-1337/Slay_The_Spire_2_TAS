@@ -46,6 +46,9 @@ def run_live_learn_loop(args: argparse.Namespace) -> LiveLearnSummary:
     state = _LoopState()
     try:
         while args.max_steps is None or state.steps < args.max_steps:
+            if _stop_requested(args):
+                state.interrupted = True
+                break
             _run_live_learn_iteration(args, state)
     except KeyboardInterrupt:
         state.interrupted = True
@@ -80,12 +83,12 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
     coordinate_space: CoordinateSpace = "window_relative" if target_window is not None and not args.capture_fixture else "screen_absolute"
     try:
         step = _step_from_screen(args, screenshot_path, iteration=state.steps + 1)
-    except PerceptionQualityError as error:
+    except (PerceptionQualityError, ValueError) as error:
         if args.failure_log is None:
             raise
         _append_failure(
             args,
-            reason="fail_closed_perception",
+            reason="fail_closed_perception" if isinstance(error, PerceptionQualityError) else "screen_parse_failed",
             action_id=None,
             before_signature=None,
             after_signature=None,
@@ -96,7 +99,7 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
         state.steps += 1
         return
     action_id = _live_learn_action_id(args, step) if _is_gameplay_step(step) else _default_action_id(step)
-    label_source = "human" if args.choice is not None else "model_self"
+    label_source = _label_source(args)
     labeled_step = _with_chosen_action(step, action_id, label_source)
     action = plan_action(
         labeled_step,
@@ -178,11 +181,21 @@ def _step_from_screen(args: argparse.Namespace, screenshot_path: Path, *, iterat
 def _live_learn_action_id(args: argparse.Namespace, step: GameStep) -> str:
     if args.choice is not None:
         action_id = _resolve_action_id(step, args.choice)
+    elif getattr(args, "policy", None) == "first-legal":
+        action_id = _default_action_id(step)
     else:
         result = recommend(load_model(args.model), step)
         action_id = result.best.action_id
     _resolve_action_id(step, action_id)
     return action_id
+
+
+def _label_source(args: argparse.Namespace) -> str:
+    if args.choice is not None:
+        return "human"
+    if getattr(args, "policy", None) is not None:
+        return "heuristic"
+    return "model_self"
 
 
 def _default_action_id(step: GameStep) -> str:
@@ -213,7 +226,16 @@ def _is_terminal_step(step: GameStep) -> bool:
 
 
 def _should_append_training_label(args: argparse.Namespace) -> bool:
-    return args.choice is not None or bool(getattr(args, "allow_model_self_labels", False))
+    return (
+        args.choice is not None
+        or getattr(args, "policy", None) is not None
+        or bool(getattr(args, "allow_model_self_labels", False))
+    )
+
+
+def _stop_requested(args: argparse.Namespace) -> bool:
+    stop_file = getattr(args, "stop_file", None)
+    return bool(stop_file is not None and stop_file.exists())
 
 
 def _append_episode_summary(args: argparse.Namespace, state: _LoopState, step: GameStep, restart_action_id: str) -> int:

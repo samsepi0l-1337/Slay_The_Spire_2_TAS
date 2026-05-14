@@ -20,6 +20,11 @@ MIN_OCR_OPTION_CONFIDENCE = 0.60
 VICTORY_TERMS = {"victory", "victory!", "clear", "run clear", "승리", "승리!", "클리어"}
 GAME_OVER_TERMS = {"game over", "defeat", "defeated", "게임 오버", "게임오버", "패배"}
 MAP_MARKER_TERMS = {"legend", "범례"}
+NEOW_CHOICE_REFERENCE_BOXES: tuple[Box, ...] = (
+    (470, 740, 1450, 835),
+    (470, 835, 1450, 930),
+    (470, 930, 1450, 1030),
+)
 
 
 class OcrProvider(Protocol):
@@ -146,6 +151,8 @@ def parse_ocr_screen(
         return _parsed("event", [], image_path, (width, height), extraction)
     if extraction.state_payload.get("rest_options"):
         return _parsed("rest", [], image_path, (width, height), extraction)
+    if neow_boxes := _neow_choice_boxes(image):
+        return _parsed("event", [], image_path, (width, height), _with_neow_options(extraction, neow_boxes))
     if extraction.state_payload.get("cards") or extraction.state_payload.get("monsters"):
         return _parsed("combat", [], image_path, (width, height), extraction)
     raise ValueError(f"unknown OCR screen layout for {image_path}")
@@ -242,6 +249,63 @@ def _is_relic_gold(pixel: tuple[int, int, int]) -> bool:
 def _is_skip_gray(pixel: tuple[int, int, int]) -> bool:
     red, green, blue = pixel
     return 70 <= red <= 105 and 70 <= green <= 105 and 70 <= blue <= 105
+
+
+def _neow_choice_boxes(image: Image.Image) -> list[Box]:
+    boxes = [_scale_reference_box(box, image.size) for box in NEOW_CHOICE_REFERENCE_BOXES]
+    return boxes if sum(1 for box in boxes if _blue_panel_ratio(image, box) >= 0.20) >= 3 else []
+
+
+def _scale_reference_box(box: Box, resolution: tuple[int, int]) -> Box:
+    width, height = resolution
+    ref_width, ref_height = REFERENCE_RESOLUTION
+    left, top, right, bottom = box
+    return (
+        round(left * width / ref_width),
+        round(top * height / ref_height),
+        round(right * width / ref_width),
+        round(bottom * height / ref_height),
+    )
+
+
+def _blue_panel_ratio(image: Image.Image, box: Box) -> float:
+    left, top, right, bottom = box
+    step_x = max(1, (right - left) // 80)
+    step_y = max(1, (bottom - top) // 20)
+    total = 0
+    matches = 0
+    for y in range(top, bottom, step_y):
+        for x in range(left, right, step_x):
+            total += 1
+            if _is_neow_panel_pixel(image.getpixel((x, y))):
+                matches += 1
+    return 0.0 if total == 0 else matches / total
+
+
+def _is_neow_panel_pixel(pixel: tuple[int, int, int]) -> bool:
+    red, green, blue = pixel
+    return red <= 80 and green >= 65 and blue >= 85 and blue >= red + 30
+
+
+def _with_neow_options(extraction: LiveStateExtraction, boxes: list[Box]) -> LiveStateExtraction:
+    payload = dict(extraction.state_payload)
+    state_boxes = dict(extraction.state_boxes)
+    event_options = []
+    for index, box in enumerate(boxes, start=1):
+        option_id = f"neow_option_{index}"
+        event_options.append({"option_id": option_id, "label": f"Neow option {index}"})
+        state_boxes[f"event_option:{option_id}"] = box
+    payload["event_options"] = event_options
+    field_confidence = dict(extraction.field_confidence)
+    field_confidence["event_options"] = 0.99
+    return LiveStateExtraction(
+        state_payload=payload,
+        state_boxes=state_boxes,
+        floor=extraction.floor,
+        missing_fields=extraction.missing_fields,
+        unknown_tokens=extraction.unknown_tokens,
+        field_confidence=field_confidence,
+    )
 
 
 def _recognized_option(

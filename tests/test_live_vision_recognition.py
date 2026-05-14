@@ -11,6 +11,17 @@ def _blank_screen(path: Path, size: tuple[int, int] = (1920, 1080)) -> Path:
     return path
 
 
+def _neow_choice_screen(path: Path) -> Path:
+    image = Image.new("RGB", (1920, 1080), (10, 35, 55))
+    pixels = image.load()
+    for box in ((470, 740, 1450, 835), (470, 835, 1450, 930), (470, 930, 1450, 1030)):
+        for x in range(box[0], box[2]):
+            for y in range(box[1], box[3]):
+                pixels[x, y] = (18, 105, 140)
+    image.save(path)
+    return path
+
+
 def _token(text: str, box: tuple[int, int, int, int]) -> object:
     return recognition.OcrToken(text=text, box=box, confidence=0.99)
 
@@ -72,6 +83,27 @@ def test_parse_ocr_screen_matches_korean_map_legend(tmp_path: Path) -> None:
     parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "map.png"), ocr_provider=provider)
 
     assert parsed.kind == "map"
+
+
+def test_parse_ocr_screen_detects_neow_choice_panels_without_readable_option_text(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("턴 종료", (1711, 850, 1775, 928))])
+
+    parsed = recognition.parse_ocr_screen(_neow_choice_screen(tmp_path / "neow.png"), ocr_provider=provider)
+
+    assert parsed.kind == "event"
+    assert parsed.state_payload == {
+        "event_options": [
+            {"option_id": "neow_option_1", "label": "Neow option 1"},
+            {"option_id": "neow_option_2", "label": "Neow option 2"},
+            {"option_id": "neow_option_3", "label": "Neow option 3"},
+        ]
+    }
+    assert parsed.state_boxes == {
+        "event_option:neow_option_1": (470, 740, 1450, 835),
+        "event_option:neow_option_2": (470, 835, 1450, 930),
+        "event_option:neow_option_3": (470, 930, 1450, 1030),
+    }
+    assert parsed.field_confidence == {"event_options": 0.99}
 
 
 def test_parse_ocr_screen_scales_reward_layout_from_reference_resolution(tmp_path: Path) -> None:

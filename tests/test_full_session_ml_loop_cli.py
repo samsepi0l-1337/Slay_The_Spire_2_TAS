@@ -58,6 +58,11 @@ def _game_over_sequence(path: Path) -> Path:
     return path
 
 
+def _unknown_sequence(path: Path) -> Path:
+    path.write_text(json.dumps([[_token("Loading", (820, 480, 1100, 540))]]), encoding="utf-8")
+    return path
+
+
 def _two_episode_training_sequence(path: Path) -> Path:
     path.write_text(
         json.dumps(
@@ -192,6 +197,152 @@ def test_default_action_requires_legal_candidate() -> None:
 
     with pytest.raises(ValueError, match="no legal action"):
         live_learning._default_action_id(Step())  # type: ignore[arg-type]
+
+
+def test_live_learn_loop_stop_file_exits_before_next_iteration(tmp_path: Path, capsys) -> None:
+    stop_file = tmp_path / "stop-live-loop.flag"
+    stop_file.write_text("stop", encoding="utf-8")
+
+    exit_code = cli.main(
+        [
+            "live-learn-loop",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture-sequence",
+            str(_ocr_sequence(tmp_path / "ocr-sequence.json")),
+            "--dataset",
+            str(tmp_path / "dataset.jsonl"),
+            "--policy",
+            "first-legal",
+            "--input-log",
+            str(tmp_path / "inputs.jsonl"),
+            "--stop-file",
+            str(stop_file),
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert output == {
+        "steps": 0,
+        "trained": 0,
+        "interrupted": True,
+        "dataset": str(tmp_path / "dataset.jsonl"),
+        "model": None,
+    }
+    assert not (tmp_path / "dataset.jsonl").exists()
+    assert not (tmp_path / "inputs.jsonl").exists()
+
+
+def test_live_learn_loop_first_legal_policy_can_replay_full_session(tmp_path: Path, capsys) -> None:
+    dataset = tmp_path / "dataset.jsonl"
+    episodes = tmp_path / "episodes.jsonl"
+
+    exit_code = cli.main(
+        [
+            "live-learn-loop",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture-sequence",
+            str(_ocr_sequence(tmp_path / "ocr-sequence.json")),
+            "--dataset",
+            str(dataset),
+            "--episodes-out",
+            str(episodes),
+            "--policy",
+            "first-legal",
+            "--input-log",
+            str(tmp_path / "inputs.jsonl"),
+            "--max-steps",
+            "5",
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    steps = [GameStep.from_json(line) for line in dataset.read_text(encoding="utf-8").splitlines()]
+    episode_rows = [json.loads(line) for line in episodes.read_text(encoding="utf-8").splitlines()]
+
+    assert exit_code == 0
+    assert output["steps"] == 5
+    assert [step.label_source for step in steps] == ["heuristic"]
+    assert [step.chosen_action_id for step in steps] == ["pick_card|option=strike"]
+    assert episode_rows[0]["restart_action_id"] == "restart_run|option=new_run"
+
+
+def test_live_learn_loop_records_unknown_screen_and_continues_when_failure_log_exists(
+    tmp_path: Path, capsys
+) -> None:
+    failure_log = tmp_path / "failures.jsonl"
+
+    exit_code = cli.main(
+        [
+            "live-learn-loop",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture-sequence",
+            str(_unknown_sequence(tmp_path / "unknown-sequence.json")),
+            "--dataset",
+            str(tmp_path / "dataset.jsonl"),
+            "--policy",
+            "first-legal",
+            "--input-log",
+            str(tmp_path / "inputs.jsonl"),
+            "--failure-log",
+            str(failure_log),
+            "--max-steps",
+            "1",
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    failure = json.loads(failure_log.read_text(encoding="utf-8").splitlines()[0])
+    assert exit_code == 0
+    assert output["steps"] == 1
+    assert failure["reason"] == "screen_parse_failed"
+    assert "unknown OCR screen layout" in failure["controller_error"]
+    assert not (tmp_path / "dataset.jsonl").exists()
 
 
 def test_live_learn_loop_restarts_after_terminal_without_training_menu_rows(tmp_path: Path, capsys) -> None:

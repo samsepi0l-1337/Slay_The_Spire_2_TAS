@@ -14,7 +14,7 @@
 - `evaluate-play`: episode/play JSONL에서 win rate, floor/HP/step 평균, latency, timeout, misclick, illegal action, candidate recall을 기록한다. safety metric이 빠진 row는 기본 실패 지표로 계산하고, `--allow-missing-metrics`일 때 missing row count를 포함하며 missing candidate recall은 평균에서 제외한다.
 - `act`: saved `GameStep`과 명시 action id로 dry-run/input event/native input action을 계획하거나 실행한다.
 - `live-step`: 화면 capture 또는 fixture, OCR parsing, manual/model choice, input planning/execution을 한 번에 수행한다. post-input OCR fixture, fixture sequence, live frame polling 기반 acknowledgement/retry를 지원한다.
-- `live-learn-loop`: 최초 시작 메뉴부터 gameplay, terminal, restart까지 `live-step` 경계를 반복한다. combat/card reward/relic choice/map/shop/event/rest 화면은 `--choice` 또는 `--allow-model-self-labels`일 때만 labeled `GameStep` JSONL에 누적하고, `--execute`에서는 transition ack `changed`일 때만 `GameStep`/`TrajectoryStep` append와 JSONL input log commit을 확정한다. terminal return을 같은 episode의 gameplay row에 전파하며, 지정 interval과 terminal 전파 직후 PyTorch 모델을 재학습/저장한다. `--region-calibration`은 반복 OCR parse에도 적용된다.
+- `live-learn-loop`: 최초 시작 메뉴부터 gameplay, terminal, restart까지 `live-step` 경계를 반복한다. combat/card reward/relic choice/map/shop/event/rest 화면은 `--choice`, `--policy first-legal`, 또는 `--allow-model-self-labels`일 때만 labeled `GameStep` JSONL에 누적하고, `--execute`에서는 transition ack `changed`일 때만 `GameStep`/`TrajectoryStep` append와 JSONL input log commit을 확정한다. terminal return을 같은 episode의 gameplay row에 전파하며, 지정 interval과 terminal 전파 직후 PyTorch 모델을 재학습/저장한다. `--region-calibration`은 반복 OCR parse에도 적용된다.
 - `save-state backup`: 지정 save 파일을 backup directory로 복사한다.
 - `save-state restore`: exact hashed backup save를 원 위치로 복원하고 기존 save는 pre-restore copy로 보존한다.
 - `run-loop`: seed 목록, optional victory seed 목록, capture fixture/OCR로 seed episode JSONL을 생성한다.
@@ -112,7 +112,8 @@
 - terminal 화면은 `StepOutcome(terminal=True)`로 승패를 표시하고, `--episodes-out`이 있으면 episode, victory, floor, HP, labeled step count, restart action id를 JSONL로 기록한다. 같은 terminal frame이 반복되면 이미 reset된 episode를 steps=0 row로 다시 쓰지 않는다.
 - 기본 동작은 dry-run이며 `--execute` 없이는 input controller를 만들지 않는다. `--input-backend native`는 `--execute` 없으면 실패한다.
 - `--train-every N --model-out path.pt` 조합은 N개 신규 labeled row마다, 그리고 terminal return 전파 직후 `train_torch_model(load_game_steps(dataset), character, epochs, batch_size, device)` 후 `save_model`을 호출한다.
-- `KeyboardInterrupt`는 traceback 없이 `steps`, `trained`, `interrupted`, `dataset`, `model` summary JSON을 출력하고 정상 종료한다.
+- `KeyboardInterrupt`와 `--stop-file` 감지는 traceback 없이 `steps`, `trained`, `interrupted`, `dataset`, `model` summary JSON을 출력하고 정상 종료한다.
+- `scripts/run-windows-live-loop.ps1`은 Windows interactive scheduled task에서 `live-learn-loop --policy first-legal --ack-live-poll --target-process SlayTheSpire2 --input-backend native --execute --stop-file` 조합을 hidden으로 실행한다.
 
 ## Runtime And Evaluation
 

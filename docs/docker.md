@@ -185,6 +185,64 @@ Invoke-WebRequest `
 
 마지막 확인된 기본 설치는 `v5.4.0.20240606`, language는 `eng`, `osd`였습니다. `kor.traineddata`는 host tessdata 또는 `--tessdata-dir` 경로에 있어야 `--ocr-language eng+kor`가 fixture 없이 동작합니다. PATH가 잡히지 않은 host에서는 `--tesseract-binary 'C:\Program Files\Tesseract-OCR\tesseract.exe'`로 binary를 직접 지정합니다. 실제 게임 UI처럼 sparse text가 많은 화면은 `--ocr-psm 12`가 기본 page segmentation보다 안정적입니다.
 
+## Continuous Windows Live Loop
+
+Windows interactive session에서 게임 창이 열린 상태라면 `scripts/run-windows-live-loop.ps1`로 hidden scheduled task를 등록해 사용자가 멈출 때까지 실행할 수 있습니다. 이 wrapper는 `live-learn-loop`를 `--max-steps` 없이 실행하고, `--policy first-legal`, `--ack-live-poll`, `--target-process SlayTheSpire2`, `--input-backend native`, `--execute`, `--stop-file`을 함께 전달합니다. 승리 또는 게임 오버 terminal 화면에서 `New Run`/`다시 시작`이 인식되면 restart action을 클릭하고 다음 run으로 이어갑니다.
+
+```powershell
+cd C:\Users\steep\sts2-tas-run
+.\scripts\run-windows-live-loop.ps1 `
+  -TargetProcess SlayTheSpire2 `
+  -DataDir data\windows-live-loop `
+  -StopFile remote-smoke\stop-live-loop.flag `
+  -TesseractBinary 'C:\Program Files\Tesseract-OCR\tesseract.exe' `
+  -TessdataDir remote-smoke\tessdata
+```
+
+중단은 같은 checkout에서 stop file을 만들면 됩니다. hidden task는 다음 iteration 시작 시 이를 감지하고 summary JSON을 남기며 종료합니다.
+
+```powershell
+.\scripts\run-windows-live-loop.ps1 -Stop -StopFile remote-smoke\stop-live-loop.flag
+```
+
+wrapper가 내부에서 실행하는 핵심 CLI 형태는 아래와 같습니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m sts2_tas live-learn-loop `
+  --screenshot-out data\windows-live-loop\live.png `
+  --ocr-provider tesseract `
+  --ocr-language eng+kor `
+  --tesseract-binary 'C:\Program Files\Tesseract-OCR\tesseract.exe' `
+  --tessdata-dir remote-smoke\tessdata `
+  --ocr-psm 12 `
+  --dataset data\windows-live-loop\dataset.jsonl `
+  --trajectory-out data\windows-live-loop\trajectory.jsonl `
+  --episodes-out data\windows-live-loop\episodes.jsonl `
+  --failure-log data\windows-live-loop\failures.jsonl `
+  --input-log data\windows-live-loop\inputs.jsonl `
+  --policy first-legal `
+  --ack-live-poll `
+  --ack-max-retries 2 `
+  --target-process SlayTheSpire2 `
+  --input-backend native `
+  --execute `
+  --stop-file remote-smoke\stop-live-loop.flag `
+  --train-every 10 `
+  --model-out models\windows-live-loop.pt `
+  --epochs 1 `
+  --batch-size 64 `
+  --device cpu `
+  --game-version 0.105.1 `
+  --branch beta `
+  --character ironclad `
+  --ascension 0 `
+  --floor 1 `
+  --hp 70 `
+  --gold 0
+```
+
+`--policy first-legal`은 trained model이 없는 상태에서도 legal action 중 첫 후보를 heuristic label로 저장합니다. 실게임 OCR이 로딩 화면이나 알 수 없는 partial frame을 반환하면 `--failure-log`에 `screen_parse_failed`를 남기고 다음 iteration으로 넘어갑니다. 모델 기반 선택으로 전환할 때는 `--policy first-legal` 대신 `--model models\...pt`와 필요 시 `--allow-model-self-labels`를 사용합니다.
+
 ## Windows Executable
 
 Docker is not required when you only need a local Windows CLI executable. On Windows PowerShell, run:
