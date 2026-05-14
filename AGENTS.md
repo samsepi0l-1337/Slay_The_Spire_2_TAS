@@ -32,6 +32,7 @@
 - test 진행후 전체 파일을 검토하여 누락된 부분이 있는지 확인한다.
 - 코드를 수정한 후에는 documentat를 업데이트한다.
 - 작업이 끝나면 PR commit & push 하고, comments에 `@codex review` + review 해야하는 사항들을 작성한다.
+- test에는 e2e test를 포함한다.
 
 ## Documentation
 
