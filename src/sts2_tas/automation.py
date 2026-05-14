@@ -63,7 +63,8 @@ def plan_action(
     resolved_action_id = resolve_action_identity(step.actions, action_id)
     candidate = next(action for action in step.actions if action.identity == resolved_action_id)
     automation_action = "skip" if candidate.action_type in {"skip_reward", "end_turn"} else "pick"
-    option_id = None if automation_action == "skip" else candidate.option_id or candidate.identity
+    option_id = _automation_option_id(candidate, automation_action)
+    key = "e" if candidate.action_type == "end_turn" else None
     target = candidate.screen_box
     if automation_action == "pick" and target is None:
         raise ValueError(f"action_id has no screen target: {action_id}")
@@ -76,6 +77,7 @@ def plan_action(
         dry_run=dry_run,
         target=target,
         targets=targets,
+        key=key,
         coordinate_space=coordinate_space,
         target_window=target_window,
     )
@@ -100,6 +102,14 @@ def _input_targets(candidate, target: Box | None) -> list[Box] | None:
     return [target, candidate.target_screen_box]
 
 
+def _automation_option_id(candidate, automation_action: str) -> str | None:
+    if candidate.action_type == "end_turn":
+        return candidate.identity
+    if automation_action == "skip":
+        return None
+    return candidate.option_id or candidate.identity
+
+
 def _native_command(action: AutomationAction, platform_name: str) -> list[str]:
     system = platform_name.lower()
     plan = _native_input_plan(action, system)
@@ -113,7 +123,7 @@ def _native_command(action: AutomationAction, platform_name: str) -> list[str]:
 
 
 def _native_input_plan(action: AutomationAction, system: str) -> dict[str, object]:
-    if system == "windows" and action.action == "skip":
+    if system == "windows" and action.action == "skip" and action.key is None:
         plan = {"kind": "keypress", "key": "escape"}
     else:
         plan = action.input_plan()
@@ -163,7 +173,7 @@ def _windows_command(plan: dict[str, object]) -> list[str]:
         "powershell",
         "-NoProfile",
         "-Command",
-        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{ESC}')",
+        _windows_keypress_command(str(plan["key"])),
     ]
 
 
@@ -241,11 +251,21 @@ def _windows_action_script(plan: dict[str, object]) -> str:
         return _windows_click_action_script(int(plan["x"]), int(plan["y"]))
     if plan["kind"] == "sequence":
         return "".join(_windows_action_script(step) for step in plan["steps"])  # type: ignore[arg-type]
-    return _windows_keypress_action_script()
+    return _windows_keypress_action_script(str(plan["key"]))
 
 
-def _windows_keypress_action_script() -> str:
-    return "Add-Type -AssemblyName System.Windows.Forms\n[System.Windows.Forms.SendKeys]::SendWait('{ESC}')\n"
+def _windows_keypress_command(key: str) -> str:
+    return f"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{_windows_key(key)}')"
+
+
+def _windows_keypress_action_script(key: str) -> str:
+    return f"Add-Type -AssemblyName System.Windows.Forms\n[System.Windows.Forms.SendKeys]::SendWait('{_windows_key(key)}')\n"
+
+
+def _windows_key(key: str) -> str:
+    if key.casefold() == "escape":
+        return "{ESC}"
+    return key.replace("'", "''")
 
 
 def _escape_applescript(value: str) -> str:
@@ -297,7 +317,9 @@ def _macos_action(plan: dict[str, object]) -> str:
         return f'click at {{{plan["x"]}, {plan["y"]}}}'
     if plan["kind"] == "sequence":
         return "\n".join(_macos_action(step) for step in plan["steps"])  # type: ignore[arg-type]
-    return "key code 53"
+    if str(plan["key"]).casefold() == "escape":
+        return "key code 53"
+    return f'keystroke "{_escape_applescript(str(plan["key"]))}"'
 
 
 def _indent_applescript(script: str) -> str:

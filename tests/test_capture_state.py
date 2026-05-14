@@ -223,6 +223,51 @@ def test_overlay_captured_game_state_replaces_live_entities_and_clears_observed_
     assert overlay.unknown_tokens == ["new token"]
 
 
+def test_overlay_captured_game_state_clears_nested_entity_missing_fields() -> None:
+    captured = load_captured_game_state(
+        state_json=None,
+        deck=["strike"],
+        relics=[],
+        hp=70,
+        gold=0,
+        max_hp=80,
+        block=0,
+        energy=3,
+        turn=1,
+        strength=0,
+        dexterity=0,
+        vulnerable=0,
+        weak=0,
+        frail=0,
+        artifact=0,
+        poison=0,
+        regen=0,
+        intangible=0,
+    )
+
+    overlay = overlay_captured_game_state(
+        captured,
+        {
+            "cards": [
+                {
+                    "instance_id": "hand-strike",
+                    "card_id": "strike",
+                    "zone": "hand",
+                    "upgraded": False,
+                    "base_cost": 1,
+                    "current_cost": 1,
+                    "type": "attack",
+                    "rarity": "basic",
+                    "tags": ["attack"],
+                }
+            ],
+        },
+    )
+
+    assert "cards.metadata" in captured.missing_fields
+    assert "cards.metadata" not in overlay.missing_fields
+
+
 def test_load_captured_game_state_handles_empty_and_invalid_payload(tmp_path: Path) -> None:
     invalid_state = tmp_path / "state.json"
     invalid_state.write_text("[]", encoding="utf-8")

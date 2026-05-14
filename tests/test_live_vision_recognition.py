@@ -198,6 +198,60 @@ def test_parse_ocr_screen_matches_adjacent_multiword_relics_from_one_tsv_line(tm
     assert [option.id for option in parsed.options] == ["burning_blood", "tiny_house"]
 
 
+def test_parse_ocr_screen_matches_split_game_over_from_tesseract_tsv(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        recognition._tokens_from_tsv(
+            "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+            "5\t1\t1\t1\t1\t1\t760\t160\t190\t90\t96.0\tGame\n"
+            "5\t1\t1\t1\t1\t2\t970\t160\t190\t90\t94.0\tOver\n"
+            "5\t1\t1\t1\t2\t1\t810\t780\t130\t70\t96.0\tNew\n"
+            "5\t1\t1\t1\t2\t2\t960\t780\t150\t70\t94.0\tRun\n"
+        )
+    )
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "game-over.png"), ocr_provider=provider)
+
+    assert parsed.kind == "game_over"
+    assert [option.id for option in parsed.options] == ["new_run"]
+
+
+@pytest.mark.parametrize(
+    ("title_tokens", "expected_kind"),
+    [
+        (["승리"], "victory"),
+        (["게임", "오버"], "game_over"),
+    ],
+)
+def test_parse_ocr_screen_matches_korean_terminal_aliases(
+    tmp_path: Path,
+    title_tokens: list[str],
+    expected_kind: str,
+) -> None:
+    tokens = [
+        recognition.OcrToken(text=text, box=(760 + index * 140, 160, 880 + index * 140, 250), confidence=0.99)
+        for index, text in enumerate(title_tokens)
+    ]
+    tokens.append(recognition.OcrToken("다시 시작", (810, 780, 1110, 850), 0.99))
+    provider = recognition.FakeOcrProvider(tokens)
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "terminal-kr.png"), ocr_provider=provider)
+
+    assert parsed.kind == expected_kind
+    assert [option.id for option in parsed.options] == ["new_run"]
+
+
+def test_parse_ocr_screen_ignores_low_confidence_terminal_title(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            recognition.OcrToken("Game Over", (760, 160, 1160, 250), 0.30),
+            recognition.OcrToken("New Run", (810, 780, 1110, 850), 0.99),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="unknown OCR screen layout"):
+        recognition.parse_ocr_screen(_blank_screen(tmp_path / "low-terminal.png"), ocr_provider=provider)
+
+
 def test_parse_ocr_screen_accepts_combat_state_without_reward_options(tmp_path: Path) -> None:
     provider = recognition.FakeOcrProvider(
         [

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from PIL import Image
+import pytest
 
 from sts2_tas import cli
 
@@ -88,6 +89,42 @@ def test_cli_live_step_retries_until_polled_frame_acknowledges_change(tmp_path: 
     assert output["transition_ack"]["attempts"] == 2
     assert output["transition_ack"]["retry_count"] == 1
     assert [item["status"] for item in output["transition_ack"]["history"]] == ["no_op", "changed"]
+
+
+def test_cli_live_step_rejects_negative_ack_retry_count(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="ack-max-retries"):
+        cli.main(
+            [
+                "live-step",
+                "--capture-fixture",
+                str(_screen(tmp_path / "screen.png")),
+                "--ocr-fixture",
+                str(_ocr_fixture(tmp_path / "ocr.json")),
+                "--ack-ocr-fixture-sequence",
+                str(_ack_sequence(tmp_path / "ack-sequence.json")),
+                "--ack-max-retries",
+                "-1",
+                "--choice",
+                "pick:strike",
+                "--input-log",
+                str(tmp_path / "inputs.jsonl"),
+                "--execute",
+                "--game-version",
+                "0.105.1",
+                "--branch",
+                "beta",
+                "--character",
+                "ironclad",
+                "--ascension",
+                "0",
+                "--floor",
+                "1",
+                "--hp",
+                "70",
+                "--gold",
+                "0",
+            ]
+        )
 
 
 def test_cli_live_step_retry_reports_timeout_when_polling_frame_is_missing(tmp_path: Path, capsys) -> None:

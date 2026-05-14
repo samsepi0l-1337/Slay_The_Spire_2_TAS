@@ -33,13 +33,21 @@ Window capture
 - targeted combat card/potion action에 `target_screen_box`를 연결하고 source+monster multi-click sequence를 `AutomationAction`/jsonl/native backend까지 전달한다.
 - `live-step --ack-ocr-fixture-sequence`와 `--ack-live-poll`에 `--ack-max-retries`를 연결해 no-op/timeout acknowledgement에서 실제 retry input을 수행한다.
 - `score_branch_outcome()`과 `mcts_seed_search()`를 추가해 branch outcome scorer와 UCT-style MCTS candidate search를 제공한다.
+- Tesseract split token의 `Game`/`Over`, 한국어 `승리`/`게임 오버` terminal alias를 confidence `0.60` 이상일 때만 episode boundary로 처리한다.
+- `live-learn-loop`가 combat/map도 gameplay로 취급해 manual/model choice, dataset append, training path를 동일하게 탄다.
+- terminal return 전파 직후 모델을 재학습하고, 반복 terminal frame은 steps=0 episode summary로 중복 기록하지 않는다.
+- combat `end_turn`은 targetless skip/Escape가 아니라 `e` keypress로 실행 계획을 만든다.
+- transition signature는 legal action identity를 정렬해 OCR ordering 변화만으로 retry가 suppress되지 않게 한다.
+- save-state branch search는 bound scorer 평가 전에도 save를 복원한다.
+- live OCR overlay가 `cards` 같은 entity payload를 제공하면 `cards.metadata` 같은 stale nested missing field를 제거한다.
+- `--ack-max-retries` 음수 입력을 실행 전 명시적으로 거부한다.
 
 ## P0 Gaps
 
 - Live state extractor: OCR text grammar 기반 HP/max HP, block, energy, turn, gold, floor, hand, potion, monster, map 추출과 calibrated CV/OCR region filtering은 시작됐다. draw/discard/exhaust, relic counters, field-level confidence는 남아 있다.
 - Legal action integration: combat/card_reward/map은 live OCR state와 generator가 연결됐다. targeted combat/potion multi-click은 구현됐다. shop/event/rest와 non-monster targeting은 남아 있다.
-- Transition acknowledgement: changed/no-op/timeout 분리, fixture sequence retry, live frame polling retry는 구현됐다. debounce, latency/error metrics, retry backoff policy는 남아 있다.
-- Trajectory return: terminal outcome을 gameplay rows에 Monte Carlo return으로 전파한다. TD target, discounted return, per-step reward shaping은 남아 있다.
+- Transition acknowledgement: changed/no-op/timeout 분리, fixture sequence retry, live frame polling retry, action-order stable signature는 구현됐다. debounce, latency/error metrics, retry backoff policy는 남아 있다.
+- Trajectory return: terminal outcome을 gameplay rows에 Monte Carlo return으로 전파하고 terminal 직후 재학습한다. TD target, discounted return, per-step reward shaping은 남아 있다.
 
 ## P1 Gaps
 

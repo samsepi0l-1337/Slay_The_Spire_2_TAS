@@ -43,6 +43,38 @@ def test_search_save_state_branches_restores_save_before_each_candidate(tmp_path
     assert save.read_text(encoding="utf-8") == "original"
 
 
+def test_search_save_state_branches_restores_save_before_bound_checks(tmp_path: Path) -> None:
+    save = tmp_path / "save.dat"
+    save.write_text("original", encoding="utf-8")
+    observed_bounds = []
+    observed_scores = []
+
+    def bound_branch(_seed: int, path: tuple[str, ...]) -> float:
+        observed_bounds.append((path, save.read_text(encoding="utf-8")))
+        save.write_text("bound-mutated", encoding="utf-8")
+        return 1.0
+
+    def score_branch(_seed: int, path: tuple[str, ...]) -> float:
+        observed_scores.append((path, save.read_text(encoding="utf-8")))
+        save.write_text("score-mutated", encoding="utf-8")
+        return float(len(path))
+
+    result = search_save_state_branches(
+        seed=11,
+        choices=["left", "right"],
+        save=save,
+        backup_dir=tmp_path / "backups",
+        max_depth=1,
+        score_branch=score_branch,
+        bound_branch=bound_branch,
+    )
+
+    assert result.choices == ["left"]
+    assert observed_bounds == [(("left",), "original"), (("right",), "original")]
+    assert observed_scores == [(("left",), "original"), (("right",), "original")]
+    assert save.read_text(encoding="utf-8") == "original"
+
+
 def test_score_branch_outcome_weights_terminal_progress_and_cost() -> None:
     score = score_branch_outcome(
         victory=True,

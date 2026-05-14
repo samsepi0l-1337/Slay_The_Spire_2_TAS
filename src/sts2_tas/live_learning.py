@@ -18,6 +18,8 @@ from .step_factory import game_step_from_parsed_screen
 from .torch_dataset import append_game_step, load_game_steps, write_game_steps
 from .windowing import WindowDetector
 
+GAMEPLAY_CONTEXTS = {"combat", "card_reward", "relic_choice", "map"}
+
 
 @dataclass(frozen=True)
 class LiveLearnSummary:
@@ -79,7 +81,9 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
     apply_action(action, controller)
     state.steps += 1
     if _is_terminal_step(labeled_step):
-        _append_episode_summary(args, state, labeled_step, action_id)
+        labeled_steps = _append_episode_summary(args, state, labeled_step, action_id)
+        _train_after_terminal_return(args, state, labeled_steps)
+        return
     if not _is_gameplay_step(labeled_step):
         return
     if not _should_append_training_label(args):
@@ -147,7 +151,7 @@ def _with_chosen_action(step: GameStep, action_id: str) -> GameStep:
 
 
 def _is_gameplay_step(step: GameStep) -> bool:
-    return step.state.decision_context in {"card_reward", "relic_choice"}
+    return step.state.decision_context in GAMEPLAY_CONTEXTS
 
 
 def _is_terminal_step(step: GameStep) -> bool:
@@ -158,26 +162,30 @@ def _should_append_training_label(args: argparse.Namespace) -> bool:
     return args.choice is not None or bool(getattr(args, "allow_model_self_labels", False))
 
 
-def _append_episode_summary(args: argparse.Namespace, state: _LoopState, step: GameStep, restart_action_id: str) -> None:
+def _append_episode_summary(args: argparse.Namespace, state: _LoopState, step: GameStep, restart_action_id: str) -> int:
     if step.outcome is None:
-        return
-    _propagate_terminal_return(args.dataset, state.episode_labeled_steps, step.outcome)
+        return 0
+    labeled_steps = state.episode_labeled_steps
+    if labeled_steps <= 0:
+        return 0
+    _propagate_terminal_return(args.dataset, labeled_steps, step.outcome)
     if args.episodes_out is None:
         state.episode_labeled_steps = 0
-        return
+        return labeled_steps
     state.episodes += 1
     row = {
         "episode": state.episodes,
         "floor_reached": step.outcome.floor_reached,
         "hp_remaining": step.outcome.hp_remaining,
         "restart_action_id": restart_action_id,
-        "steps": state.episode_labeled_steps,
+        "steps": labeled_steps,
         "victory": step.outcome.victory,
     }
     state.episode_labeled_steps = 0
     args.episodes_out.parent.mkdir(parents=True, exist_ok=True)
     with args.episodes_out.open("a", encoding="utf-8") as file:
         file.write(json.dumps(row, sort_keys=True) + "\n")
+    return labeled_steps
 
 
 def _propagate_terminal_return(dataset: Path, labeled_steps: int, terminal_outcome: StepOutcome) -> None:
@@ -211,6 +219,16 @@ def _train_if_due(args: argparse.Namespace, state: _LoopState) -> None:
         return
     if state.pending_labeled_steps < args.train_every:
         return
+    _train_model(args, state)
+
+
+def _train_after_terminal_return(args: argparse.Namespace, state: _LoopState, labeled_steps: int) -> None:
+    if labeled_steps <= 0 or args.train_every is None or args.model_out is None:
+        return
+    _train_model(args, state)
+
+
+def _train_model(args: argparse.Namespace, state: _LoopState) -> None:
     model = train_torch_model(
         load_game_steps(args.dataset),
         character=args.character,

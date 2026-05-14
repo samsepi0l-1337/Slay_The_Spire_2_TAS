@@ -238,6 +238,7 @@ def _capture_live(args: argparse.Namespace) -> None:
 
 
 def _live_step(args: argparse.Namespace) -> None:
+    _validate_ack_max_retries(args)
     target_window = _target_window(args)
     if args.capture_fixture:
         screenshot_path = args.capture_fixture
@@ -447,6 +448,7 @@ def _apply_live_step_action(
     screenshot_path: Path,
     target_window: TargetWindow | None,
 ) -> tuple[dict[str, object], dict[str, object] | None]:
+    _validate_ack_max_retries(args)
     if args.ack_ocr_fixture_sequence is None and not args.ack_live_poll:
         action_report = apply_action(action, controller)
         if args.ack_ocr_fixture is None:
@@ -469,6 +471,11 @@ def _apply_live_step_action(
     final["retry_count"] = len(history) - 1
     final["history"] = history
     return action_report, final
+
+
+def _validate_ack_max_retries(args: argparse.Namespace) -> None:
+    if getattr(args, "ack_max_retries", 0) < 0:
+        raise ValueError("--ack-max-retries must be non-negative")
 
 
 def _ack_poll_step(

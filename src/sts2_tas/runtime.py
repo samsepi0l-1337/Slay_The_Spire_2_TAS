@@ -199,13 +199,20 @@ def search_save_state_branches(
         restore_save(save, backup_dir)
         return score_branch(candidate_seed, path)
 
+    restored_bound: ScoreBranch | None = None
+    if bound_branch is not None:
+
+        def restored_bound(candidate_seed: int, path: tuple[str, ...]) -> float:
+            restore_save(save, backup_dir)
+            return bound_branch(candidate_seed, path)
+
     try:
         return branch_and_bound_seed(
             seed=seed,
             choices=choices,
             max_depth=max_depth,
             score_branch=restored_score,
-            bound_branch=bound_branch,
+            bound_branch=restored_bound,
         )
     finally:
         restore_save(save, backup_dir)

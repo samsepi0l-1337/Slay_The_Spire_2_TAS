@@ -89,6 +89,27 @@ def _two_episode_training_sequence(path: Path) -> Path:
     return path
 
 
+def _duplicate_terminal_sequence(path: Path) -> Path:
+    path.write_text(
+        json.dumps(
+            [
+                [
+                    _token("Strike", (250, 260, 430, 330)),
+                    _token("Defend", (760, 260, 940, 330)),
+                    _token("Bash", (1270, 260, 1450, 330)),
+                    _token("Skip", (880, 930, 1040, 990)),
+                ],
+                [
+                    _token("Victory!", (760, 160, 1160, 250)),
+                    _token("New Run", (810, 780, 1110, 850)),
+                ],
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_parse_ocr_screen_maps_game_over_restart_action(tmp_path: Path) -> None:
     provider = recognition.FakeOcrProvider(
         [
@@ -238,14 +259,63 @@ def test_live_learn_loop_restarts_after_terminal_without_training_menu_rows(tmp_
     assert steps[0].outcome.terminal is False
 
 
+def test_live_learn_loop_does_not_duplicate_terminal_episode_rows(tmp_path: Path, capsys) -> None:
+    episodes = tmp_path / "episodes.jsonl"
+
+    exit_code = cli.main(
+        [
+            "live-learn-loop",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture-sequence",
+            str(_duplicate_terminal_sequence(tmp_path / "ocr-sequence.json")),
+            "--dataset",
+            str(tmp_path / "dataset.jsonl"),
+            "--episodes-out",
+            str(episodes),
+            "--choice",
+            "pick:strike",
+            "--input-log",
+            str(tmp_path / "inputs.jsonl"),
+            "--max-steps",
+            "3",
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    episode_rows = [json.loads(line) for line in episodes.read_text(encoding="utf-8").splitlines()]
+
+    assert exit_code == 0
+    assert len(episode_rows) == 1
+    assert episode_rows[0]["steps"] == 1
+
+
 def test_episode_steps_are_independent_from_train_interval_resets(
     tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     dataset = tmp_path / "dataset.jsonl"
     episodes = tmp_path / "episodes.jsonl"
+    train_rewards = []
     trained_models = []
 
-    monkeypatch.setattr(live_learning, "train_torch_model", lambda *args, **kwargs: object())
+    def fake_train(steps, *args, **kwargs):
+        train_rewards.append([None if step.outcome is None else step.outcome.immediate_reward for step in steps])
+        return object()
+
+    monkeypatch.setattr(live_learning, "train_torch_model", fake_train)
     monkeypatch.setattr(live_learning, "save_model", lambda model, path: trained_models.append(path))
 
     exit_code = cli.main(
@@ -290,6 +360,7 @@ def test_episode_steps_are_independent_from_train_interval_resets(
     episode_rows = [json.loads(line) for line in episodes.read_text(encoding="utf-8").splitlines()]
 
     assert exit_code == 0
-    assert output["trained"] == 2
-    assert len(trained_models) == 2
+    assert output["trained"] == 4
+    assert len(trained_models) == 4
+    assert train_rewards[-1] == [1.0, 0.0]
     assert [row["steps"] for row in episode_rows] == [1, 1]

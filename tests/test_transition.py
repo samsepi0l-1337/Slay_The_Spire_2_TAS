@@ -4,8 +4,8 @@ from sts2_tas.schema import ActionCandidate, GameStep, ObservationQuality, Playe
 from sts2_tas.transition import acknowledge_transition
 
 
-def _step(decision_context: str, action_id: str = "end_turn") -> GameStep:
-    action = ActionCandidate(action_type=action_id)
+def _step(decision_context: str, action_ids: list[str] | None = None) -> GameStep:
+    actions = [ActionCandidate(action_type=action_id) for action_id in (action_ids or ["end_turn"])]
     return GameStep(
         state=StructuredGameState(
             game_version="0.105.1",
@@ -17,8 +17,8 @@ def _step(decision_context: str, action_id: str = "end_turn") -> GameStep:
             decision_context=decision_context,
             player=PlayerState(hp=70, max_hp=80, block=0, energy=3, turn=1),
         ),
-        actions=[action],
-        chosen_action_id=action.identity,
+        actions=actions,
+        chosen_action_id=actions[0].identity,
         outcome=None,
         observation=ObservationQuality("fixture", 1.0, "0.105.1", "beta", "test-catalog"),
         screenshot_path=Path("screen.png"),
@@ -38,3 +38,13 @@ def test_acknowledge_transition_splits_changed_noop_and_timeout() -> None:
     assert no_op.retry_recommended is True
     assert timeout.status == "timeout"
     assert timeout.retry_recommended is True
+
+
+def test_acknowledge_transition_treats_reordered_legal_actions_as_noop() -> None:
+    before = _step("combat", ["play_card", "end_turn"])
+    after = _step("combat", ["end_turn", "play_card"])
+
+    ack = acknowledge_transition(before, [after], "play_card")
+
+    assert ack.status == "no_op"
+    assert ack.retry_recommended is True

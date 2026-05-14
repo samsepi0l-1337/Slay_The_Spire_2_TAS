@@ -161,6 +161,45 @@ def test_native_input_controller_maps_skip_to_keypress() -> None:
     assert commands == [["osascript", "-e", 'tell application "System Events" to key code 53']]
 
 
+def test_plan_action_maps_combat_end_turn_to_turn_keypress(tmp_path: Path) -> None:
+    step = GameStep.from_json(
+        _step(
+            tmp_path / "step.json",
+            actions=[ActionCandidate(action_type="end_turn")],
+        ).read_text(encoding="utf-8")
+    )
+
+    action = automation.plan_action(step, "end_turn", dry_run=True)
+
+    assert action.action == "skip"
+    assert action.option_id == "end_turn"
+    assert action.input_plan() == {"kind": "keypress", "key": "e"}
+    assert action.to_event()["key"] == "e"
+
+
+def test_native_input_controller_maps_end_turn_keypress_commands() -> None:
+    commands = []
+    action = AutomationAction(action="skip", option_id="end_turn", dry_run=False, target=None, key="e")
+
+    automation.NativeInputController(platform_name="Darwin", runner=commands.append).send(action)
+    automation.NativeInputController(platform_name="Linux", runner=commands.append).send(action)
+    automation.NativeInputController(platform_name="Windows", runner=commands.append).send(action)
+
+    assert commands[0] == ["osascript", "-e", 'tell application "System Events" to keystroke "e"']
+    assert commands[1] == ["xdotool", "key", "e"]
+    assert commands[2] == [
+        "powershell",
+        "-NoProfile",
+        "-Command",
+        "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('e')",
+    ]
+
+
+def test_automation_action_rejects_empty_keypress_key() -> None:
+    with pytest.raises(ValueError, match="keypress key"):
+        AutomationAction(action="skip", option_id="end_turn", dry_run=False, target=None, key="")
+
+
 def test_plan_action_rejects_target_window_for_screen_absolute_step(tmp_path: Path) -> None:
     step = GameStep.from_json(_step(tmp_path / "step.json").read_text(encoding="utf-8"))
 

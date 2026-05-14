@@ -55,7 +55,7 @@ def acknowledge_transition(
 
 
 def _signature(step: GameStep) -> str:
-    legal_actions = ",".join(action.identity for action in step.actions if action.legal)
+    legal_actions = ",".join(sorted(action.identity for action in step.actions if action.legal))
     player = step.state.player
     return "|".join(
         [

@@ -17,6 +17,8 @@ PixelPredicate = Callable[[tuple[int, int, int]], bool]
 OcrToken = OcrResult
 REFERENCE_RESOLUTION = (1920, 1080)
 MIN_OCR_OPTION_CONFIDENCE = 0.60
+VICTORY_TERMS = {"victory", "victory!", "clear", "run clear", "승리", "승리!", "클리어"}
+GAME_OVER_TERMS = {"game over", "defeat", "defeated", "게임 오버", "게임오버", "패배"}
 
 
 class OcrProvider(Protocol):
@@ -268,12 +270,27 @@ def _catalog_match(text: str) -> CatalogEntry | None:
 
 
 def _terminal_kind(tokens: list[OcrToken]) -> DetectionKind | None:
-    normalized = {_normalize_text(token.text) for token in tokens}
-    if normalized & {"victory", "victory!", "clear", "run clear"}:
+    normalized = _terminal_candidates(tokens)
+    if normalized & VICTORY_TERMS:
         return DetectionKind.VICTORY
-    if normalized & {"game over", "defeat", "defeated"}:
+    if normalized & GAME_OVER_TERMS:
         return DetectionKind.GAME_OVER
     return None
+
+
+def _terminal_candidates(tokens: list[OcrToken]) -> set[str]:
+    ordered = sorted(
+        (token for token in tokens if token.confidence >= MIN_OCR_OPTION_CONFIDENCE),
+        key=lambda token: (token.box[1], token.box[0]),
+    )
+    texts = [_normalize_text(token.text) for token in ordered]
+    candidates = {text for text in texts if text}
+    for size in (2, 3):
+        for start in range(0, len(texts) - size + 1):
+            phrase = _normalize_text(" ".join(texts[start : start + size]))
+            if phrase:
+                candidates.add(phrase)
+    return candidates
 
 
 def _menu_kind(options: list[RecognizedOption]) -> DetectionKind | None:

@@ -152,7 +152,14 @@ def _unresolved_missing(missing: list[str], payload: dict[str, Any]) -> list[str
     for key in ("cards", "relics", "potions", "monsters", "path_candidates"):
         if key in payload:
             observed.add(key)
-    return [field for field in missing if field not in observed]
+    return [field for field in missing if not _missing_field_observed(field, observed)]
+
+
+def _missing_field_observed(field: str, observed: set[str]) -> bool:
+    if field in observed:
+        return True
+    entity_root = field.split(".", 1)[0]
+    return entity_root in {"cards", "relics", "potions", "monsters", "path_candidates"} and entity_root in observed
 
 
 def _player_from_inputs(

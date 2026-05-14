@@ -101,10 +101,13 @@ class AutomationAction:
     dry_run: bool
     target: Box | None = None
     targets: list[Box] | None = None
+    key: str | None = None
     coordinate_space: CoordinateSpace = "screen_absolute"
     target_window: TargetWindow | None = None
 
     def __post_init__(self) -> None:
+        if self.key is not None and not self.key:
+            raise ValueError("keypress key cannot be empty")
         if self.coordinate_space not in {"screen_absolute", "window_relative"}:
             raise ValueError(f"unsupported coordinate_space: {self.coordinate_space}")
         if self.target_window is not None and self.coordinate_space != "window_relative":
@@ -119,7 +122,7 @@ class AutomationAction:
         if not target_boxes:
             if self.action == "pick":
                 raise ValueError("pick automation actions require target")
-            return {"kind": "keypress", "key": "escape"}
+            return {"kind": "keypress", "key": self.key or "escape"}
         steps = [_click_step(box, self.coordinate_space, self.target_window) for box in target_boxes]
         if len(steps) > 1:
             return {"kind": "sequence", "steps": steps}
@@ -131,6 +134,8 @@ class AutomationAction:
             event["target"] = list(self.target)
         if self.targets is not None:
             event["targets"] = [list(target) for target in self.targets]
+        if self.key is not None:
+            event["key"] = self.key
         event["coordinate_space"] = self.coordinate_space
         if self.target_window is not None:
             event["target_window"] = self.target_window.to_dict()
