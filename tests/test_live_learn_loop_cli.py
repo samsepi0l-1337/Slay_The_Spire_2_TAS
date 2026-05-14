@@ -356,8 +356,16 @@ def test_live_learn_loop_can_use_model_tesseract_and_target_window_capture(tmp_p
     capture_calls = []
 
     class Provider:
-        def __init__(self, *, language: str) -> None:
+        def __init__(
+            self,
+            *,
+            language: str,
+            tessdata_dir: Path | None = None,
+            page_segmentation_mode: int | None = None,
+        ) -> None:
             assert language == "eng+kor"
+            assert tessdata_dir is None
+            assert page_segmentation_mode is None
 
         def recognize(self, image_path: Path):
             return [
@@ -567,6 +575,14 @@ def test_live_learn_loop_logs_missing_ack_without_dataset_append(tmp_path: Path,
     assert failure["reason"] == "missing_transition_ack"
     assert failure["action_id"] == "pick_card|option=strike"
     assert failure["after_signature"] is None
+
+
+def test_live_learn_loop_missing_ack_without_failure_log_raises_before_input(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="requires transition ack"):
+        cli.main([*_base_args(tmp_path), "--max-steps", "1", "--execute"])
+
+    assert not (tmp_path / "inputs.jsonl").exists()
+    assert not (tmp_path / "dataset.jsonl").exists()
 
 
 def test_live_learn_loop_logs_fail_closed_perception_without_input(tmp_path: Path, capsys) -> None:

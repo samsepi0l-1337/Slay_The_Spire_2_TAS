@@ -5,13 +5,13 @@ from sts2_tas.schema import ParsedScreen, RecognizedOption
 from sts2_tas.step_factory import _reward_option_binding, game_step_from_parsed_screen
 
 
-def _captured():
+def _captured(*, gold: int = 0):
     return load_captured_game_state(
         state_json=None,
         deck=[],
         relics=[],
         hp=70,
-        gold=0,
+        gold=gold,
         max_hp=80,
         block=0,
         energy=3,
@@ -204,7 +204,7 @@ def test_step_factory_binds_live_shop_event_and_rest_action_boxes() -> None:
         character="ironclad",
         ascension=0,
         floor=1,
-        captured_state=_captured(),
+        captured_state=_captured(gold=200),
         source_type="fixture",
     )
     event = game_step_from_parsed_screen(
@@ -282,7 +282,7 @@ def test_step_factory_fail_closed_excludes_leave_shop_action_without_observed_le
         character="ironclad",
         ascension=0,
         floor=1,
-        captured_state=_captured(),
+        captured_state=_captured(gold=200),
         source_type="fixture",
     )
 

@@ -19,6 +19,7 @@ REFERENCE_RESOLUTION = (1920, 1080)
 MIN_OCR_OPTION_CONFIDENCE = 0.60
 VICTORY_TERMS = {"victory", "victory!", "clear", "run clear", "승리", "승리!", "클리어"}
 GAME_OVER_TERMS = {"game over", "defeat", "defeated", "게임 오버", "게임오버", "패배"}
+MAP_MARKER_TERMS = {"legend", "범례"}
 
 
 class OcrProvider(Protocol):
@@ -81,12 +82,15 @@ class TesseractOcrProvider:
     language: str = "eng"
     binary: str = "tesseract"
     tessdata_dir: Path | None = None
+    page_segmentation_mode: int | None = None
 
     def recognize(self, image_path: Path) -> list[OcrToken]:
         command = [self.binary, str(image_path), "stdout", "-l", self.language]
         if self.tessdata_dir is not None:
             command.extend(["--tessdata-dir", str(self.tessdata_dir)])
-        command.append("tsv")
+        if self.page_segmentation_mode is not None:
+            command.extend(["--psm", str(self.page_segmentation_mode)])
+        command.extend(["-c", "tessedit_create_tsv=1"])
         result = subprocess.run(
             command,
             capture_output=True,
@@ -133,6 +137,8 @@ def parse_ocr_screen(
     if non_skip and all(option.kind == "relic" for option in non_skip):
         return _parsed(DetectionKind.RELIC_CHOICE.value, _slot_ids(non_skip), image_path, (width, height), extraction)
     if extraction.state_payload.get("path_candidates"):
+        return _parsed("map", [], image_path, (width, height), extraction)
+    if _has_map_marker(tokens):
         return _parsed("map", [], image_path, (width, height), extraction)
     if extraction.state_payload.get("shop_items"):
         return _parsed("shop", [], image_path, (width, height), extraction)
@@ -289,6 +295,14 @@ def _terminal_kind(tokens: list[OcrToken]) -> DetectionKind | None:
     if normalized & GAME_OVER_TERMS:
         return DetectionKind.GAME_OVER
     return None
+
+
+def _has_map_marker(tokens: list[OcrToken]) -> bool:
+    return any(
+        _normalize_text(token.text) in MAP_MARKER_TERMS
+        for token in tokens
+        if token.confidence >= MIN_OCR_OPTION_CONFIDENCE
+    )
 
 
 def _terminal_candidates(tokens: list[OcrToken]) -> set[str]:

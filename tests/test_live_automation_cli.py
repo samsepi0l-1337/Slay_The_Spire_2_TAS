@@ -88,8 +88,15 @@ def test_cli_parse_screen_can_use_tesseract_provider(monkeypatch, tmp_path: Path
     provider_args = []
 
     class Provider:
-        def __init__(self, *, language: str, tessdata_dir: Path | None = None) -> None:
-            provider_args.append((language, tessdata_dir))
+        def __init__(
+            self,
+            *,
+            language: str,
+            binary: str = "tesseract",
+            tessdata_dir: Path | None = None,
+            page_segmentation_mode: int | None = None,
+        ) -> None:
+            provider_args.append((language, binary, tessdata_dir, page_segmentation_mode))
 
         def recognize(self, image_path: Path):
             return [
@@ -110,8 +117,12 @@ def test_cli_parse_screen_can_use_tesseract_provider(monkeypatch, tmp_path: Path
             "tesseract",
             "--ocr-language",
             "eng+kor",
+            "--tesseract-binary",
+            str(tmp_path / "tesseract"),
             "--tessdata-dir",
             str(tmp_path / "tessdata"),
+            "--ocr-psm",
+            "12",
             "--out",
             str(output),
         ]
@@ -119,7 +130,7 @@ def test_cli_parse_screen_can_use_tesseract_provider(monkeypatch, tmp_path: Path
 
     parsed = json.loads(output.read_text(encoding="utf-8"))
     assert exit_code == 0
-    assert provider_args == [("eng+kor", tmp_path / "tessdata")]
+    assert provider_args == [("eng+kor", str(tmp_path / "tesseract"), tmp_path / "tessdata", 12)]
     assert [option["id"] for option in parsed["options"]] == ["strike", "defend", "bash", "skip"]
 
 def test_cli_parse_screen_requires_fixture_for_fixture_provider(tmp_path: Path) -> None:

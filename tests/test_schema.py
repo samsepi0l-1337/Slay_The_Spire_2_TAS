@@ -17,8 +17,12 @@ def test_window_metadata_validation() -> None:
         WindowBounds(left=0, top=0, width=0, height=1)
     with pytest.raises(ValueError, match="process"):
         TargetWindow("", "Main Window", WindowBounds(left=0, top=0, width=1, height=1))
-    with pytest.raises(ValueError, match="title"):
-        TargetWindow("Slay the Spire 2", "", WindowBounds(left=0, top=0, width=1, height=1))
+
+
+def test_window_metadata_allows_empty_title_for_borderless_windows() -> None:
+    window = TargetWindow("SlayTheSpire2", "", WindowBounds(left=0, top=0, width=1920, height=1080))
+
+    assert window.title == ""
 
 
 def test_pick_automation_action_requires_target_for_input_plan() -> None:

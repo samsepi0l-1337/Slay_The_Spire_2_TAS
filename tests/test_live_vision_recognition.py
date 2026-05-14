@@ -66,6 +66,14 @@ def test_parse_ocr_screen_matches_korean_continue_menu(tmp_path: Path) -> None:
     ]
 
 
+def test_parse_ocr_screen_matches_korean_map_legend(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("범례", (1669, 331, 1739, 374))])
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "map.png"), ocr_provider=provider)
+
+    assert parsed.kind == "map"
+
+
 def test_parse_ocr_screen_scales_reward_layout_from_reference_resolution(tmp_path: Path) -> None:
     provider = recognition.FakeOcrProvider(
         [
@@ -159,7 +167,15 @@ def test_tesseract_provider_parses_cli_tsv(monkeypatch, tmp_path: Path) -> None:
 
     assert calls == [
         (
-            ["tesseract", str(tmp_path / "screen.png"), "stdout", "-l", "eng+kor", "tsv"],
+            [
+                "tesseract",
+                str(tmp_path / "screen.png"),
+                "stdout",
+                "-l",
+                "eng+kor",
+                "-c",
+                "tessedit_create_tsv=1",
+            ],
             True,
             True,
             True,
@@ -181,7 +197,11 @@ def test_tesseract_provider_passes_tessdata_dir(monkeypatch, tmp_path: Path) -> 
 
     monkeypatch.setattr(recognition.subprocess, "run", fake_run)
 
-    provider = recognition.TesseractOcrProvider(language="eng+kor", tessdata_dir=tmp_path / "tessdata")
+    provider = recognition.TesseractOcrProvider(
+        language="eng+kor",
+        tessdata_dir=tmp_path / "tessdata",
+        page_segmentation_mode=12,
+    )
     provider.recognize(_blank_screen(tmp_path / "screen.png"))
 
     assert calls[0][0] == [
@@ -192,7 +212,10 @@ def test_tesseract_provider_passes_tessdata_dir(monkeypatch, tmp_path: Path) -> 
         "eng+kor",
         "--tessdata-dir",
         str(tmp_path / "tessdata"),
-        "tsv",
+        "--psm",
+        "12",
+        "-c",
+        "tessedit_create_tsv=1",
     ]
 
 

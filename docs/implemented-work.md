@@ -33,7 +33,7 @@
 - `capture`/`capture-live`/`live-step`은 `--state-json`으로 플레이어, 카드, 유물, 포션, 몬스터, 경로 후보, 상점, 이벤트, 휴식 상태를 입력받고, 미제공 필드는 `missing_fields`에 기록한다.
 - `RecognizedOption`/`ParsedScreen`: OCR에서 인식한 canonical option과 화면 resolution을 구조화한다.
 - `live_state.extract_live_state`: OCR text에서 player HP/energy/block/turn/gold/floor, hand card, potion, monster HP/intent, map node, shop item, observed leave-shop option, event option, rest option을 typed state payload와 screen box로 추출한다. 중복 shop/event option label은 slot id로 분리한다.
-- `actions.generate_legal_actions`: structured state에서 combat, card reward, map, shop, event, rest context의 state-derived legal action generator를 제공한다. Combat은 hand card, living monster target, usable potion, end turn을 entity-linked action으로 만들고, shop `leave_shop`은 관측된 leave option box가 있을 때만 생성한다.
+- `actions.generate_legal_actions`: structured state에서 combat, card reward, map, shop, event, rest context의 state-derived legal action generator를 제공한다. Combat은 hand card, living monster target, usable potion, end turn을 entity-linked action으로 만들고, shop buy/remove는 player gold가 item price 이상일 때만 만들며, shop `leave_shop`은 관측된 leave option box가 있을 때만 생성한다.
 - `AutomationAction`: action, option id, dry-run state, coordinate space, target box 또는 target sequence를 기반으로 click/keypress/sequence `input_plan`을 만든다.
 - `WindowBounds`/`TargetWindow`: macOS target application/window identity와 bounds를 구조화해 relative option box를 screen absolute input plan으로 변환한다.
 - 좌표 없는 `pick` action은 실행 계획 생성 시 실패한다. 좌표 없는 reward skip은 escape keypress, combat `end_turn`은 `e` keypress 계획을 사용한다.
@@ -42,9 +42,10 @@
 
 - synthetic/stable screenshot용 색상 기반 detector가 card reward, relic choice, skip button layout을 구분한다.
 - OCR provider protocol을 통해 fixture OCR과 Tesseract TSV adapter를 같은 parsing 경로로 사용한다.
-- Tesseract provider는 host 설치 language pack 외에 `--tessdata-dir`로 per-run `eng+kor` traineddata directory를 지정할 수 있다.
+- Tesseract provider는 host 설치 language pack 외에 `--tessdata-dir`로 per-run `eng+kor` traineddata directory를 지정할 수 있고, sparse game UI에는 `--ocr-psm`을 전달할 수 있다.
 - 영어/한국어 alias catalog로 카드, 유물, skip text를 canonical id로 매핑한다.
 - OCR로 시작 메뉴의 `Continue`/`계속`/`Single Player`, 모드 선택의 `Standard`, 캐릭터 선택의 `Ironclad`, terminal 화면의 `Victory!`/`Game Over`/`승리`/`게임 오버`와 `New Run`/`다시 시작` 재시작 버튼을 매핑한다.
+- OCR로 map legend `Legend`/`범례`가 보이면 fixture 없이도 map 화면으로 분류한다.
 - 카드 보상 OCR은 3개 카드와 skip button이 모두 인식될 때만 `card_reward`로 처리한다.
 - 같은 catalog id가 여러 슬롯에 나오면 option id는 `strike_1`, `strike_2`처럼 slot-specific으로 분리하고, reward `CardInstance.card_id`는 canonical id인 `strike`로 유지한다.
 - Tesseract TSV의 단어 row를 catalog-matched multi-word span으로 합쳐 `Burning Blood`, `Tiny House` 같은 인접 multi-word 항목을 별도 option으로 매칭한다.
@@ -91,8 +92,8 @@
 - `--choice`가 있으면 manual action id를 사용한다.
 - `--model`이 있으면 저장된 추천 모델의 best action id를 사용한다.
 - `--ack-ocr-fixture`가 있으면 입력 후 parsed frame과 이전 frame signature를 비교해 `changed`/`no_op`/`timeout` transition acknowledgement를 포함한다.
-- `--ack-ocr-fixture-sequence --ack-max-retries N`은 fixture frame을 poll frame처럼 순서대로 소비하면서 no-op/timeout이면 action을 다시 보낸다. `N`은 0 이상의 정수여야 한다.
-- `--ack-live-poll --ack-max-retries N`은 `--screenshot-out` 기반 live frame을 재캡처하고 같은 OCR parser로 acknowledgement를 계산한 뒤 retry한다. target window mode에서는 ack frame도 같은 bbox로 캡처한다.
+- `--ack-ocr-fixture-sequence --ack-max-retries N`은 fixture frame을 poll frame처럼 순서대로 소비하면서 no-op/timeout이면 post-input frame만 다시 poll한다. 같은 action input은 retry 중 재전송하지 않는다. `N`은 0 이상의 정수여야 한다.
+- `--ack-live-poll --ack-max-retries N`은 `--screenshot-out` 기반 live frame을 재캡처하고 같은 OCR parser로 acknowledgement를 계산한 뒤 post-input frame polling을 retry한다. target window mode에서는 ack frame도 같은 bbox로 캡처한다.
 - transition signature는 legal action identity를 정렬해 OCR 후보 순서만 바뀐 frame을 `no_op`으로 유지한다.
 - 결과 JSON에는 `choice`, `action`, `input_plan`, `screenshot_path`가 포함되고, target process 사용 시 `target_window`가 포함된다.
 - native backend는 `--execute` 없이 사용할 수 없다.
@@ -104,7 +105,7 @@
 - fixture OCR JSON과 ack fixture sequence JSON은 Windows PowerShell 5.1의 BOM 포함 UTF-8 출력을 허용한다.
 - `--screenshot-out live.png`는 `live-000001.png`, `live-000002.png`처럼 반복 안전한 파일명으로 캡처한다.
 - 반복마다 OCR parsing 후 combat/card reward/relic choice/map gameplay 화면은 `--choice` 또는 `--model` 추천으로 action identity를 선택한다. `--choice` 라벨은 `chosen_action_id`가 채워진 `GameStep`으로 `--dataset` JSONL에 append한다.
-- `--execute`로 gameplay label/model action을 보낼 때는 `--ack-ocr-fixture-sequence` 또는 `--ack-live-poll` transition acknowledgement가 필요하다. `changed`일 때만 dataset과 optional `--trajectory-out` append가 확정된다.
+- `--execute`로 gameplay label/model action을 보낼 때는 `--ack-ocr-fixture-sequence` 또는 `--ack-live-poll` transition acknowledgement가 필요하다. ack 옵션이 없으면 입력 전 `missing_transition_ack`로 fail-closed한다. `changed`일 때만 dataset과 optional `--trajectory-out` append가 확정된다.
 - ack 없음, `no_op`, `timeout`, controller error, fail-closed perception, dataset preflight failure는 `--failure-log` JSONL에 기록하고 dataset/trajectory append는 하지 않는다.
 - 메뉴/모드/캐릭터/재시작 화면은 첫 legal action으로 입력 계획만 만들고 ML dataset에는 append하지 않는다.
 - `--model`이 고른 gameplay action은 self-label 위험을 막기 위해 기본적으로 dataset에 append하지 않는다. 실험적으로 저장하려면 `--allow-model-self-labels`를 명시한다.

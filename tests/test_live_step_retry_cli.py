@@ -468,8 +468,16 @@ def test_cli_live_step_can_retry_with_live_frame_polling(tmp_path: Path, monkeyp
     capture_calls = []
 
     class Provider:
-        def __init__(self, *, language: str) -> None:
+        def __init__(
+            self,
+            *,
+            language: str,
+            tessdata_dir: Path | None = None,
+            page_segmentation_mode: int | None = None,
+        ) -> None:
             assert language == "eng+kor"
+            assert tessdata_dir is None
+            assert page_segmentation_mode is None
 
         def recognize(self, image_path: Path):
             if "ack" in image_path.stem:
@@ -541,8 +549,16 @@ def test_cli_live_step_live_frame_polling_without_target_window(tmp_path: Path, 
     capture_calls = []
 
     class Provider:
-        def __init__(self, *, language: str) -> None:
-            pass
+        def __init__(
+            self,
+            *,
+            language: str,
+            tessdata_dir: Path | None = None,
+            page_segmentation_mode: int | None = None,
+        ) -> None:
+            assert language == "eng+kor"
+            assert tessdata_dir is None
+            assert page_segmentation_mode is None
 
         def recognize(self, image_path: Path):
             if "ack" in image_path.stem:

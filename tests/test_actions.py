@@ -15,7 +15,7 @@ from sts2_tas.schema import (
 def _state(
     *,
     decision_context: str,
-    gold: int = 999,
+    gold: object = 999,
     cards: list[CardInstance] | None = None,
     monsters: list[MonsterState] | None = None,
     path_candidates: list[PathCandidate] | None = None,
@@ -182,6 +182,21 @@ def test_generate_shop_actions_require_gold_for_buy_and_remove_but_keep_leave() 
         "buy|shop_item=affordable_potion",
         "leave_shop",
     ]
+
+
+def test_generate_shop_actions_fail_closed_on_invalid_gold() -> None:
+    state = _state(
+        decision_context="shop",
+        gold="unknown",
+        shop_items=[
+            ShopItemState("strike", "card", 10, True, "strike"),
+            ShopItemState("leave", "leave", 0, False),
+        ],
+    )
+
+    actions = generate_legal_actions(state)
+
+    assert [action.identity for action in actions] == ["leave_shop"]
 
 
 def test_generate_shop_actions_fail_closed_without_observed_leave_shop_item() -> None:
