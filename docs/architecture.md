@@ -8,7 +8,8 @@
 4. `sts2-tas train` trains a PyTorch entity-centric actor-critic ranker over legal `ActionCandidate` tokens.
 5. `sts2-tas recommend` loads a saved `.pt` checkpoint and ranks the current `GameStep` actions.
 6. `sts2-tas live-step` captures a screenshot or uses `--capture-fixture`, parses OCR options, chooses from `--choice` or `--model`, and applies one dry-run/jsonl/native action.
-7. `sts2-tas act`, `run-loop`, and `evaluate-seeds` turn parsed actions into dry-run input plans and seed-level episode summaries.
+7. `sts2-tas live-learn-loop` repeats the live-step boundary, appends labeled `GameStep` rows, and can retrain/save a Torch model every N new labels.
+8. `sts2-tas act`, `run-loop`, and `evaluate-seeds` turn parsed actions into dry-run input plans and seed-level episode summaries.
 
 ## GameStep Entity Ranker
 
@@ -55,9 +56,11 @@ Unknown layouts fail instead of creating empty-option training rows. OCR provide
 
 `sts2-tas live-step` emits JSON with `choice`, `action`, `input_plan`, and `screenshot_path`. `--capture-fixture` keeps tests and fixture runs deterministic; `--screenshot-out` writes the live captured screen before OCR.
 
+`sts2-tas live-learn-loop` reuses the same capture/OCR/action planning contract in a bounded or user-interrupted loop. `--max-steps` makes the loop testable, `--capture-fixture` reuses the same fixture, and live screenshot capture writes numbered filenames derived from `--screenshot-out` so repeated runs do not overwrite one another. It appends each selected action as `chosen_action_id` in `--dataset`; optional `--train-every N --model-out model.pt` retrains from the full dataset after every N newly appended labels.
+
 `live-step --screenshot-out --target-process "Slay the Spire 2"` captures the target window bbox, parses the cropped screenshot, treats option boxes as `window_relative`, and passes the current target window directly into the input plan. Saved `GameStep` rows are screen-absolute for `act`; target-window translation is kept inside the live-step capture/act cycle to avoid stale window metadata.
 
-`--input-backend native --execute` sends the same plan through a platform adapter instead of writing JSONL. macOS uses `osascript` System Events, Linux uses `xdotool`, and Windows currently supports only the keypress path through PowerShell SendKeys while click input fails explicitly. With a target window, macOS builds one AppleScript that activates the application, re-reads the window title/bounds inside the same script, errors if the expected metadata changed, then sends click/key input. Tests inject subprocess/window runners so no real OS input is sent.
+`--input-backend native --execute` sends the same plan through a platform adapter instead of writing JSONL. macOS uses `osascript` System Events, Linux uses `xdotool`, and Windows uses PowerShell with `user32` for target-window detection and click input while keeping SendKeys for keypresses. With a target window, the controller re-detects the process/window metadata before each input and fails closed if it changed; macOS also keeps the activate/check/click sequence inside one AppleScript. Tests inject subprocess/window runners so no real OS input is sent.
 
 Production real-input usage combines target-window detection, native input, and the explicit execution gate:
 

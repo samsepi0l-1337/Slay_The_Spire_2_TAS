@@ -23,6 +23,39 @@ def test_window_detector_parses_single_macos_window() -> None:
     assert "Slay the Spire 2" in commands[0][-1]
 
 
+def test_window_detector_parses_single_windows_window() -> None:
+    commands = []
+
+    def runner(command: list[str]) -> str:
+        commands.append(command)
+        return "Slay the Spire 2\tMain Window\t100\t200\t1280\t720\n"
+
+    detector = WindowDetector(platform_name="Windows", runner=runner)
+
+    window = detector.detect("Slay the Spire 2")
+
+    assert window.process == "Slay the Spire 2"
+    assert window.title == "Main Window"
+    assert window.bounds == WindowBounds(left=100, top=200, width=1280, height=720)
+    assert commands[0][:3] == ["powershell", "-NoProfile", "-Command"]
+    assert "Get-Process" in commands[0][-1]
+    assert "GetWindowRect" in commands[0][-1]
+    assert "MainWindowTitle -eq $query" in commands[0][-1]
+    assert "Slay the Spire 2" in commands[0][-1]
+
+
+def test_window_detector_escapes_windows_process_query() -> None:
+    commands = []
+    detector = WindowDetector(
+        platform_name="Windows",
+        runner=lambda command: commands.append(command) or "Bob's Game\tMain\t1\t2\t3\t4\n",
+    )
+
+    detector.detect("Bob's Game")
+
+    assert "Bob''s Game" in commands[0][-1]
+
+
 def test_window_detector_fails_closed_for_missing_ambiguous_or_bad_bounds() -> None:
     cases = [
         "",
@@ -83,5 +116,5 @@ def test_window_schema_rejects_invalid_values() -> None:
 def test_window_detector_rejects_unsupported_platform() -> None:
     detector = WindowDetector(platform_name="Linux", runner=lambda command: "")
 
-    with pytest.raises(RuntimeError, match="target window detection is only supported on macOS"):
+    with pytest.raises(RuntimeError, match="target window detection is only supported on macOS or Windows"):
         detector.detect("Slay the Spire 2")

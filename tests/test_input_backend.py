@@ -257,6 +257,7 @@ def test_native_input_controller_maps_platform_commands(monkeypatch) -> None:
         platform_name="Linux",
         runner=commands.append,
     ).send(AutomationAction(action="skip", option_id=None, dry_run=False, target=None))
+    automation.NativeInputController(platform_name="Windows", runner=commands.append).send(action)
 
     subprocess_calls = []
     monkeypatch.setattr(automation.subprocess, "run", lambda command, check: subprocess_calls.append((command, check)))
@@ -264,11 +265,20 @@ def test_native_input_controller_maps_platform_commands(monkeypatch) -> None:
         AutomationAction(action="skip", option_id=None, dry_run=False, target=(880, 930, 1040, 990))
     )
 
-    assert commands == [
+    assert commands[:3] == [
         ["osascript", "-e", 'tell application "System Events" to click at {340, 295}'],
         ["xdotool", "mousemove", "340", "295", "click", "1"],
         ["xdotool", "key", "escape"],
     ]
+    assert commands[3][:3] == ["powershell", "-NoProfile", "-Command"]
+    windows_click_script = commands[3][-1]
+    assert "SetCursorPos" in windows_click_script
+    assert "mouse_event" in windows_click_script
+    assert windows_click_script.index("throw 'SetCursorPos failed'") < windows_click_script.index(
+        "[Win32Input]::mouse_event"
+    )
+    assert "340" in windows_click_script
+    assert "295" in windows_click_script
     assert subprocess_calls == [
         (
             [
@@ -285,8 +295,6 @@ def test_native_input_controller_maps_platform_commands(monkeypatch) -> None:
 def test_native_input_controller_rejects_unsupported_platforms() -> None:
     action = AutomationAction(action="pick", option_id="strike", dry_run=False, target=(250, 260, 430, 330))
 
-    with pytest.raises(RuntimeError, match="not supported on Windows"):
-        automation.NativeInputController(platform_name="Windows", runner=lambda command: None).send(action)
     with pytest.raises(RuntimeError, match="unsupported native input platform"):
         automation.NativeInputController(platform_name="Plan9", runner=lambda command: None).send(action)
 

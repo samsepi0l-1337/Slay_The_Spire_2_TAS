@@ -46,6 +46,7 @@ Implemented:
 - `--input-backend native` execution adapter for local OS input plans
 - option-box center click planning for picks and skip-button clicks
 - macOS target-window activation plus same-script window identity/bounds verification before native input
+- Windows target-window detection plus PowerShell/user32 native click input
 - explicit save-state backup and restore
 - seed run-loop episode generation
 
@@ -53,7 +54,6 @@ Not implemented:
 
 - OS permission provisioning for live screen capture
 - Quartz/PyObjC targeted PID input delivery
-- Windows native click injection
 - direct game process reset hooks
 - online/co-op or leaderboard automation
 

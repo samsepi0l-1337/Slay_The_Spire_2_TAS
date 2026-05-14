@@ -7,6 +7,7 @@ from pathlib import Path
 from .automation import JsonlInputController, NativeInputController, apply_action, plan_action
 from .capture_state import load_captured_game_state
 from .evaluation import write_evaluation
+from .live_learning import run_live_learn_loop
 from .ml_cli import add_ml_parsers
 from .ml_entities import resolve_action_identity
 from .model import load_model, recommend
@@ -99,6 +100,34 @@ def _parser() -> argparse.ArgumentParser:
     _add_state_args(live_step)
     live_step.set_defaults(handler=_live_step)
 
+    live_learn_loop = subparsers.add_parser("live-learn-loop")
+    live_learn_source = live_learn_loop.add_mutually_exclusive_group(required=True)
+    live_learn_source.add_argument("--capture-fixture", type=Path)
+    live_learn_source.add_argument("--screenshot-out", type=Path)
+    live_learn_decision = live_learn_loop.add_mutually_exclusive_group(required=True)
+    live_learn_decision.add_argument("--choice")
+    live_learn_decision.add_argument("--model", type=Path)
+    live_learn_loop.add_argument("--dataset", type=Path, required=True)
+    live_learn_loop.add_argument("--max-steps", type=int)
+    live_learn_loop.add_argument("--ocr-fixture", type=Path)
+    live_learn_loop.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
+    live_learn_loop.add_argument("--ocr-language", default="eng+kor")
+    live_learn_loop.add_argument("--input-log", type=Path, required=True)
+    live_learn_loop.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
+    live_learn_loop.add_argument("--execute", action="store_true")
+    live_learn_loop.add_argument("--target-process")
+    live_learn_loop.add_argument("--train-every", type=int)
+    live_learn_loop.add_argument("--model-out", type=Path)
+    live_learn_loop.add_argument("--epochs", type=int, default=30)
+    live_learn_loop.add_argument("--batch-size", type=int, default=128)
+    live_learn_loop.add_argument("--device", default="auto")
+    live_learn_loop.add_argument("--game-version", required=True)
+    live_learn_loop.add_argument("--branch", required=True)
+    live_learn_loop.add_argument("--character", required=True)
+    live_learn_loop.add_argument("--ascension", type=int, required=True)
+    live_learn_loop.add_argument("--floor", type=int, required=True)
+    _add_state_args(live_learn_loop)
+    live_learn_loop.set_defaults(handler=_live_learn_loop)
     act = subparsers.add_parser("act")
     act.add_argument("--step", type=Path, required=True)
     act.add_argument("--choice", required=True)
@@ -229,6 +258,10 @@ def _live_step(args: argparse.Namespace) -> None:
     if target_window is not None:
         report["target_window"] = target_window.to_dict()
     print(json.dumps(report, sort_keys=True))
+
+
+def _live_learn_loop(args: argparse.Namespace) -> None:
+    print(json.dumps(run_live_learn_loop(args).to_dict(), sort_keys=True))
 
 
 def _act(args: argparse.Namespace) -> None:

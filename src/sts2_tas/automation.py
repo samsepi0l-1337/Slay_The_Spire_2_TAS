@@ -137,13 +137,31 @@ def _linux_command(plan: dict[str, int | str]) -> list[str]:
 
 def _windows_command(plan: dict[str, int | str]) -> list[str]:
     if plan["kind"] == "click":
-        raise RuntimeError("native click input is not supported on Windows")
+        return ["powershell", "-NoProfile", "-Command", _windows_click_script(int(plan["x"]), int(plan["y"]))]
     return [
         "powershell",
         "-NoProfile",
         "-Command",
         "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{ESC}')",
     ]
+
+
+def _windows_click_script(x: int, y: int) -> str:
+    return (
+        "$signature = @'\n"
+        "using System;\n"
+        "using System.Runtime.InteropServices;\n"
+        "public static class Win32Input {\n"
+        "  [DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int X, int Y);\n"
+        "  [DllImport(\"user32.dll\")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);\n"
+        "}\n"
+        "'@\n"
+        "Add-Type -TypeDefinition $signature\n"
+        f"if (-not [Win32Input]::SetCursorPos({x}, {y})) {{ throw 'SetCursorPos failed' }}\n"
+        "[Win32Input]::mouse_event(0x0002, 0, 0, 0, [UIntPtr]::Zero)\n"
+        "Start-Sleep -Milliseconds 50\n"
+        "[Win32Input]::mouse_event(0x0004, 0, 0, 0, [UIntPtr]::Zero)\n"
+    )
 
 
 def _escape_applescript(value: str) -> str:
