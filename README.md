@@ -2,7 +2,7 @@
 
 Slay the Spire 2 화면 인식 기반 TAS 학습/자동화 MVP입니다.
 
-현재 범위는 카드 보상/유물 선택 상황을 OCR로 파싱하고, `GameStep` JSONL과 PyTorch entity/action ranker로 선택지를 학습/추천하는 것입니다. 실제 입력 실행은 `--execute`가 있을 때만 동작하고, 기본 입력 백엔드는 JSONL 기록입니다. macOS에서는 `live-step --screenshot-out --target-process "Slay the Spire 2"`로 target window crop을 만들고, 같은 실행 안에서 window-relative 좌표를 native 입력 전 재검증합니다.
+현재 범위는 카드 보상/유물 선택 상황을 OCR로 파싱하고, `GameStep` JSONL과 PyTorch entity/action ranker로 선택지를 학습/추천하는 것입니다. 실제 입력 실행은 `--execute`가 있을 때만 동작하고, 기본 입력 백엔드는 JSONL 기록입니다. macOS/Windows에서는 `live-step --screenshot-out --target-process "Slay the Spire 2"`로 target window crop을 만들고, 같은 실행 안에서 window-relative 좌표를 native 입력 전 재검증합니다.
 
 ## Quick Start
 
@@ -51,9 +51,10 @@ Windows 실행 파일은 Windows runner 또는 Windows PowerShell에서 `scripts
 ```powershell
 .\scripts\build-windows-exe.ps1
 .\dist\sts2-tas.exe --help
+.\dist\sts2-tas.exe live-step --screenshot-out live.png --ocr-provider tesseract --choice pick_card:strike --input-log inputs.jsonl --target-process "Slay the Spire 2" --input-backend native --execute --game-version 0.105.1 --branch beta --character ironclad --ascension 0 --floor 1 --hp 70 --gold 99
 ```
 
-GitHub Actions의 `Build Windows Executable` workflow도 같은 스크립트를 실행하고, `sts2-tas-windows-x64` artifact로 `dist/sts2-tas.exe`를 업로드합니다. 이 `.exe`는 CLI와 model/recommend 경로를 실행하는 패키지이며, Windows native click injection은 아직 지원하지 않습니다.
+GitHub Actions의 `Build Windows Executable` workflow도 같은 스크립트를 실행하고, `sts2-tas-windows-x64` artifact로 `dist/sts2-tas.exe`를 업로드합니다. 이 `.exe`는 CLI와 model/recommend 경로를 실행하는 패키지이며, Windows native backend는 PowerShell/user32 기반 target-window detection, click, SendKeys keypress를 지원합니다.
 
 ## Docs
 

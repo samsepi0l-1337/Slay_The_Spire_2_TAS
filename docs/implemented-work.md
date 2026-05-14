@@ -59,10 +59,10 @@
 - 기본 backend는 `jsonl`이며, input event를 JSONL로 기록한다.
 - `--input-backend native --execute`는 platform command로 실제 입력 계획을 전달한다.
 - macOS native backend는 `osascript` System Events를 사용한다.
-- `live-step --screenshot-out --target-process "Slay the Spire 2"`는 macOS `osascript` 기반 detector로 정확히 하나의 matching process/window를 찾고, target-window crop을 window-relative action plan으로 처리한다.
+- `live-step --screenshot-out --target-process "Slay the Spire 2"`는 macOS `osascript` 또는 Windows PowerShell/user32 기반 detector로 정확히 하나의 matching process/window를 찾고, target-window crop을 window-relative action plan으로 처리한다.
 - macOS native backend는 target process가 있으면 하나의 AppleScript 안에서 application activate, window identity/bounds 재조회, expected metadata 비교, click/key 실행을 순서대로 수행한다.
 - Linux native backend는 `xdotool`을 사용한다.
-- Windows native backend는 keypress만 PowerShell SendKeys로 지원하고 click은 명시적으로 실패한다.
+- Windows native backend는 PowerShell/user32 `SetCursorPos`/`mouse_event`로 click을 보내고, keypress는 기존 PowerShell SendKeys 경로를 유지한다.
 - 테스트에서는 runner/monkeypatch를 주입해 실제 OS 입력을 보내지 않는다.
 - Quartz/PyObjC PID-targeted input은 dependency 추가 없이 향후 확장 지점으로만 남겼다.
 

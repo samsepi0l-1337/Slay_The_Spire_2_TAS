@@ -60,7 +60,7 @@ Unknown layouts fail instead of creating empty-option training rows. OCR provide
 
 `live-step --screenshot-out --target-process "Slay the Spire 2"` captures the target window bbox, parses the cropped screenshot, treats option boxes as `window_relative`, and passes the current target window directly into the input plan. Saved `GameStep` rows are screen-absolute for `act`; target-window translation is kept inside the live-step capture/act cycle to avoid stale window metadata.
 
-`--input-backend native --execute` sends the same plan through a platform adapter instead of writing JSONL. macOS uses `osascript` System Events, Linux uses `xdotool`, and Windows currently supports only the keypress path through PowerShell SendKeys while click input fails explicitly. With a target window, macOS builds one AppleScript that activates the application, re-reads the window title/bounds inside the same script, errors if the expected metadata changed, then sends click/key input. Tests inject subprocess/window runners so no real OS input is sent.
+`--input-backend native --execute` sends the same plan through a platform adapter instead of writing JSONL. macOS uses `osascript` System Events, Linux uses `xdotool`, and Windows uses PowerShell with `user32` for target-window detection and click input while keeping SendKeys for keypresses. With a target window, the controller re-detects the process/window metadata before each input and fails closed if it changed; macOS also keeps the activate/check/click sequence inside one AppleScript. Tests inject subprocess/window runners so no real OS input is sent.
 
 Production real-input usage combines target-window detection, native input, and the explicit execution gate:
 
