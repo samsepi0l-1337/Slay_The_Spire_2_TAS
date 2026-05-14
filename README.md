@@ -55,6 +55,8 @@ docker run --rm sts2-tas:local --help
 
 Windows에서는 Docker Desktop의 Linux containers 모드에서 실행하고, screenshot/data/model 폴더를 volume으로 연결합니다. 자세한 명령은 [docs/docker.md](docs/docker.md)를 보세요.
 
+Tailscale SSH로 Windows 실행 노드에 접속해 테스트할 때도 실행 경계는 같습니다. SSH는 파일 전송/빌드/interactive scheduled task 실행에 사용하고, 실제 게임 화면 capture/click은 로그인된 Windows interactive session에서 실행합니다. 연결 설정과 검증 명령은 [docs/docker.md#remote-execution-via-tailscale-ssh](docs/docker.md#remote-execution-via-tailscale-ssh)를 보세요.
+
 ## Windows Executable
 
 Windows 실행 파일은 Windows runner 또는 Windows PowerShell에서 `scripts/build-windows-exe.ps1`로 빌드합니다.

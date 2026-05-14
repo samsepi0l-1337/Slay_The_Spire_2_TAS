@@ -1,7 +1,7 @@
 # Documentation Index
 
 - [Architecture](architecture.md): 데이터 흐름, trajectory schema, evaluation CLI, target window 감지, live-step/live-learn-loop 캡처/추천/입력 안전 경계.
-- [Docker](docker.md): macOS/Linux/Windows Docker 실행법.
+- [Docker and remote Windows execution](docker.md): macOS/Linux/Windows Docker 실행법, Tailscale SSH 연결, Windows interactive session 원격 실행 경계.
 - [Implemented work](implemented-work.md): 현재 구현된 CLI, schema, recognition, ML, automation, runtime, verification 범위.
 - [V1 gaps](v1-gaps.md): 2026-05-14 critical improvement review 기준 P0/P1 누락 범위와 수용 기준.
 - Windows executable: `scripts/build-windows-exe.ps1`과 `.github/workflows/windows-exe.yml`이 `dist/sts2-tas.exe` / `sts2-tas-windows-x64` artifact를 만든다.
