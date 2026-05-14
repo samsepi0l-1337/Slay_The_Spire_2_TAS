@@ -263,4 +263,17 @@ Docker is not required when you only need a local Windows CLI executable. On Win
 .\dist\sts2-tas.exe --help
 ```
 
+`build-windows-exe.ps1`는 PyInstaller에 `--collect-all torch`를 넘겨 onefile `sts2-tas.exe` 안에 PyTorch DLL·확장·데이터를 함께 묶습니다. CI(`Build Windows Executable`)는 빌드 후 `tests/fixtures/ml-train-smoke.jsonl`로 `train` 한 번을 실행해 동결된 exe에서 실제 backward가 돌아가는지 확인합니다.
+
+원격 머신에서 venv 대신 exe로 `live-learn-loop`(및 주기적 `train`)를 돌리려면 `scripts/run-windows-live-loop.ps1`에 `-Sts2Exe`로 exe 경로를 넘깁니다(작업 디렉터리 기준 상대 경로 또는 절대 경로).
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-windows-live-loop.ps1 `
+  -WorkDir C:\Users\steep\sts2-tas-run `
+  -Sts2Exe dist\sts2-tas.exe `
+  -TargetProcess SlayTheSpire2 `
+  -DataDir data\windows-live-loop `
+  -StopFile remote-smoke\stop-live-loop.flag
+```
+
 The same build runs in GitHub Actions under `Build Windows Executable` and uploads `dist/sts2-tas.exe` as the `sts2-tas-windows-x64` artifact.

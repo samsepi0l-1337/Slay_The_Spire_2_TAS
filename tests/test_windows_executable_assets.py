@@ -33,7 +33,7 @@ def test_windows_exe_build_script_uses_pyinstaller_onefile() -> None:
     assert "--onefile" in script
     assert "--console" in script
     assert "src/sts2_tas/__main__.py" in script
-    assert "dist/sts2-tas.exe" in script
+    assert "--collect-all torch" in script
 
 
 def test_github_actions_builds_windows_exe_artifact() -> None:
@@ -43,6 +43,8 @@ def test_github_actions_builds_windows_exe_artifact() -> None:
     assert "scripts/build-windows-exe.ps1" in workflow
     assert "dist/sts2-tas.exe" in workflow
     assert "sts2-tas-windows-x64" in workflow
+    assert "ml-train-smoke.jsonl" in workflow
+    assert "./dist/sts2-tas.exe train" in workflow
 
 
 def test_pyinstaller_is_a_build_extra() -> None:

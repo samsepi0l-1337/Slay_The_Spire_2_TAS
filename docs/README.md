@@ -4,7 +4,7 @@
 - [Docker and remote Windows execution](docker.md): macOS/Linux/Windows Docker 실행법, Tailscale SSH 연결, Windows interactive session 원격 실행 경계.
 - [Implemented work](implemented-work.md): 현재 구현된 CLI, schema, recognition, ML, automation, runtime, verification 범위.
 - [V1 gaps](v1-gaps.md): 2026-05-14 critical improvement review 기준 P0/P1 누락 범위와 수용 기준.
-- Windows executable: `scripts/build-windows-exe.ps1`과 `.github/workflows/windows-exe.yml`이 `dist/sts2-tas.exe` / `sts2-tas-windows-x64` artifact를 만든다.
+- Windows executable: `scripts/build-windows-exe.ps1`(PyInstaller `--collect-all torch`)와 `.github/workflows/windows-exe.yml`이 `dist/sts2-tas.exe` / `sts2-tas-windows-x64` artifact를 만들고, CI에서 `tests/fixtures/ml-train-smoke.jsonl`로 `train` 한 번을 실행해 동결 exe의 PyTorch 경로를 스모크한다.
 
 ## MVP Scope
 

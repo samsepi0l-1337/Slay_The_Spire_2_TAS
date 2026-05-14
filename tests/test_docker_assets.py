@@ -95,8 +95,9 @@ def test_windows_live_loop_script_runs_hidden_interactive_task_until_stop_file()
     assert "Register-ScheduledTask" in script and "-ErrorAction Stop" in script
     assert "-WindowStyle Hidden" in script
     assert "live-learn-loop" in script
-    assert "--target-process $TargetProcess" in script
-    assert "--input-backend native" in script
-    assert "--execute" in script
-    assert "--policy first-legal" in script
-    assert "--stop-file $StopFile" in script
+    assert '"--target-process", $TargetProcess' in script
+    assert '"--input-backend", "native"' in script
+    assert '"--execute"' in script
+    assert '"--policy", "first-legal"' in script
+    assert '"--stop-file", $StopFile' in script
+    assert "Sts2Exe" in script

@@ -7,6 +7,7 @@ uv run --extra build pyinstaller `
     --onefile `
     --console `
     --name sts2-tas `
+    --collect-all torch `
     src/sts2_tas/__main__.py
 
 $exe = "dist/sts2-tas.exe"
