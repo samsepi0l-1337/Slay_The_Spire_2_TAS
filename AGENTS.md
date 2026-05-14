@@ -33,6 +33,7 @@
 - 코드를 수정한 후에는 documentat를 업데이트한다.
 - 작업이 끝나면 PR commit & push 하고, comments에 `@codex review` + review 해야하는 사항들을 작성한다.
 - test에는 e2e test를 포함한다.
+- windows ssh 연결을 사용하여 테스트를 진행한다.
 
 ## Documentation
 
