@@ -113,7 +113,7 @@
 - 기본 동작은 dry-run이며 `--execute` 없이는 input controller를 만들지 않는다. `--input-backend native`는 `--execute` 없으면 실패한다.
 - `--train-every N --model-out path.pt` 조합은 N개 신규 labeled row마다, 그리고 terminal return 전파 직후 `train_torch_model(load_game_steps(dataset), character, epochs, batch_size, device)` 후 `save_model`을 호출한다.
 - `KeyboardInterrupt`와 `--stop-file` 감지는 traceback 없이 `steps`, `trained`, `interrupted`, `dataset`, `model` summary JSON을 출력하고 정상 종료한다.
-- `scripts/run-windows-live-loop.ps1`은 Windows interactive scheduled task에서 `live-learn-loop --policy first-legal --ack-live-poll --target-process SlayTheSpire2 --input-backend native --execute --stop-file` 조합을 hidden으로 실행한다.
+- `scripts/run-windows-live-loop.ps1`은 Windows interactive scheduled task에서 `live-learn-loop --policy first-legal --ack-live-poll --target-process SlayTheSpire2 --input-backend native --execute --stop-file` 조합을 hidden으로 실행한다. 기본 `-RunLevel Highest` 등록은 관리자 권한이 필요하고, 비관리자에서는 `-RunLevel Limited`를 쓰거나 관리자 PowerShell에서 등록한다.
 
 ## Runtime And Evaluation
 

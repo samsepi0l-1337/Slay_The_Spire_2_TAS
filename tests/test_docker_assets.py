@@ -90,6 +90,8 @@ def test_windows_live_loop_script_runs_hidden_interactive_task_until_stop_file()
     assert "Register-ScheduledTask" in script
     assert "-LogonType Interactive" in script
     assert "WindowsIdentity]::GetCurrent().Name" in script
+    assert '[ValidateSet("Highest", "Limited")]' in script
+    assert "-RunLevel $RunLevel" in script
     assert "Register-ScheduledTask" in script and "-ErrorAction Stop" in script
     assert "-WindowStyle Hidden" in script
     assert "live-learn-loop" in script

@@ -22,6 +22,8 @@ param(
     [string]$Device = "cpu",
     [string]$ModelOut = "models\windows-live-loop.pt",
     [string]$UserId = "",
+    [ValidateSet("Highest", "Limited")]
+    [string]$RunLevel = "Highest",
     [switch]$Run,
     [switch]$Stop
 )
@@ -135,7 +137,7 @@ if ([string]::IsNullOrWhiteSpace($UserId)) {
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arguments
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(5)
-$principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType Interactive -RunLevel Highest
+$principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType Interactive -RunLevel $RunLevel
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Force -ErrorAction Stop | Out-Null
 Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
 Write-Output "task: $TaskName"

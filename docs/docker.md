@@ -189,14 +189,25 @@ Invoke-WebRequest `
 
 Windows interactive session에서 게임 창이 열린 상태라면 `scripts/run-windows-live-loop.ps1`로 hidden scheduled task를 등록해 사용자가 멈출 때까지 실행할 수 있습니다. 이 wrapper는 `live-learn-loop`를 `--max-steps` 없이 실행하고, `--policy first-legal`, `--ack-live-poll`, `--target-process SlayTheSpire2`, `--input-backend native`, `--execute`, `--stop-file`을 함께 전달합니다. 승리 또는 게임 오버 terminal 화면에서 `New Run`/`다시 시작`이 인식되면 restart action을 클릭하고 다음 run으로 이어갑니다.
 
+기본값은 `-RunLevel Highest`라 `Register-ScheduledTask`에 **관리자 권한**이 필요합니다. `Access is denied`가 나오면 PowerShell을 **관리자로 실행**한 뒤 같은 명령을 쓰거나, `-RunLevel Limited`로 등록을 낮춥니다(일부 환경에서 입력/포커스 동작이 달라질 수 있음).
+
 ```powershell
 cd C:\Users\steep\sts2-tas-run
-.\scripts\run-windows-live-loop.ps1 `
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-windows-live-loop.ps1 `
+  -WorkDir C:\Users\steep\sts2-tas-run `
   -TargetProcess SlayTheSpire2 `
   -DataDir data\windows-live-loop `
   -StopFile remote-smoke\stop-live-loop.flag `
   -TesseractBinary 'C:\Program Files\Tesseract-OCR\tesseract.exe' `
   -TessdataDir remote-smoke\tessdata
+```
+
+비관리자 세션에서 스케줄 등록만 막힐 때:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run-windows-live-loop.ps1 `
+  -WorkDir C:\Users\steep\sts2-tas-run -RunLevel Limited `
+  -DataDir data\windows-live-loop -StopFile remote-smoke\stop-live-loop.flag
 ```
 
 중단은 같은 checkout에서 stop file을 만들면 됩니다. hidden task는 다음 iteration 시작 시 이를 감지하고 summary JSON을 남기며 종료합니다.
