@@ -2,14 +2,14 @@
 
 ## Data Flow
 
-1. `sts2-tas parse-screen` reads a screenshot and OCR tokens, then writes catalog-matched options.
+1. `sts2-tas parse-screen` reads a screenshot and OCR tokens, then writes catalog-matched options plus live state evidence when the OCR text carries player/hand/monster/map fields.
 2. `sts2-tas capture` or `capture-live` stores an unlabeled `GameStep` row.
 3. `sts2-tas label` updates one `GameStep` JSONL row with an `ActionCandidate.identity`, for example `pick_card|option=card_1` or `skip_reward|option=skip`. CLI choices still accept short aliases such as `pick:card_1`, `pick_card:card_1`, and `skip` when they resolve to one legal action.
 4. `sts2-tas train` trains a PyTorch entity-centric actor-critic ranker over legal `ActionCandidate` tokens.
 5. `sts2-tas recommend` loads a saved `.pt` checkpoint and ranks the current `GameStep` actions.
-6. `sts2-tas live-step` captures a screenshot or uses `--capture-fixture`, parses OCR options, chooses from `--choice` or `--model`, and applies one dry-run/jsonl/native action.
-7. `sts2-tas live-learn-loop` repeats the live-step boundary across start menus, gameplay decisions, terminal screens, and restarts. It appends labeled `GameStep` rows only for supervised gameplay decisions and can retrain/save a Torch model every N new labels.
-8. `sts2-tas act`, `run-loop`, and `evaluate-seeds` turn parsed actions into dry-run input plans and seed-level episode summaries.
+6. `sts2-tas live-step` captures a screenshot or uses `--capture-fixture`, parses OCR options/state, chooses from `--choice` or `--model`, applies one dry-run/jsonl/native action, and can compare a post-input OCR fixture as transition acknowledgement.
+7. `sts2-tas live-learn-loop` repeats the live-step boundary across start menus, gameplay decisions, terminal screens, and restarts. It appends labeled `GameStep` rows only for supervised gameplay decisions, propagates terminal returns to the current episode's gameplay rows, and can retrain/save a Torch model every N new labels.
+8. `sts2-tas act`, `run-loop`, `evaluate-seeds`, and branch search helpers turn parsed actions into dry-run input plans, seed-level episode summaries, baseline comparisons, and save-state branch candidates.
 
 ## GameStep Entity Ranker
 
@@ -34,7 +34,9 @@ The schema includes the gameplay fields needed for StS2-style decisions:
 
 `capture`, `capture-live`, and `live-step` accept direct player-state flags plus `--state-json`. The JSON path is the preferred route for real learning rows because it can carry hand/deck zones, current costs, relic counters, potion slots, monster intents, and path candidates in one typed payload. Any value that the capture path cannot observe or that the caller does not provide is preserved in `ObservationQuality.missing_fields` instead of being silently treated as known. OCR card rewards are also added as `CardInstance` rows with `zone="reward"` so the model can score the candidate card as an entity token, not only as an action id.
 
-`sts2_tas.actions.generate_legal_actions()` is the state-derived legal action generator boundary. It currently emits typed candidates for combat cards, targeted potions, end turn, card rewards, and map path choices. It links actions to card instance ids, potion slot ids, monster slot ids, reward card instances, and path node ids so training can generalize beyond OCR option ids. Unsupported contexts still return no candidates instead of inventing actions.
+`sts2_tas.live_state.extract_live_state()` is the first live extractor boundary. It consumes OCR text such as `HP 65/80`, `Energy 3/3`, `Hand Strike cost 1 attack`, `Monster Jaw Worm 30/44 block 3 attack 7x1`, and `Path node-a elite ...`, then returns typed state payload, screen boxes, missing fields, and unknown tokens. This is still an OCR grammar boundary, not a calibrated CV region detector.
+
+`sts2_tas.actions.generate_legal_actions()` is the state-derived legal action generator boundary. It currently emits typed candidates for combat cards, targeted potions, end turn, card rewards, and map path choices. `step_factory` now feeds parsed live state into this generator and attaches screen boxes from OCR evidence where a single-click action is safe to plan. It links actions to card instance ids, potion slot ids, monster slot ids, reward card instances, and path node ids so training can generalize beyond OCR option ids. Unsupported contexts still return no candidates instead of inventing actions.
 
 ## Screen Recognition
 
@@ -51,6 +53,7 @@ It currently recognizes:
 - skip button
 - relic choice options
 - victory/game over terminal screens with a new-run restart action
+- OCR-state-only combat/map screens when typed live state text is present
 
 Card rewards require all three card options plus the skip button before the parser returns a `card_reward`; partial OCR fails closed instead of producing an incomplete decision surface. Duplicate catalog ids are made slot-specific for option ids, for example `strike_1`, `strike_2`, and `strike_3`, so repeated card names remain selectable while reward `CardInstance.card_id` stays canonical as `strike`.
 
@@ -60,11 +63,11 @@ Unknown layouts fail instead of creating empty-option training rows. OCR provide
 
 `sts2-tas act` is dry-run by default and reads a saved `GameStep`. It reports the planned `pick` or `skip` action as JSON, including the target box and click/key input plan when available. It writes an input event only with `--execute` and the default `--input-backend jsonl`. `act --target-process` is accepted only with `--coordinate-space window_relative`; saved screen-absolute steps must stay target-free to avoid stale coordinate translation.
 
-`sts2-tas live-step` emits JSON with `choice`, `action`, `input_plan`, and `screenshot_path`. `--capture-fixture` keeps tests and fixture runs deterministic; `--screenshot-out` writes the live captured screen before OCR.
+`sts2-tas live-step` emits JSON with `choice`, `action`, `input_plan`, and `screenshot_path`. `--capture-fixture` keeps tests and fixture runs deterministic; `--screenshot-out` writes the live captured screen before OCR. `--ack-ocr-fixture` parses a post-input OCR frame and reports transition acknowledgement as `changed`, `no_op`, or `timeout` with a retry recommendation.
 
 `sts2-tas live-learn-loop` reuses the same capture/OCR/action planning contract in a bounded or user-interrupted loop. `--max-steps` makes the loop testable, `--capture-fixture` reuses the same fixture, and live screenshot capture writes numbered filenames derived from `--screenshot-out` so repeated runs do not overwrite one another. It appends selected gameplay actions as `chosen_action_id` in `--dataset` only when the label is supervised by `--choice` or the explicit `--allow-model-self-labels` experiment flag. Menu, mode, character, and restart actions are planned but not persisted as ML labels. Optional `--train-every N --model-out model.pt` retrains from the full dataset after every N newly appended labels.
 
-Terminal screens produce a `StepOutcome` with `terminal=True`. When `--episodes-out` is provided, the loop writes one episode JSON row with victory status, reached floor, remaining HP, labeled gameplay step count since the previous terminal, and the restart action id. It then plans the restart/new-run input action and continues the same loop so learning can resume on the next run.
+Terminal screens produce a `StepOutcome` with `terminal=True`. The loop writes the terminal victory/loss return back onto the current episode's labeled gameplay rows as non-terminal `StepOutcome` values, then, when `--episodes-out` is provided, writes one episode JSON row with victory status, reached floor, remaining HP, labeled gameplay step count since the previous terminal, and the restart action id. It then plans the restart/new-run input action and continues the same loop so learning can resume on the next run.
 
 `live-step --screenshot-out --target-process "Slay the Spire 2"` captures the target window bbox, parses the cropped screenshot, treats option boxes as `window_relative`, and passes the current target window directly into the input plan. Saved `GameStep` rows are screen-absolute for `act` unless the caller explicitly uses `--coordinate-space window_relative`; target-window translation is normally kept inside the live-step capture/act cycle to avoid stale window metadata.
 
@@ -80,9 +83,9 @@ Omit `--input-backend native --execute` first to verify the dry-run plan and tar
 
 Quartz/PyObjC targeted PID event delivery is intentionally only an extension point for now. No dependency is added in this boundary.
 
-`save-state backup` and `save-state restore` operate only on the explicit `--save` file and `--backup-dir`. Backup names include a stable hash of the save path so saves with the same file name in different directories do not overwrite each other.
+`save-state backup` and `save-state restore` operate only on the explicit `--save` file and `--backup-dir`. Backup names include a stable hash of the save path so saves with the same file name in different directories do not overwrite each other. `runtime.search_save_state_branches()` wraps this restore boundary around `branch_and_bound_seed()` so each branch scorer sees the same save-state baseline before evaluating a candidate path.
 
-`run-loop` consumes seed lists, optional `--victory-seeds`, a capture fixture, OCR tokens, and a max step count, then records JSONL episodes. In this fixture-only boundary it performs one parsed choice per seed, records the actual executed step count, and stores declared victory outcomes per seed. `evaluate-seeds` summarizes episode count, victories, win rate, and average steps.
+`run-loop` consumes seed lists, optional `--victory-seeds`, a capture fixture, OCR tokens, and a max step count, then records JSONL episodes. In this fixture-only boundary it performs one parsed choice per seed, records the actual executed step count, and stores declared victory outcomes per seed. `evaluate-seeds` summarizes episode count, victories, win rate, and average steps; with `--baseline`, it also emits candidate-vs-rule-baseline deltas.
 
 ## Constraints
 

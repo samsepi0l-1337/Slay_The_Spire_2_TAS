@@ -8,6 +8,7 @@ from typing import Callable, Protocol
 
 from PIL import Image
 
+from .live_state import LiveStateExtraction, extract_live_state
 from .schema import OcrResult, ParsedScreen, RecognizedOption
 
 Box = tuple[int, int, int, int]
@@ -90,6 +91,7 @@ def parse_ocr_screen(image_path: Path, ocr_provider: OcrProvider) -> ParsedScree
     image = Image.open(image_path)
     width, height = image.size
     tokens = ocr_provider.recognize(image_path)
+    extraction = extract_live_state(tokens)
     options = [
         option
         for token in tokens
@@ -102,15 +104,44 @@ def parse_ocr_screen(image_path: Path, ocr_provider: OcrProvider) -> ParsedScree
     if terminal_kind is not None:
         restarts = [option for option in non_skip if option.kind == "restart_run"]
         if restarts:
-            return ParsedScreen(terminal_kind.value, _slot_ids(restarts), image_path, (width, height))
+            return _parsed(terminal_kind.value, _slot_ids(restarts), image_path, (width, height), extraction)
     menu_kind = _menu_kind(non_skip)
     if menu_kind is not None:
-        return ParsedScreen(menu_kind.value, _slot_ids(non_skip), image_path, (width, height))
+        return _parsed(menu_kind.value, _slot_ids(non_skip), image_path, (width, height), extraction)
     if len(cards) == 3 and len(cards) == len(non_skip) and skip:
-        return ParsedScreen(DetectionKind.CARD_REWARD.value, [*_slot_ids(cards), skip[0]], image_path, (width, height))
+        return _parsed(
+            DetectionKind.CARD_REWARD.value,
+            [*_slot_ids(cards), skip[0]],
+            image_path,
+            (width, height),
+            extraction,
+        )
     if non_skip and all(option.kind == "relic" for option in non_skip):
-        return ParsedScreen(DetectionKind.RELIC_CHOICE.value, _slot_ids(non_skip), image_path, (width, height))
+        return _parsed(DetectionKind.RELIC_CHOICE.value, _slot_ids(non_skip), image_path, (width, height), extraction)
+    if extraction.state_payload.get("path_candidates"):
+        return _parsed("map", [], image_path, (width, height), extraction)
+    if extraction.state_payload.get("cards") or extraction.state_payload.get("monsters"):
+        return _parsed("combat", [], image_path, (width, height), extraction)
     raise ValueError(f"unknown OCR screen layout for {image_path}")
+
+
+def _parsed(
+    kind: str,
+    options: list[RecognizedOption],
+    image_path: Path,
+    resolution: tuple[int, int],
+    extraction: LiveStateExtraction,
+) -> ParsedScreen:
+    return ParsedScreen(
+        kind,
+        options,
+        image_path,
+        resolution,
+        state_payload=extraction.state_payload,
+        state_boxes=extraction.state_boxes,
+        missing_fields=extraction.missing_fields,
+        unknown_tokens=extraction.unknown_tokens,
+    )
 
 
 def detect_screen(image_path: Path) -> ScreenDetection:

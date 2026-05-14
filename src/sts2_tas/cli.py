@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import asdict
 import json
 from pathlib import Path
 
 from .automation import JsonlInputController, NativeInputController, apply_action, plan_action
 from .capture_state import load_captured_game_state
-from .evaluation import write_evaluation
+from .evaluation import write_evaluation_report
 from .live_learning import run_live_learn_loop
 from .ml_cli import add_ml_parsers
 from .ml_entities import resolve_action_identity
@@ -16,6 +17,7 @@ from .runtime import backup_save, capture_screen, restore_save, run_seed_loop
 from .schema import CoordinateSpace, GameStep, TargetWindow
 from .step_factory import game_step_from_detection, game_step_from_parsed_screen
 from .torch_dataset import append_game_step, load_game_steps, write_game_steps
+from .transition import acknowledge_transition
 from .windowing import WindowDetector
 
 
@@ -79,6 +81,7 @@ def _parser() -> argparse.ArgumentParser:
     decision_source.add_argument("--choice")
     decision_source.add_argument("--model", type=Path)
     live_step.add_argument("--ocr-fixture", type=Path)
+    live_step.add_argument("--ack-ocr-fixture", type=Path)
     live_step.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_step.add_argument("--ocr-language", default="eng+kor")
     live_step.add_argument("--input-log", type=Path, required=True)
@@ -158,6 +161,7 @@ def _parser() -> argparse.ArgumentParser:
 
     evaluate_seeds = subparsers.add_parser("evaluate-seeds")
     evaluate_seeds.add_argument("--episodes", type=Path, required=True)
+    evaluate_seeds.add_argument("--baseline", type=Path)
     evaluate_seeds.add_argument("--out", type=Path, required=True)
     evaluate_seeds.set_defaults(handler=_evaluate_seeds)
     return parser
@@ -252,6 +256,9 @@ def _live_step(args: argparse.Namespace) -> None:
         "input_plan": action.input_plan(),
         "screenshot_path": str(screenshot_path),
     }
+    if args.ack_ocr_fixture is not None:
+        ack_step = _step_from_screen_with_provider(args, screenshot_path, _fixture_ocr_provider(args.ack_ocr_fixture))
+        report["transition_ack"] = asdict(acknowledge_transition(step, [ack_step], action_id))
     if target_window is not None:
         report["target_window"] = target_window.to_dict()
     print(json.dumps(report, sort_keys=True))
@@ -313,14 +320,22 @@ def _run_loop(args: argparse.Namespace) -> None:
 
 
 def _evaluate_seeds(args: argparse.Namespace) -> None:
-    write_evaluation(args.episodes, args.out)
+    write_evaluation_report(args.episodes, args.out, baseline=args.baseline)
 
 
 def _step_from_screen(
     args: argparse.Namespace,
     screenshot_path: Path,
 ) -> GameStep:
-    parsed = parse_ocr_screen(screenshot_path, _ocr_provider(args))
+    return _step_from_screen_with_provider(args, screenshot_path, _ocr_provider(args))
+
+
+def _step_from_screen_with_provider(
+    args: argparse.Namespace,
+    screenshot_path: Path,
+    ocr_provider: OcrProvider,
+) -> GameStep:
+    parsed = parse_ocr_screen(screenshot_path, ocr_provider)
     return game_step_from_parsed_screen(
         parsed=parsed,
         game_version=args.game_version,

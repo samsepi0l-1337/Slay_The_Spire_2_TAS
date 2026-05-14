@@ -12,9 +12,9 @@ from .ml_entities import resolve_action_identity
 from .model import load_model, recommend, save_model, train_torch_model
 from .recognition import FakeOcrProvider, OcrProvider, OcrToken, TesseractOcrProvider, parse_ocr_screen
 from .runtime import capture_screen
-from .schema import CoordinateSpace, GameStep, TargetWindow
+from .schema import CoordinateSpace, GameStep, StepOutcome, TargetWindow
 from .step_factory import game_step_from_parsed_screen
-from .torch_dataset import append_game_step, load_game_steps
+from .torch_dataset import append_game_step, load_game_steps, write_game_steps
 from .windowing import WindowDetector
 
 
@@ -154,7 +154,11 @@ def _should_append_training_label(args: argparse.Namespace) -> bool:
 
 
 def _append_episode_summary(args: argparse.Namespace, state: _LoopState, step: GameStep, restart_action_id: str) -> None:
-    if args.episodes_out is None or step.outcome is None:
+    if step.outcome is None:
+        return
+    _propagate_terminal_return(args.dataset, state.episode_labeled_steps, step.outcome)
+    if args.episodes_out is None:
+        state.episode_labeled_steps = 0
         return
     state.episodes += 1
     row = {
@@ -169,6 +173,32 @@ def _append_episode_summary(args: argparse.Namespace, state: _LoopState, step: G
     args.episodes_out.parent.mkdir(parents=True, exist_ok=True)
     with args.episodes_out.open("a", encoding="utf-8") as file:
         file.write(json.dumps(row, sort_keys=True) + "\n")
+
+
+def _propagate_terminal_return(dataset: Path, labeled_steps: int, terminal_outcome: StepOutcome) -> None:
+    if labeled_steps <= 0 or not dataset.exists():
+        return
+    steps = load_game_steps(dataset)
+    episode_return = 1.0 if terminal_outcome.victory else 0.0
+    propagated = StepOutcome(
+        victory=terminal_outcome.victory,
+        floor_reached=terminal_outcome.floor_reached,
+        hp_remaining=terminal_outcome.hp_remaining,
+        immediate_reward=episode_return,
+        terminal=False,
+    )
+    start = max(0, len(steps) - labeled_steps)
+    for index in range(start, len(steps)):
+        step = steps[index]
+        steps[index] = GameStep(
+            state=step.state,
+            actions=step.actions,
+            chosen_action_id=step.chosen_action_id,
+            outcome=propagated,
+            observation=step.observation,
+            screenshot_path=step.screenshot_path,
+        )
+    write_game_steps(dataset, steps)
 
 
 def _train_if_due(args: argparse.Namespace, state: _LoopState) -> None:

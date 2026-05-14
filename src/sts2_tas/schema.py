@@ -76,10 +76,21 @@ class ParsedScreen:
     options: list[RecognizedOption]
     screenshot_path: Path
     resolution: tuple[int, int]
+    state_payload: dict[str, Any] | None = None
+    state_boxes: dict[str, Box] | None = None
+    missing_fields: list[str] | None = None
+    unknown_tokens: list[str] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["screenshot_path"] = str(self.screenshot_path)
+        data["state_payload"] = self.state_payload or {}
+        data["state_boxes"] = {
+            key: list(value)
+            for key, value in (self.state_boxes or {}).items()
+        }
+        data["missing_fields"] = list(self.missing_fields or [])
+        data["unknown_tokens"] = list(self.unknown_tokens or [])
         return data
 
 

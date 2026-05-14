@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from statistics import fmean
 
-from .capture_state import CapturedGameState
+from .actions import generate_legal_actions
+from .capture_state import CapturedGameState, overlay_captured_game_state
 from .recognition import DetectionKind, ScreenDetection
 from .schema import (
     ActionCandidate,
@@ -56,28 +58,36 @@ def game_step_from_parsed_screen(
     source_type: str,
 ) -> GameStep:
     confidence = fmean(option.confidence for option in parsed.options) if parsed.options else 0.0
-    enriched_state = _state_with_reward_cards(captured_state, parsed.options)
+    extracted_state = overlay_captured_game_state(
+        captured_state,
+        parsed.state_payload,
+        missing_fields=parsed.missing_fields,
+        unknown_tokens=parsed.unknown_tokens,
+    )
+    effective_floor = _parsed_floor(parsed, floor)
+    enriched_state = _state_with_reward_cards(extracted_state, parsed.options)
+    state = _structured_state(
+        game_version=game_version,
+        branch=branch,
+        character=character,
+        ascension=ascension,
+        floor=effective_floor,
+        captured_state=enriched_state,
+        decision_context=parsed.kind,
+    )
     return _game_step(
         game_version=game_version,
         branch=branch,
         character=character,
         ascension=ascension,
-        floor=floor,
+        floor=effective_floor,
         captured_state=enriched_state,
         decision_context=parsed.kind,
-        actions=[
-            ActionCandidate(
-                action_type=_action_type(option.kind),
-                option_id=option.id,
-                screen_box=option.box,
-                legal=True,
-            )
-            for option in parsed.options
-        ],
+        actions=_actions_from_parsed_screen(parsed, state),
         source_type=source_type,
         ocr_confidence=confidence,
         screenshot_path=parsed.screenshot_path,
-        outcome=_outcome_from_parsed_screen(parsed.kind, floor=floor, hp=captured_state.player.hp),
+        outcome=_outcome_from_parsed_screen(parsed.kind, floor=effective_floor, hp=enriched_state.player.hp),
     )
 
 
@@ -98,20 +108,14 @@ def _game_step(
 ) -> GameStep:
     catalog_version = f"{game_version}:{branch}"
     return GameStep(
-        state=StructuredGameState(
+        state=_structured_state(
             game_version=game_version,
             branch=branch,
-            catalog_version=catalog_version,
             character=character,
             ascension=ascension,
             floor=floor,
+            captured_state=captured_state,
             decision_context=decision_context,
-            player=captured_state.player,
-            cards=captured_state.cards,
-            relics=captured_state.relics,
-            potions=captured_state.potions,
-            monsters=captured_state.monsters,
-            path_candidates=captured_state.path_candidates,
         ),
         actions=actions,
         chosen_action_id=None,
@@ -126,6 +130,34 @@ def _game_step(
             unknown_tokens=captured_state.unknown_tokens,
         ),
         screenshot_path=screenshot_path,
+    )
+
+
+def _structured_state(
+    *,
+    game_version: str,
+    branch: str,
+    character: str,
+    ascension: int,
+    floor: int,
+    captured_state: CapturedGameState,
+    decision_context: str,
+) -> StructuredGameState:
+    catalog_version = f"{game_version}:{branch}"
+    return StructuredGameState(
+        game_version=game_version,
+        branch=branch,
+        catalog_version=catalog_version,
+        character=character,
+        ascension=ascension,
+        floor=floor,
+        decision_context=decision_context,
+        player=captured_state.player,
+        cards=captured_state.cards,
+        relics=captured_state.relics,
+        potions=captured_state.potions,
+        monsters=captured_state.monsters,
+        path_candidates=captured_state.path_candidates,
     )
 
 
@@ -174,6 +206,50 @@ def _actions_from_detection(detection: ScreenDetection) -> list[ActionCandidate]
     ]
 
 
+def _actions_from_parsed_screen(parsed: ParsedScreen, state: StructuredGameState) -> list[ActionCandidate]:
+    fallback = [
+        ActionCandidate(
+            action_type=_action_type(option.kind),
+            option_id=option.id,
+            screen_box=option.box,
+            legal=True,
+        )
+        for option in parsed.options
+    ]
+    generated = generate_legal_actions(state)
+    if not generated:
+        return fallback
+    return [_with_screen_binding(action, parsed, fallback) for action in generated]
+
+
+def _with_screen_binding(
+    action: ActionCandidate,
+    parsed: ParsedScreen,
+    fallback: list[ActionCandidate],
+) -> ActionCandidate:
+    boxes = parsed.state_boxes or {}
+    if action.action_type == "pick_card" and action.target_card_id is not None:
+        option_id, screen_box = _reward_option_binding(action.target_card_id, fallback)
+        return replace(action, option_id=option_id, screen_box=screen_box)
+    if action.action_type == "skip_reward":
+        skip = next((candidate for candidate in fallback if candidate.action_type == "skip_reward"), None)
+        return replace(action, option_id="skip", screen_box=None if skip is None else skip.screen_box)
+    if action.action_type == "choose_path" and action.path_node_id is not None:
+        return replace(action, screen_box=boxes.get(f"path:{action.path_node_id}"))
+    if action.action_type == "play_card" and action.source_card_id is not None:
+        return replace(action, screen_box=boxes.get(f"card:{action.source_card_id}"))
+    if action.action_type == "use_potion" and action.source_potion_id is not None:
+        return replace(action, screen_box=boxes.get(f"potion:{action.source_potion_id}"))
+    return action
+
+
+def _reward_option_binding(target_card_id: str, fallback: list[ActionCandidate]) -> tuple[str | None, tuple[int, int, int, int] | None]:
+    for index, candidate in enumerate((item for item in fallback if item.action_type == "pick_card")):
+        if target_card_id.startswith(f"reward-{index}-"):
+            return candidate.option_id, candidate.screen_box
+    return None, None
+
+
 def _action_type(kind: str) -> str:
     if kind == "card":
         return "pick_card"
@@ -192,6 +268,14 @@ def _outcome_from_parsed_screen(kind: str, *, floor: int, hp: int) -> StepOutcom
     if kind == DetectionKind.GAME_OVER.value:
         return StepOutcome(victory=False, floor_reached=floor, hp_remaining=hp, terminal=True)
     return None
+
+
+def _parsed_floor(parsed: ParsedScreen, fallback: int) -> int:
+    payload = parsed.state_payload or {}
+    meta = payload.get("_meta", {})
+    if isinstance(meta, dict) and "floor" in meta:
+        return int(meta["floor"])
+    return fallback
 
 
 def _card_type(tags: list[str]) -> str:

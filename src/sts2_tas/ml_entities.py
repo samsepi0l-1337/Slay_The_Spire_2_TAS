@@ -243,8 +243,9 @@ class ActionCandidate:
 
     @property
     def identity_fields(self) -> tuple[tuple[str, str], ...]:
+        if self.option_id is not None:
+            return (("option", self.option_id),)
         fields = (
-            ("option", self.option_id),
             ("source_card", self.source_card_id),
             ("source_potion", self.source_potion_id),
             ("target_card", self.target_card_id),

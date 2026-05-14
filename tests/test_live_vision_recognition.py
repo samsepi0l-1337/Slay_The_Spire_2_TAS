@@ -198,5 +198,39 @@ def test_parse_ocr_screen_matches_adjacent_multiword_relics_from_one_tsv_line(tm
     assert [option.id for option in parsed.options] == ["burning_blood", "tiny_house"]
 
 
+def test_parse_ocr_screen_accepts_combat_state_without_reward_options(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            _token("HP 65/80", (80, 930, 220, 980)),
+            _token("Energy 3/3", (420, 910, 540, 970)),
+            _token("Hand Strike cost 1 attack", (250, 820, 430, 1010)),
+            _token("Monster Jaw Worm 30/44 block 3 attack 7x1", (1270, 260, 1560, 570)),
+        ]
+    )
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "combat.png"), ocr_provider=provider)
+
+    assert parsed.kind == "combat"
+    assert parsed.state_payload["player"]["hp"] == 65
+    assert parsed.state_payload["cards"][0]["instance_id"] == "hand-0-strike"
+    assert parsed.state_boxes["monster:jaw_worm:0"] == (1270, 260, 1560, 570)
+
+
+def test_parse_ocr_screen_accepts_map_state_without_reward_options(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            _token(
+                "Path node-a elite depth 1 elites 1 rests 0 shops 0 events 1 boss 5 forced",
+                (700, 230, 820, 350),
+            )
+        ]
+    )
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "map.png"), ocr_provider=provider)
+
+    assert parsed.kind == "map"
+    assert parsed.state_payload["path_candidates"][0]["node_type"] == "elite"
+
+
 def test_tesseract_tsv_parser_accepts_empty_output() -> None:
     assert recognition._tokens_from_tsv("") == []

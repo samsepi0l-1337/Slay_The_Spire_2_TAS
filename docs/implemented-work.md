@@ -12,11 +12,11 @@
 - `recommend`: 저장된 `.pt` 모델과 현재 `GameStep`으로 후보별 추천 점수를 출력한다.
 - `act`: saved `GameStep`과 명시 action id로 dry-run/input event/native input action을 계획하거나 실행한다.
 - `live-step`: 화면 capture 또는 fixture, OCR parsing, manual/model choice, input planning/execution을 한 번에 수행한다.
-- `live-learn-loop`: 최초 시작 메뉴부터 gameplay, terminal, restart까지 `live-step` 경계를 반복한다. gameplay 화면만 labeled `GameStep` JSONL에 누적하고, 지정 interval마다 PyTorch 모델을 재학습/저장한다.
+- `live-learn-loop`: 최초 시작 메뉴부터 gameplay, terminal, restart까지 `live-step` 경계를 반복한다. gameplay 화면은 `--choice` 또는 `--allow-model-self-labels`일 때만 labeled `GameStep` JSONL에 누적하고, terminal return을 같은 episode의 gameplay row에 전파하며, 지정 interval마다 PyTorch 모델을 재학습/저장한다.
 - `save-state backup`: 지정 save 파일을 backup directory로 복사한다.
 - `save-state restore`: exact hashed backup save를 원 위치로 복원하고 기존 save는 pre-restore copy로 보존한다.
 - `run-loop`: seed 목록, optional victory seed 목록, capture fixture/OCR로 seed episode JSONL을 생성한다.
-- `evaluate-seeds`: seed episode JSONL에서 episode count, victory count, win rate, average steps를 요약한다.
+- `evaluate-seeds`: seed episode JSONL에서 episode count, victory count, win rate, average steps를 요약하고, `--baseline`이 있으면 rule baseline 대비 delta를 출력한다.
 
 ## Data And Schema
 
@@ -28,6 +28,7 @@
 - `ObservationQuality`: OCR confidence, missing field, unknown token, catalog version을 저장해 Early Access catalog drift를 추적한다.
 - `capture`/`capture-live`/`live-step`은 `--state-json`으로 플레이어, 카드, 유물, 포션, 몬스터, 경로 후보 상태를 입력받고, 미제공 필드는 `missing_fields`에 기록한다.
 - `RecognizedOption`/`ParsedScreen`: OCR에서 인식한 canonical option과 화면 resolution을 구조화한다.
+- `live_state.extract_live_state`: OCR text에서 player HP/energy/block/turn/gold/floor, hand card, potion, monster HP/intent, map node를 typed state payload와 screen box로 추출한다.
 - `actions.generate_legal_actions`: structured state에서 combat, card reward, map context의 state-derived legal action generator를 제공한다. Combat은 hand card, living monster target, usable potion, end turn을 entity-linked action으로 만든다.
 - `AutomationAction`: action, option id, dry-run state, coordinate space, target box를 기반으로 click 또는 keypress `input_plan`을 만든다.
 - `WindowBounds`/`TargetWindow`: macOS target application/window identity와 bounds를 구조화해 relative option box를 screen absolute input plan으로 변환한다.
@@ -75,8 +76,10 @@
 - `--capture-fixture`로 deterministic screenshot을 사용하거나, `--screenshot-out`으로 Pillow `ImageGrab.grab()` 결과를 저장한다.
 - target window가 있으면 `--screenshot-out` capture는 Pillow `ImageGrab.grab(bbox=...)` 경로로 window bounds를 캡처한다.
 - OCR parsing으로 현재 선택지를 만들고 `GameStep`을 구성한다.
+- OCR state payload가 있으면 `step_factory`가 capture/state-json 값 위에 병합하고 legal action generator 결과에 screen box를 연결한다.
 - `--choice`가 있으면 manual action id를 사용한다.
 - `--model`이 있으면 저장된 추천 모델의 best action id를 사용한다.
+- `--ack-ocr-fixture`가 있으면 입력 후 parsed frame과 이전 frame signature를 비교해 `changed`/`no_op`/`timeout` transition acknowledgement를 포함한다.
 - 결과 JSON에는 `choice`, `action`, `input_plan`, `screenshot_path`가 포함되고, target process 사용 시 `target_window`가 포함된다.
 - native backend는 `--execute` 없이 사용할 수 없다.
 

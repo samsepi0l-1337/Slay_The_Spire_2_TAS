@@ -18,6 +18,12 @@ Window capture
 ## Implemented In This Update
 
 - `actions.generate_legal_actions()`를 추가해 combat/card_reward/map의 state-derived legal action generator 경계를 만들었다.
+- `live_state.extract_live_state()`를 추가해 OCR text에서 HP/max HP, block, energy, turn, gold, floor, hand card, potion, monster HP/intent, map node를 typed payload와 screen box로 추출한다.
+- `step_factory`가 parsed OCR state+screen evidence를 병합하고 `generate_legal_actions()` 결과에 screen box를 붙여 combat/card_reward/map live path에서 같은 후보 표면을 사용한다.
+- `transition.acknowledge_transition()`과 `live-step --ack-ocr-fixture`를 추가해 입력 후 changed/no-op/timeout과 retry 권고를 분리하는 검증 경계를 만들었다.
+- `live-learn-loop` terminal outcome을 같은 episode의 gameplay `GameStep` row에 Monte Carlo return 형태의 `StepOutcome`으로 전파한다.
+- `runtime.branch_and_bound_seed()`와 `search_save_state_branches()`를 추가해 save backup/restore 기반 branch 평가 시작점을 만들었다.
+- `evaluate-seeds --baseline`을 추가해 candidate episode와 rule baseline episode의 win rate/average steps/victory delta를 리포트한다.
 - `live-learn-loop --model`의 self-label 저장을 기본 차단하고, 명시적 실험 플래그 `--allow-model-self-labels`만 허용했다.
 - `act --target-process`는 `--coordinate-space window_relative`가 있을 때만 허용한다.
 - Windows native target input은 process/title/bounds recheck, `SetForegroundWindow`, input 실행을 한 PowerShell script 안에 묶는다.
@@ -26,16 +32,16 @@ Window capture
 
 ## P0 Gaps
 
-- Live state extractor: HP/max HP, block, energy, turn, gold, floor, hand/draw/discard/exhaust, relic counters, potion slots, monster HP/intents, map nodes를 화면에서 갱신해야 한다.
-- Legal action integration: 현재 generator는 typed boundary이고 live OCR path는 아직 screen option 중심이다. `step_factory`가 state+screen evidence를 받아 combat/map/shop/event/rest/potion 후보를 만들도록 확장해야 한다.
-- Transition acknowledgement: 입력 후 OCR/frame 상태 변화, debounce, retry, no-op, timeout을 분리해야 한다.
-- Trajectory return: terminal outcome을 episode summary에만 두지 말고 gameplay rows에 Monte Carlo return 또는 TD target으로 전파해야 한다.
+- Live state extractor: OCR text grammar 기반 HP/max HP, block, energy, turn, gold, floor, hand, potion, monster, map 추출은 시작됐다. draw/discard/exhaust, relic counters, field-level confidence, CV region detector, real screenshot calibration은 남아 있다.
+- Legal action integration: combat/card_reward/map은 live OCR state와 generator가 연결됐다. shop/event/rest, multi-click combat input plan, potion target click sequence는 남아 있다.
+- Transition acknowledgement: changed/no-op/timeout 분리와 retry 권고 경계는 생겼다. 실제 live frame polling, debounce, retry execution policy는 남아 있다.
+- Trajectory return: terminal outcome을 gameplay rows에 Monte Carlo return으로 전파한다. TD target, discounted return, per-step reward shaping은 남아 있다.
 
 ## P1 Gaps
 
 - Versioned catalog: catalog를 외부 JSON으로 분리하고 Early Access patch drift를 기록해야 한다.
 - Unknown OCR logging: unknown token, fuzzy match 후보, confidence threshold 통계를 field-level report로 남겨야 한다.
-- Search/TAS loop: save-state backup/restore와 seed 고정으로 reward/map부터 branch-and-bound, 이후 combat shallow rollout/MCTS를 붙여야 한다.
+- Search/TAS loop: save-state restore 기반 branch-and-bound 함수는 생겼다. CLI orchestration, reward/map branch scorer, combat shallow rollout/MCTS는 남아 있다.
 - Numeric encoding: HP/gold/floor 등 numeric scale normalization과 observed/missing mask 결합이 필요하다.
 - Windows DPI/hit-test: DPI scaling, clickable region margin, screenshot id, pre/post state hash, latency/error logging을 더해야 한다.
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -10,6 +11,23 @@ from .recognition import OcrProvider, parse_ocr_screen
 from .schema import RunEpisode
 
 ScreenGrabber = Callable[..., Any]
+ScoreBranch = Callable[[int, tuple[str, ...]], float]
+
+
+@dataclass(frozen=True)
+class BranchSearchResult:
+    seed: int
+    choices: list[str]
+    score: float
+    pruned: int
+
+    def to_dict(self) -> dict[str, int | float | list[str]]:
+        return {
+            "seed": self.seed,
+            "choices": list(self.choices),
+            "score": self.score,
+            "pruned": self.pruned,
+        }
 
 
 def capture_screen(screenshot_out: Path, *, grabber: ScreenGrabber | None = None, bbox: tuple[int, int, int, int] | None = None) -> Path:
@@ -52,6 +70,71 @@ def restore_save(save_path: Path, backup_dir: Path) -> Path:
     save_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(backup_path, save_path)
     return save_path
+
+
+def branch_and_bound_seed(
+    *,
+    seed: int,
+    choices: list[str],
+    max_depth: int,
+    score_branch: ScoreBranch,
+    bound_branch: ScoreBranch | None = None,
+) -> BranchSearchResult:
+    best_choices: list[str] = []
+    best_score = float("-inf")
+    pruned = 0
+
+    def visit(path: tuple[str, ...]) -> None:
+        nonlocal best_choices, best_score, pruned
+        if path:
+            score = score_branch(seed, path)
+            if score > best_score:
+                best_choices = list(path)
+                best_score = score
+        if len(path) >= max_depth:
+            return
+        for choice in choices:
+            candidate = (*path, choice)
+            if bound_branch is not None and bound_branch(seed, candidate) < best_score:
+                pruned += 1
+                continue
+            visit(candidate)
+
+    visit(())
+    return BranchSearchResult(
+        seed=seed,
+        choices=best_choices,
+        score=0.0 if best_score == float("-inf") else best_score,
+        pruned=pruned,
+    )
+
+
+def search_save_state_branches(
+    *,
+    seed: int,
+    choices: list[str],
+    save: Path,
+    backup_dir: Path,
+    max_depth: int,
+    score_branch: ScoreBranch,
+    bound_branch: ScoreBranch | None = None,
+) -> BranchSearchResult:
+    backup_save(save, backup_dir)
+
+    def restored_score(candidate_seed: int, path: tuple[str, ...]) -> float:
+        restore_save(save, backup_dir)
+        return score_branch(candidate_seed, path)
+
+    try:
+        return branch_and_bound_seed(
+            seed=seed,
+            choices=choices,
+            max_depth=max_depth,
+            score_branch=restored_score,
+            bound_branch=bound_branch,
+        )
+    finally:
+        restore_save(save, backup_dir)
 
 
 def _backup_path(save_path: Path, backup_dir: Path) -> Path:

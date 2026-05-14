@@ -232,6 +232,10 @@ def test_live_learn_loop_restarts_after_terminal_without_training_menu_rows(tmp_
             "victory": True,
         }
     ]
+    assert steps[0].outcome is not None
+    assert steps[0].outcome.victory is True
+    assert steps[0].outcome.immediate_reward == 1.0
+    assert steps[0].outcome.terminal is False
 
 
 def test_episode_steps_are_independent_from_train_interval_resets(

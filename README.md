@@ -26,6 +26,7 @@ uv run sts2-tas live-learn-loop --screenshot-out live.png --ocr-provider tessera
 uv run sts2-tas live-learn-loop --screenshot-out live.png --ocr-provider tesseract --model models/ironclad.pt --dataset data/live.jsonl --episodes-out data/episodes.jsonl --input-log inputs.jsonl --max-steps 50 --game-version 0.105.1 --branch beta --character ironclad --ascension 0 --floor 1 --hp 70 --gold 99
 uv run sts2-tas run-loop --seeds 7,8 --victory-seeds 8 --capture-fixture reward.png --ocr-fixture ocr.json --episodes-out episodes.jsonl --max-steps 1
 uv run sts2-tas evaluate-seeds --episodes episodes.jsonl --out summary.json
+uv run sts2-tas evaluate-seeds --episodes candidate.jsonl --baseline rule-baseline.jsonl --out comparison.json
 ```
 
 실제 학습용 row는 `--state-json`으로 player/card/relic/potion/monster/path 상태를 함께 넣는 것을 권장합니다. CLI flag로 주지 않은 값은 `ObservationQuality.missing_fields`에 남겨 모델 입력 품질을 추적합니다.
@@ -35,6 +36,8 @@ uv run sts2-tas evaluate-seeds --episodes episodes.jsonl --out summary.json
 `--target-process --input-backend native --execute` 조합은 실제 OS 입력을 보내는 production 경로입니다. 먼저 같은 명령에서 `--input-backend native --execute`를 빼고 dry-run/JSONL 계획과 target window metadata가 맞는지 확인합니다.
 
 `live-learn-loop`는 `live-step`과 같은 capture/OCR/action 선택 경계를 반복합니다. Gameplay 화면은 `--choice` 라벨이 있거나 `--allow-model-self-labels`를 명시한 실험에서만 `chosen_action_id`가 채워진 `GameStep`을 JSONL dataset에 누적합니다. 메뉴/모드/캐릭터/재시작 화면은 학습 row로 저장하지 않고 입력 계획만 만들며, terminal 화면은 `--episodes-out`에 승패 요약을 남긴 뒤 `New Run` 액션으로 다음 run을 시작합니다. `--max-steps` 없이 실행하면 사용자가 중단할 때까지 반복하고, `KeyboardInterrupt`는 traceback 대신 summary JSON으로 종료합니다. `--screenshot-out live.png`는 반복마다 `live-000001.png`처럼 충돌 없는 파일명을 사용합니다.
+
+OCR text가 `HP 65/80`, `Energy 3/3`, `Hand Strike cost 1 attack`, `Monster Jaw Worm 30/44 block 3 attack 7x1`, `Path node-a ...` 같은 live state grammar를 포함하면 `live-step`/`live-learn-loop`는 이를 structured state로 병합하고 state-derived legal action generator에 연결합니다. `--ack-ocr-fixture`는 테스트/fixture 경로에서 입력 후 상태 변화 여부를 `changed`/`no_op`/`timeout`으로 리포트합니다.
 
 모델 선택을 supervised label로 재학습하는 실험은 `--allow-model-self-labels --train-every N --model-out models/ironclad.pt`를 함께 명시할 때만 사용합니다.
 
