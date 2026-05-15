@@ -38,6 +38,7 @@ def test_docs_explain_windows_docker_and_deferred_scope() -> None:
     docker_doc = (ROOT / "docs" / "docker.md").read_text(encoding="utf-8")
     architecture_doc = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
     implemented_doc = (ROOT / "docs" / "implemented-work.md").read_text(encoding="utf-8")
+    gaps_doc = (ROOT / "docs" / "v1-gaps.md").read_text(encoding="utf-8")
     index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
 
     assert "Windows PowerShell" in docker_doc
@@ -59,7 +60,14 @@ def test_docs_explain_windows_docker_and_deferred_scope() -> None:
     assert "semantic movie" in index
     assert "PYTHONPATH=src" in index
     assert "tas-verify --runs 5" in architecture_doc
+    assert "live Windows `tas-verify --runs 5`" in architecture_doc
     assert "train --label-policy verified" in implemented_doc
+    assert "static `tas-replay --verify`" in gaps_doc
+    assert "Five-run acceptance" in gaps_doc
+    assert "TAS-grade acceptance" in gaps_doc
+    assert "화면 인식/입력 MVP" not in gaps_doc
+    assert "OCR-first MVP" not in gaps_doc
+    assert "PPO" not in gaps_doc
     assert "SlayTheSpire2" in docker_doc
     assert "--tessdata-dir" in docker_doc
     assert "kor.traineddata" in docker_doc
