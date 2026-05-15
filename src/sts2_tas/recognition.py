@@ -19,6 +19,12 @@ REFERENCE_RESOLUTION = (1920, 1080)
 MIN_OCR_OPTION_CONFIDENCE = 0.60
 VICTORY_TERMS = {"victory", "victory!", "clear", "run clear", "승리", "승리!", "클리어"}
 GAME_OVER_TERMS = {"game over", "defeat", "defeated", "게임 오버", "게임오버", "패배"}
+MAP_MARKER_TERMS = {"legend", "범례"}
+NEOW_CHOICE_REFERENCE_BOXES: tuple[Box, ...] = (
+    (470, 740, 1450, 835),
+    (470, 835, 1450, 930),
+    (470, 930, 1450, 1030),
+)
 
 
 class OcrProvider(Protocol):
@@ -42,8 +48,20 @@ CATALOG = (
     CatalogEntry("burning_blood", "Burning Blood", "relic", ("burning blood", "\ud0c0\uc624\ub974\ub294 \ud53c")),
     CatalogEntry("tiny_house", "Tiny House", "relic", ("tiny house", "\uc791\uc740 \uc9d1")),
     CatalogEntry("skip", "Skip", "skip", ("skip", "\ub118\uae30\uae30")),
-    CatalogEntry("single_player", "Single Player", "select_single_player", ("single player", "\uc2f1\uae00 \ud50c\ub808\uc774")),
-    CatalogEntry("standard", "Standard", "select_mode", ("standard", "\ud45c\uc900", "\uc77c\ubc18")),
+    CatalogEntry(
+        "single_player",
+        "Single Player",
+        "select_single_player",
+        (
+            "single player",
+            "\uc2f1\uae00 \ud50c\ub808\uc774",
+            "\uc2f1\uae00\ud50c\ub808\uc774",
+            "\uc2f1\uae00 \uae00 \ud50c\ub808\uc774",
+            "\uc2f1 \uae00 \ud50c\ub808\uc774",
+        ),
+    ),
+    CatalogEntry("continue", "Continue", "continue_run", ("continue", "resume", "\uacc4\uc18d")),
+    CatalogEntry("standard", "Standard", "select_mode", ("standard", "\ud45c\uc900", "\uc77c\ubc18", "\uae30\ubcf8")),
     CatalogEntry("ironclad", "Ironclad", "select_character", ("ironclad", "\uc544\uc774\uc5b8\ud074\ub798\ub4dc")),
     CatalogEntry("new_run", "New Run", "restart_run", ("new run", "play again", "retry", "\uc0c8 \ub7f0", "\ub2e4\uc2dc \uc2dc\uc791")),
 )
@@ -79,10 +97,18 @@ class FakeOcrProvider:
 class TesseractOcrProvider:
     language: str = "eng"
     binary: str = "tesseract"
+    tessdata_dir: Path | None = None
+    page_segmentation_mode: int | None = None
 
     def recognize(self, image_path: Path) -> list[OcrToken]:
+        command = [self.binary, str(image_path), "stdout", "-l", self.language]
+        if self.tessdata_dir is not None:
+            command.extend(["--tessdata-dir", str(self.tessdata_dir)])
+        if self.page_segmentation_mode is not None:
+            command.extend(["--psm", str(self.page_segmentation_mode)])
+        command.extend(["-c", "tessedit_create_tsv=1"])
         result = subprocess.run(
-            [self.binary, str(image_path), "stdout", "-l", self.language, "tsv"],
+            command,
             capture_output=True,
             check=True,
             text=True,
@@ -128,6 +154,16 @@ def parse_ocr_screen(
         return _parsed(DetectionKind.RELIC_CHOICE.value, _slot_ids(non_skip), image_path, (width, height), extraction)
     if extraction.state_payload.get("path_candidates"):
         return _parsed("map", [], image_path, (width, height), extraction)
+    if _has_map_marker(tokens):
+        return _parsed("map", [], image_path, (width, height), extraction)
+    if extraction.state_payload.get("shop_items"):
+        return _parsed("shop", [], image_path, (width, height), extraction)
+    if extraction.state_payload.get("event_options"):
+        return _parsed("event", [], image_path, (width, height), extraction)
+    if extraction.state_payload.get("rest_options"):
+        return _parsed("rest", [], image_path, (width, height), extraction)
+    if neow_boxes := _neow_choice_boxes(image):
+        return _parsed("event", [], image_path, (width, height), _with_neow_options(extraction, neow_boxes))
     if extraction.state_payload.get("cards") or extraction.state_payload.get("monsters"):
         return _parsed("combat", [], image_path, (width, height), extraction)
     raise ValueError(f"unknown OCR screen layout for {image_path}")
@@ -149,6 +185,7 @@ def _parsed(
         state_boxes=extraction.state_boxes,
         missing_fields=extraction.missing_fields,
         unknown_tokens=extraction.unknown_tokens,
+        field_confidence=extraction.field_confidence,
     )
 
 
@@ -225,6 +262,63 @@ def _is_skip_gray(pixel: tuple[int, int, int]) -> bool:
     return 70 <= red <= 105 and 70 <= green <= 105 and 70 <= blue <= 105
 
 
+def _neow_choice_boxes(image: Image.Image) -> list[Box]:
+    boxes = [_scale_reference_box(box, image.size) for box in NEOW_CHOICE_REFERENCE_BOXES]
+    return boxes if sum(1 for box in boxes if _blue_panel_ratio(image, box) >= 0.20) >= 3 else []
+
+
+def _scale_reference_box(box: Box, resolution: tuple[int, int]) -> Box:
+    width, height = resolution
+    ref_width, ref_height = REFERENCE_RESOLUTION
+    left, top, right, bottom = box
+    return (
+        round(left * width / ref_width),
+        round(top * height / ref_height),
+        round(right * width / ref_width),
+        round(bottom * height / ref_height),
+    )
+
+
+def _blue_panel_ratio(image: Image.Image, box: Box) -> float:
+    left, top, right, bottom = box
+    step_x = max(1, (right - left) // 80)
+    step_y = max(1, (bottom - top) // 20)
+    total = 0
+    matches = 0
+    for y in range(top, bottom, step_y):
+        for x in range(left, right, step_x):
+            total += 1
+            if _is_neow_panel_pixel(image.getpixel((x, y))):
+                matches += 1
+    return 0.0 if total == 0 else matches / total
+
+
+def _is_neow_panel_pixel(pixel: tuple[int, int, int]) -> bool:
+    red, green, blue = pixel
+    return red <= 80 and green >= 65 and blue >= 85 and blue >= red + 30
+
+
+def _with_neow_options(extraction: LiveStateExtraction, boxes: list[Box]) -> LiveStateExtraction:
+    payload = dict(extraction.state_payload)
+    state_boxes = dict(extraction.state_boxes)
+    event_options = []
+    for index, box in enumerate(boxes, start=1):
+        option_id = f"neow_option_{index}"
+        event_options.append({"option_id": option_id, "label": f"Neow option {index}"})
+        state_boxes[f"event_option:{option_id}"] = box
+    payload["event_options"] = event_options
+    field_confidence = dict(extraction.field_confidence)
+    field_confidence["event_options"] = 0.99
+    return LiveStateExtraction(
+        state_payload=payload,
+        state_boxes=state_boxes,
+        floor=extraction.floor,
+        missing_fields=[field for field in extraction.missing_fields if field != "event_options"],
+        unknown_tokens=extraction.unknown_tokens,
+        field_confidence=field_confidence,
+    )
+
+
 def _recognized_option(
     token: OcrToken,
     resolution: tuple[int, int],
@@ -278,6 +372,14 @@ def _terminal_kind(tokens: list[OcrToken]) -> DetectionKind | None:
     return None
 
 
+def _has_map_marker(tokens: list[OcrToken]) -> bool:
+    return any(
+        _normalize_text(token.text) in MAP_MARKER_TERMS
+        for token in tokens
+        if token.confidence >= MIN_OCR_OPTION_CONFIDENCE
+    )
+
+
 def _terminal_candidates(tokens: list[OcrToken]) -> set[str]:
     ordered = sorted(
         (token for token in tokens if token.confidence >= MIN_OCR_OPTION_CONFIDENCE),
@@ -295,7 +397,7 @@ def _terminal_candidates(tokens: list[OcrToken]) -> set[str]:
 
 def _menu_kind(options: list[RecognizedOption]) -> DetectionKind | None:
     kinds = {option.kind for option in options}
-    if "select_single_player" in kinds:
+    if {"continue_run", "select_single_player"} & kinds:
         return DetectionKind.MAIN_MENU
     if "select_mode" in kinds:
         return DetectionKind.MODE_SELECT
@@ -315,7 +417,7 @@ def _in_layout_region(
     calibration: RegionCalibration | None,
 ) -> bool:
     if calibration is not None:
-        region = "menu" if kind in {"select_single_player", "select_mode", "select_character", "restart_run"} else kind
+        region = "menu" if kind in {"continue_run", "select_single_player", "select_mode", "select_character", "restart_run"} else kind
         return calibration.contains_center(region, token.box, resolution)
     width, height = resolution
     center_x = (token.box[0] + token.box[2]) / 2 / width
@@ -324,7 +426,7 @@ def _in_layout_region(
         return 0.35 <= center_x <= 0.65 and center_y >= 0.75
     if kind == "card":
         return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.55
-    if kind in {"select_single_player", "select_mode", "select_character", "restart_run"}:
+    if kind in {"continue_run", "select_single_player", "select_mode", "select_character", "restart_run"}:
         return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.90
     return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.70
 

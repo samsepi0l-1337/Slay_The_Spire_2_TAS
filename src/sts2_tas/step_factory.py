@@ -17,6 +17,28 @@ from .schema import (
     StructuredGameState,
 )
 
+_PERCEPTION_CONFIDENCE_THRESHOLD = 0.60
+_REQUIRED_FIELDS_BY_CONTEXT = {
+    "combat": (
+        "player.hp",
+        "player.max_hp",
+        "player.block",
+        "player.energy",
+        "player.turn",
+        "cards",
+        "monsters",
+    ),
+    "map": ("path_candidates",),
+    "shop": ("shop_items", "player.character_resource.gold"),
+    "event": ("event_options",),
+    "rest": ("rest_options",),
+}
+_LIVE_REQUIRED_FIELDS = {"player.character_resource.gold"}
+
+
+class PerceptionQualityError(ValueError):
+    pass
+
 
 def game_step_from_detection(
     *,
@@ -64,6 +86,7 @@ def game_step_from_parsed_screen(
         missing_fields=parsed.missing_fields,
         unknown_tokens=parsed.unknown_tokens,
     )
+    _validate_perception_quality(parsed, extracted_state)
     effective_floor = _parsed_floor(parsed, floor)
     enriched_state = _state_with_reward_cards(extracted_state, parsed.options)
     state = _structured_state(
@@ -87,6 +110,7 @@ def game_step_from_parsed_screen(
         source_type=source_type,
         ocr_confidence=confidence,
         screenshot_path=parsed.screenshot_path,
+        field_confidence=parsed.field_confidence,
         outcome=_outcome_from_parsed_screen(parsed.kind, floor=effective_floor, hp=enriched_state.player.hp),
     )
 
@@ -104,6 +128,7 @@ def _game_step(
     source_type: str,
     ocr_confidence: float,
     screenshot_path: Path,
+    field_confidence: dict[str, float] | None = None,
     outcome: StepOutcome | None = None,
 ) -> GameStep:
     catalog_version = f"{game_version}:{branch}"
@@ -128,9 +153,61 @@ def _game_step(
             catalog_version=catalog_version,
             missing_fields=captured_state.missing_fields,
             unknown_tokens=captured_state.unknown_tokens,
+            field_confidence=field_confidence,
         ),
         screenshot_path=screenshot_path,
     )
+
+
+def _validate_perception_quality(parsed: ParsedScreen, captured_state: CapturedGameState | None = None) -> None:
+    required_fields = _REQUIRED_FIELDS_BY_CONTEXT.get(parsed.kind, ())
+    if not required_fields:
+        return
+    field_confidence = parsed.field_confidence
+    missing_fields = set(parsed.missing_fields or [])
+    failures = []
+    for field in required_fields:
+        parsed_has_field = _field_present(parsed.state_payload or {}, field)
+        captured_has_field = captured_state is not None and _field_present_in_captured(captured_state, field)
+        if field in missing_fields or not parsed_has_field and not captured_has_field:
+            failures.append(f"{field}:missing")
+            continue
+        confidence = None if field_confidence is None else field_confidence.get(field)
+        if confidence is None:
+            if parsed_has_field or field in _LIVE_REQUIRED_FIELDS:
+                failures.append(f"{field}:missing_confidence")
+        elif confidence < _PERCEPTION_CONFIDENCE_THRESHOLD:
+            failures.append(f"{field}:{confidence:.2f}")
+    if failures:
+        raise PerceptionQualityError(f"perception quality below threshold for {parsed.kind}: {', '.join(failures)}")
+
+
+def _field_present(payload: dict[str, object], field: str) -> bool:
+    if field in {"cards", "monsters", "path_candidates", "shop_items", "event_options", "rest_options"}:
+        return field in payload
+    player = payload.get("player", {})
+    if not field.startswith("player.") or not isinstance(player, dict):
+        return False
+    parts = field.split(".")[1:]
+    current: object = player
+    for part in parts:
+        if not isinstance(current, dict) or part not in current:
+            return False
+        current = current[part]
+    return True
+
+
+def _field_present_in_captured(captured_state: CapturedGameState, field: str) -> bool:
+    if field in captured_state.missing_fields:
+        return False
+    if field in {"cards", "monsters", "path_candidates", "shop_items", "event_options", "rest_options"}:
+        return getattr(captured_state, field) is not None
+    if field.startswith("player.character_resource."):
+        resource = field.rsplit(".", 1)[1]
+        return resource in (captured_state.player.character_resource or {})
+    if field.startswith("player."):
+        return hasattr(captured_state.player, field.split(".", 1)[1])
+    return False
 
 
 def _structured_state(
@@ -158,6 +235,9 @@ def _structured_state(
         potions=captured_state.potions,
         monsters=captured_state.monsters,
         path_candidates=captured_state.path_candidates,
+        shop_items=captured_state.shop_items or [],
+        event_options=captured_state.event_options or [],
+        rest_options=captured_state.rest_options or [],
     )
 
 
@@ -188,6 +268,9 @@ def _state_with_reward_cards(captured_state: CapturedGameState, options) -> Capt
         path_candidates=captured_state.path_candidates,
         missing_fields=captured_state.missing_fields,
         unknown_tokens=captured_state.unknown_tokens,
+        shop_items=captured_state.shop_items,
+        event_options=captured_state.event_options,
+        rest_options=captured_state.rest_options,
     )
 
 
@@ -236,6 +319,16 @@ def _with_screen_binding(
         return replace(action, option_id="skip", screen_box=None if skip is None else skip.screen_box)
     if action.action_type == "choose_path" and action.path_node_id is not None:
         return replace(action, screen_box=boxes.get(f"path:{action.path_node_id}"))
+    if action.action_type == "buy" and action.shop_item_id is not None:
+        return replace(action, screen_box=boxes.get(f"shop_item:{action.shop_item_id}"))
+    if action.action_type == "remove_card" and action.shop_item_id is not None:
+        return replace(action, screen_box=boxes.get(f"shop_item:{action.shop_item_id}"))
+    if action.action_type == "leave_shop":
+        return replace(action, screen_box=boxes.get("shop_item:leave_shop") or boxes.get("leave_shop"))
+    if action.action_type == "choose_event_option" and action.event_option_id is not None:
+        return replace(action, screen_box=boxes.get(f"event_option:{action.event_option_id}"))
+    if action.action_type in {"rest", "smith"}:
+        return replace(action, screen_box=boxes.get(f"rest_option:{action.action_type}"))
     if action.action_type == "play_card" and action.source_card_id is not None:
         return replace(
             action,
@@ -274,7 +367,7 @@ def _action_type(kind: str) -> str:
         return "pick_relic"
     if kind == "skip":
         return "skip_reward"
-    if kind in {"select_single_player", "select_mode", "select_character", "restart_run"}:
+    if kind in {"continue_run", "select_single_player", "select_mode", "select_character", "restart_run"}:
         return kind
     raise ValueError(f"unsupported recognized option kind: {kind}")
 

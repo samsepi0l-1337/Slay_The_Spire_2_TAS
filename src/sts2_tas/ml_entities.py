@@ -224,6 +224,73 @@ class PathCandidate:
 
 
 @dataclass(frozen=True)
+class ShopItemState:
+    item_id: str
+    item_type: str
+    price: int
+    purchasable: bool = True
+    card_id: str | None = None
+    target_card_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.item_id or not self.item_type:
+            raise ValueError("shop item_id and item_type are required")
+        if self.price < 0:
+            raise ValueError("shop item price must be non-negative")
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ShopItemState:
+        return cls(
+            item_id=data["item_id"],
+            item_type=data["item_type"],
+            price=int(data["price"]),
+            purchasable=bool(data.get("purchasable", True)),
+            card_id=data.get("card_id"),
+            target_card_id=data.get("target_card_id"),
+        )
+
+    @property
+    def removal_target(self) -> str | None:
+        return self.target_card_id or self.card_id
+
+
+@dataclass(frozen=True)
+class EventOptionState:
+    option_id: str
+    label: str
+    available: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.option_id:
+            raise ValueError("event option_id is required")
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> EventOptionState:
+        return cls(
+            option_id=data["option_id"],
+            label=data.get("label", ""),
+            available=bool(data.get("available", True)),
+        )
+
+
+@dataclass(frozen=True)
+class RestOptionState:
+    option_id: str
+    available: bool = True
+
+    def __post_init__(self) -> None:
+        if not self.option_id:
+            raise ValueError("rest option_id is required")
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RestOptionState:
+        return cls(
+            option_id=data["option_id"],
+            available=bool(data.get("available", True)),
+        )
+
+
+@dataclass(frozen=True)
 class ActionCandidate:
     action_type: str
     option_id: str | None = None
@@ -244,6 +311,8 @@ class ActionCandidate:
 
     @property
     def identity_fields(self) -> tuple[tuple[str, str], ...]:
+        if self.action_type == "remove_card" and self.target_card_id is not None:
+            return (("target_card", self.target_card_id),)
         if self.option_id is not None:
             return (("option", self.option_id),)
         fields = (
@@ -291,11 +360,13 @@ class ObservationQuality:
     catalog_version: str
     missing_fields: list[str] | None = None
     unknown_tokens: list[str] | None = None
+    field_confidence: dict[str, float] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
         data["missing_fields"] = list(self.missing_fields or [])
         data["unknown_tokens"] = list(self.unknown_tokens or [])
+        data["field_confidence"] = dict(self.field_confidence or {})
         return data
 
     @classmethod
@@ -308,6 +379,7 @@ class ObservationQuality:
             catalog_version=data["catalog_version"],
             missing_fields=list(data.get("missing_fields", [])),
             unknown_tokens=list(data.get("unknown_tokens", [])),
+            field_confidence={key: float(value) for key, value in data.get("field_confidence", {}).items()},
         )
 
 
@@ -318,6 +390,12 @@ class StepOutcome:
     hp_remaining: int
     immediate_reward: float = 0.0
     terminal: bool = False
+    value_target: float | None = None
+    discounted_return: float | None = None
+
+    def __post_init__(self) -> None:
+        _validate_unit_interval(self.value_target, "value_target")
+        _validate_unit_interval(self.discounted_return, "discounted_return")
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StepOutcome:
@@ -327,6 +405,8 @@ class StepOutcome:
             hp_remaining=int(data["hp_remaining"]),
             immediate_reward=float(data.get("immediate_reward", 0.0)),
             terminal=bool(data.get("terminal", False)),
+            value_target=_optional_float(data.get("value_target")),
+            discounted_return=_optional_float(data.get("discounted_return")),
         )
 
 
@@ -345,6 +425,9 @@ class StructuredGameState:
     potions: list[PotionState] | None = None
     monsters: list[MonsterState] | None = None
     path_candidates: list[PathCandidate] | None = None
+    shop_items: list[ShopItemState] | None = None
+    event_options: list[EventOptionState] | None = None
+    rest_options: list[RestOptionState] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -361,6 +444,9 @@ class StructuredGameState:
             "potions": [asdict(potion) for potion in self.potions or []],
             "monsters": [asdict(monster) for monster in self.monsters or []],
             "path_candidates": [asdict(path) for path in self.path_candidates or []],
+            "shop_items": [asdict(item) for item in self.shop_items or []],
+            "event_options": [asdict(option) for option in self.event_options or []],
+            "rest_options": [asdict(option) for option in self.rest_options or []],
         }
 
     @classmethod
@@ -379,11 +465,23 @@ class StructuredGameState:
             potions=[PotionState.from_dict(potion) for potion in data.get("potions", [])],
             monsters=[MonsterState.from_dict(monster) for monster in data.get("monsters", [])],
             path_candidates=[PathCandidate.from_dict(path) for path in data.get("path_candidates", [])],
+            shop_items=[ShopItemState.from_dict(item) for item in data.get("shop_items", [])],
+            event_options=[EventOptionState.from_dict(option) for option in data.get("event_options", [])],
+            rest_options=[RestOptionState.from_dict(option) for option in data.get("rest_options", [])],
         )
 
 
 def _optional_int(value: Any) -> int | None:
     return None if value is None else int(value)
+
+
+def _optional_float(value: Any) -> float | None:
+    return None if value is None else float(value)
+
+
+def _validate_unit_interval(value: float | None, field_name: str) -> None:
+    if value is not None and not 0.0 <= float(value) <= 1.0:
+        raise ValueError(f"{field_name} must be between 0.0 and 1.0")
 
 
 def action_choice_aliases(action: ActionCandidate) -> set[str]:

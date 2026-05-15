@@ -18,6 +18,7 @@ from sts2_tas.schema import (
     StructuredGameState,
 )
 from sts2_tas.torch_dataset import GameStepTorchDataset, collate_encoded_steps
+from sts2_tas.trajectory import value_target_for_step
 
 
 def _step(chosen: str = "anger") -> GameStep:
@@ -76,7 +77,7 @@ def test_encode_game_step_creates_action_mask_and_label_index() -> None:
     assert encoded.token_types[0] == TOKEN_TYPE_IDS["GLOBAL"]
     assert encoded.action_mask == [True, True, False]
     assert encoded.label_action_index == 0
-    assert encoded.outcome_value == 1.0
+    assert encoded.outcome_value == value_target_for_step(step)
     assert encoded.outcome_mask is True
     assert encoded.action_positions[0] < len(encoded.token_ids)
 

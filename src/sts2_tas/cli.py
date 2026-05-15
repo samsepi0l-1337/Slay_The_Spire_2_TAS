@@ -4,11 +4,14 @@ import argparse
 from dataclasses import asdict
 import json
 from pathlib import Path
+import time
 
-from .automation import JsonlInputController, NativeInputController, apply_action, plan_action
+from .automation import DeferredJsonlInputController, JsonlInputController, NativeInputController, apply_action, plan_action
 from .capture_state import load_captured_game_state
 from .cv_calibration import RegionCalibration, load_region_calibration
+from .json_io import load_json_file
 from .evaluation import write_evaluation_report
+from .evaluation_cli import add_evaluation_parsers
 from .live_learning import run_live_learn_loop
 from .ml_cli import add_ml_parsers
 from .ml_entities import resolve_action_identity
@@ -16,7 +19,7 @@ from .model import load_model, recommend
 from .recognition import FakeOcrProvider, OcrProvider, OcrToken, TesseractOcrProvider, detect_screen, parse_ocr_screen
 from .runtime import backup_save, capture_screen, restore_save, run_seed_loop
 from .schema import CoordinateSpace, GameStep, TargetWindow
-from .step_factory import game_step_from_detection, game_step_from_parsed_screen
+from .step_factory import PerceptionQualityError, game_step_from_detection, game_step_from_parsed_screen
 from .torch_dataset import append_game_step, load_game_steps, write_game_steps
 from .transition import acknowledge_transition
 from .windowing import WindowDetector
@@ -51,12 +54,16 @@ def _parser() -> argparse.ArgumentParser:
     label.set_defaults(handler=_label)
 
     add_ml_parsers(subparsers)
+    add_evaluation_parsers(subparsers)
 
     parse_screen = subparsers.add_parser("parse-screen")
     parse_screen.add_argument("--screenshot", type=Path, required=True)
     parse_screen.add_argument("--ocr-fixture", type=Path)
     parse_screen.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     parse_screen.add_argument("--ocr-language", default="eng+kor")
+    parse_screen.add_argument("--tesseract-binary", default="tesseract")
+    parse_screen.add_argument("--tessdata-dir", type=Path)
+    parse_screen.add_argument("--ocr-psm", type=int)
     parse_screen.add_argument("--region-calibration", type=Path)
     parse_screen.add_argument("--out", type=Path, required=True)
     parse_screen.set_defaults(handler=_parse_screen)
@@ -66,6 +73,9 @@ def _parser() -> argparse.ArgumentParser:
     capture_live.add_argument("--ocr-fixture", type=Path)
     capture_live.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     capture_live.add_argument("--ocr-language", default="eng+kor")
+    capture_live.add_argument("--tesseract-binary", default="tesseract")
+    capture_live.add_argument("--tessdata-dir", type=Path)
+    capture_live.add_argument("--ocr-psm", type=int)
     capture_live.add_argument("--region-calibration", type=Path)
     capture_live.add_argument("--out", type=Path, required=True)
     capture_live.add_argument("--game-version", required=True)
@@ -88,8 +98,12 @@ def _parser() -> argparse.ArgumentParser:
     live_step.add_argument("--ack-ocr-fixture-sequence", type=Path)
     live_step.add_argument("--ack-live-poll", action="store_true")
     live_step.add_argument("--ack-max-retries", type=int, default=0)
+    live_step.add_argument("--failure-log", type=Path)
     live_step.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_step.add_argument("--ocr-language", default="eng+kor")
+    live_step.add_argument("--tesseract-binary", default="tesseract")
+    live_step.add_argument("--tessdata-dir", type=Path)
+    live_step.add_argument("--ocr-psm", type=int)
     live_step.add_argument("--region-calibration", type=Path)
     live_step.add_argument("--input-log", type=Path, required=True)
     live_step.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
@@ -110,12 +124,22 @@ def _parser() -> argparse.ArgumentParser:
     live_learn_decision = live_learn_loop.add_mutually_exclusive_group(required=True)
     live_learn_decision.add_argument("--choice")
     live_learn_decision.add_argument("--model", type=Path)
+    live_learn_decision.add_argument("--policy", choices=["first-legal"])
     live_learn_loop.add_argument("--dataset", type=Path, required=True)
     live_learn_loop.add_argument("--max-steps", type=int)
+    live_learn_loop.add_argument("--stop-file", type=Path)
     live_learn_loop.add_argument("--ocr-fixture", type=Path)
     live_learn_loop.add_argument("--ocr-fixture-sequence", type=Path)
+    live_learn_loop.add_argument("--ack-ocr-fixture-sequence", type=Path)
+    live_learn_loop.add_argument("--ack-live-poll", action="store_true")
+    live_learn_loop.add_argument("--ack-max-retries", type=int, default=0)
+    live_learn_loop.add_argument("--trajectory-out", type=Path)
+    live_learn_loop.add_argument("--failure-log", type=Path)
     live_learn_loop.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     live_learn_loop.add_argument("--ocr-language", default="eng+kor")
+    live_learn_loop.add_argument("--tesseract-binary", default="tesseract")
+    live_learn_loop.add_argument("--tessdata-dir", type=Path)
+    live_learn_loop.add_argument("--ocr-psm", type=int)
     live_learn_loop.add_argument("--region-calibration", type=Path)
     live_learn_loop.add_argument("--input-log", type=Path, required=True)
     live_learn_loop.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
@@ -162,6 +186,9 @@ def _parser() -> argparse.ArgumentParser:
     run_loop.add_argument("--ocr-fixture", type=Path)
     run_loop.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
     run_loop.add_argument("--ocr-language", default="eng+kor")
+    run_loop.add_argument("--tesseract-binary", default="tesseract")
+    run_loop.add_argument("--tessdata-dir", type=Path)
+    run_loop.add_argument("--ocr-psm", type=int)
     run_loop.add_argument("--episodes-out", type=Path, required=True)
     run_loop.add_argument("--max-steps", type=int, required=True)
     run_loop.add_argument("--victory-seeds", default="")
@@ -222,6 +249,7 @@ def _label(args: argparse.Namespace) -> None:
         outcome=target.outcome,
         observation=target.observation,
         screenshot_path=target.screenshot_path,
+        label_source="human",
     )
     write_game_steps(args.dataset, steps)
 
@@ -247,7 +275,24 @@ def _live_step(args: argparse.Namespace) -> None:
     else:
         screenshot_path = capture_screen(args.screenshot_out, bbox=target_window.bounds.to_bbox())
     coordinate_space: CoordinateSpace = "window_relative" if target_window is not None and not args.capture_fixture else "screen_absolute"
-    step = _step_from_screen(args, screenshot_path)
+    try:
+        step = _step_from_screen(args, screenshot_path)
+    except (PerceptionQualityError, ValueError) as error:
+        if args.failure_log is None:
+            raise
+        _append_failure_log(
+            args.failure_log,
+            {
+                "reason": "fail_closed_perception" if isinstance(error, PerceptionQualityError) else "screen_parse_failed",
+                "action_id": None,
+                "before_signature": None,
+                "after_signature": None,
+                "retry_count": 0,
+                "latency_ms": 0,
+                "controller_error": str(error),
+            },
+        )
+        return
     action_id = _live_step_action_id(args, step)
     action = plan_action(
         step,
@@ -259,15 +304,35 @@ def _live_step(args: argparse.Namespace) -> None:
     if args.input_backend == "native" and not args.execute:
         raise ValueError("native input backend requires --execute")
     controller = _input_controller(args) if args.execute else None
-    action_report, transition_ack = _apply_live_step_action(
-        args,
-        step=step,
-        action=action,
-        action_id=action_id,
-        controller=controller,
-        screenshot_path=screenshot_path,
-        target_window=target_window,
-    )
+    start = time.perf_counter()
+    try:
+        action_report, transition_ack = _apply_live_step_action(
+            args,
+            step=step,
+            action=action,
+            action_id=action_id,
+            controller=controller,
+            screenshot_path=screenshot_path,
+            target_window=target_window,
+        )
+    except Exception as error:
+        if args.failure_log is None:
+            raise
+        before = acknowledge_transition(step, [], action_id)
+        _append_live_step_failure(
+            args.failure_log,
+            reason="controller_error",
+            action_id=action_id,
+            before_signature=before.before_signature,
+            after_signature=None,
+            retry_count=0,
+            latency_ms=_latency_ms(start),
+            controller_error=str(error),
+        )
+        action_report = action.to_report()
+        action_report["controller_error"] = str(error)
+        action_report["success"] = False
+        transition_ack = None
     report = {
         "choice": _automation_choice(action),
         "action": action_report,
@@ -276,6 +341,18 @@ def _live_step(args: argparse.Namespace) -> None:
     }
     if transition_ack is not None:
         report["transition_ack"] = transition_ack
+        if transition_ack.get("status") in {"no_op", "timeout"}:
+            _append_live_step_failure(
+                args.failure_log,
+                reason=str(transition_ack["status"]),
+                action_id=action_id,
+                before_signature=_optional_str(transition_ack.get("before_signature")),
+                after_signature=_optional_str(transition_ack.get("after_signature")),
+                retry_count=int(transition_ack.get("retry_count", 0)),
+                latency_ms=_latency_ms(start),
+                controller_error=None,
+            )
+            report["failure"] = {"reason": transition_ack["status"]}
     if target_window is not None:
         report["target_window"] = target_window.to_dict()
     print(json.dumps(report, sort_keys=True))
@@ -417,7 +494,12 @@ def _captured_state(args: argparse.Namespace):
 
 def _ocr_provider(args: argparse.Namespace) -> OcrProvider:
     if args.ocr_provider == "tesseract":
-        return TesseractOcrProvider(language=args.ocr_language)
+        kwargs = (
+            {"language": args.ocr_language, "tessdata_dir": args.tessdata_dir}
+            | ({"binary": args.tesseract_binary} if args.tesseract_binary != "tesseract" else {})
+            | ({"page_segmentation_mode": args.ocr_psm} if args.ocr_psm is not None else {})
+        )
+        return TesseractOcrProvider(**kwargs)
     if args.ocr_fixture is None:
         raise ValueError("ocr fixture is required for fixture OCR provider")
     return _fixture_ocr_provider(args.ocr_fixture)
@@ -427,7 +509,7 @@ def _fixture_ocr_provider(path: Path) -> FakeOcrProvider:
     return FakeOcrProvider(
         [
             OcrToken(text=row["text"], box=tuple(row["box"]), confidence=float(row["confidence"]))  # type: ignore[arg-type]
-            for row in json.loads(path.read_text(encoding="utf-8"))
+            for row in load_json_file(path)
         ]
     )
 
@@ -450,27 +532,56 @@ def _apply_live_step_action(
 ) -> tuple[dict[str, object], dict[str, object] | None]:
     _validate_ack_max_retries(args)
     if args.ack_ocr_fixture_sequence is None and not args.ack_live_poll:
-        action_report = apply_action(action, controller)
         if args.ack_ocr_fixture is None:
+            action_report = apply_action(action, controller)
             return action_report, None
-        ack_step = _step_from_screen_with_provider(args, screenshot_path, _fixture_ocr_provider(args.ack_ocr_fixture))
-        return action_report, asdict(acknowledge_transition(step, [ack_step], action_id))
+        deferred_controller = _deferred_input_controller(controller)
+        try:
+            action_report = apply_action(action, deferred_controller)
+            ack_step = _step_from_screen_with_provider(args, screenshot_path, _fixture_ocr_provider(args.ack_ocr_fixture))
+            ack = acknowledge_transition(step, [ack_step], action_id)
+            _finish_deferred_input(deferred_controller, changed=ack.status == "changed")
+            return action_report, asdict(ack)
+        except Exception:
+            _finish_deferred_input(deferred_controller, changed=False)
+            raise
 
     history: list[dict[str, object]] = []
     action_report: dict[str, object] = {}
-    for attempt in range(1, args.ack_max_retries + 2):
-        action_report = apply_action(action, controller)
-        ack_step = _ack_poll_step(args, screenshot_path, attempt, target_window)
-        ack = acknowledge_transition(step, [] if ack_step is None else [ack_step], action_id)
-        ack_report = asdict(ack)
-        history.append(ack_report)
-        if not ack.retry_recommended:
-            break
-    final = dict(history[-1])
-    final["attempts"] = len(history)
-    final["retry_count"] = len(history) - 1
-    final["history"] = history
-    return action_report, final
+    deferred_controller = _deferred_input_controller(controller)
+    try:
+        action_report = apply_action(action, deferred_controller)
+        for attempt in range(1, args.ack_max_retries + 2):
+            ack_step = _ack_poll_step(args, screenshot_path, attempt, target_window)
+            ack = acknowledge_transition(step, [] if ack_step is None else [ack_step], action_id)
+            ack_report = asdict(ack)
+            history.append(ack_report)
+            if not ack.retry_recommended:
+                break
+        final = dict(history[-1])
+        final["attempts"] = len(history)
+        final["retry_count"] = len(history) - 1
+        final["history"] = history
+        _finish_deferred_input(deferred_controller, changed=final.get("status") == "changed")
+        return action_report, final
+    except Exception:
+        _finish_deferred_input(deferred_controller, changed=False)
+        raise
+
+
+def _deferred_input_controller(controller):
+    controller_type = JsonlInputController
+    if isinstance(controller_type, type) and isinstance(controller, controller_type):
+        return DeferredJsonlInputController(controller.log_path)
+    return controller
+
+
+def _finish_deferred_input(controller, *, changed: bool) -> None:
+    if isinstance(controller, DeferredJsonlInputController):
+        if changed:
+            controller.commit()
+        else:
+            controller.rollback()
 
 
 def _validate_ack_max_retries(args: argparse.Namespace) -> None:
@@ -490,7 +601,7 @@ def _ack_poll_step(
 
 
 def _ack_fixture_sequence_step(args: argparse.Namespace, screenshot_path: Path, attempt: int) -> GameStep | None:
-    frames = json.loads(args.ack_ocr_fixture_sequence.read_text(encoding="utf-8"))
+    frames = load_json_file(args.ack_ocr_fixture_sequence)
     if attempt > len(frames):
         return None
     provider = FakeOcrProvider(_frame_tokens(frames[attempt - 1]))
@@ -517,3 +628,43 @@ def _frame_tokens(frame) -> list[OcrToken]:
         OcrToken(text=row["text"], box=tuple(row["box"]), confidence=float(row["confidence"]))  # type: ignore[arg-type]
         for row in frame
     ]
+
+
+def _append_failure_log(path: Path, row: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(row, sort_keys=True) + "\n")
+
+
+def _append_live_step_failure(
+    path: Path | None,
+    *,
+    reason: str,
+    action_id: str | None,
+    before_signature: str | None,
+    after_signature: str | None,
+    retry_count: int,
+    latency_ms: int,
+    controller_error: str | None,
+) -> None:
+    if path is None:
+        return
+    row: dict[str, object] = {
+        "reason": reason,
+        "action_id": action_id,
+        "before_signature": before_signature,
+        "after_signature": after_signature,
+        "retry_count": retry_count,
+        "latency_ms": latency_ms,
+    }
+    if controller_error is not None:
+        row["controller_error"] = controller_error
+    _append_failure_log(path, row)
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _latency_ms(start: float) -> int:
+    return int((time.perf_counter() - start) * 1000)

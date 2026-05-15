@@ -9,11 +9,12 @@ from torch.utils.data import Dataset
 from .catalog import EntityCatalog
 from .encoding import EncodedGameStep, encode_game_step
 from .ml_schema import GameStep
+from .trajectory import supervised_training_steps
 
 
 class GameStepTorchDataset(Dataset[EncodedGameStep]):
     def __init__(self, steps: list[GameStep], catalog: EntityCatalog | None = None) -> None:
-        self.steps = [step for step in steps if step.chosen_action_id is not None]
+        self.steps = supervised_training_steps(steps)
         if not self.steps:
             raise ValueError("torch training requires at least one labeled game step")
         self.catalog = catalog or EntityCatalog.from_steps(self.steps, version=self.steps[0].state.catalog_version)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .ml_entities import ActionCandidate, CardInstance, MonsterState, PotionState, StructuredGameState
+from .ml_entities import ActionCandidate, CardInstance, MonsterState, PotionState, ShopItemState, StructuredGameState
 
 
 def generate_legal_actions(state: StructuredGameState, *, include_illegal: bool = False) -> list[ActionCandidate]:
@@ -13,6 +13,20 @@ def generate_legal_actions(state: StructuredGameState, *, include_illegal: bool 
         return [
             ActionCandidate(action_type="choose_path", path_node_id=path.node_id)
             for path in state.path_candidates or []
+        ]
+    if state.decision_context == "shop":
+        return _shop_actions(state.shop_items or [], gold=_player_gold(state))
+    if state.decision_context == "event":
+        return [
+            ActionCandidate(action_type="choose_event_option", event_option_id=option.option_id)
+            for option in state.event_options or []
+            if option.available
+        ]
+    if state.decision_context == "rest":
+        return [
+            ActionCandidate(action_type=option.option_id)
+            for option in state.rest_options or []
+            if option.available and option.option_id in {"rest", "smith"}
         ]
     return []
 
@@ -39,6 +53,39 @@ def _card_reward_actions(state: StructuredGameState) -> list[ActionCandidate]:
     ]
     actions.append(ActionCandidate(action_type="skip_reward", option_id="skip"))
     return actions
+
+
+def _shop_actions(items: list[ShopItemState], *, gold: int) -> list[ActionCandidate]:
+    actions: list[ActionCandidate] = []
+    can_leave = False
+    for item in items:
+        if item.item_type == "leave":
+            can_leave = True
+            continue
+        if not item.purchasable or item.price > gold:
+            continue
+        if item.item_type == "remove":
+            if item.removal_target is not None:
+                actions.append(
+                    ActionCandidate(
+                        action_type="remove_card",
+                        target_card_id=item.removal_target,
+                        shop_item_id=item.item_id,
+                    )
+                )
+            continue
+        actions.append(ActionCandidate(action_type="buy", shop_item_id=item.item_id))
+    if can_leave:
+        actions.append(ActionCandidate(action_type="leave_shop"))
+    return actions
+
+
+def _player_gold(state: StructuredGameState) -> int:
+    resources = state.player.character_resource or {}
+    try:
+        return int(resources.get("gold", 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _hand_cards(cards: list[CardInstance]) -> list[CardInstance]:

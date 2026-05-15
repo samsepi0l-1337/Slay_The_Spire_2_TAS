@@ -8,6 +8,7 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - "scripts/build-windows-exe.ps1"
+      - "tests/fixtures/**"
       - "src/**"
 
 env:
@@ -35,6 +36,19 @@ jobs:
       - name: Smoke executable
         shell: pwsh
         run: ./dist/sts2-tas.exe --help
+
+      - name: Smoke PyTorch train in frozen exe
+        shell: pwsh
+        run: |
+          $model = Join-Path $env:RUNNER_TEMP "ml-smoke.pt"
+          ./dist/sts2-tas.exe train `
+            --dataset tests/fixtures/ml-train-smoke.jsonl `
+            --model $model `
+            --character ironclad `
+            --epochs 1 `
+            --batch-size 2 `
+            --device cpu
+          if (-not (Test-Path $model)) { throw "train did not write model: $model" }
 
       - name: Upload executable
         uses: actions/upload-artifact@v5

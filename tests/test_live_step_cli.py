@@ -68,11 +68,11 @@ def test_cli_live_step_with_fixture_choice_reports_verifiable_action(tmp_path: P
     assert not input_log.exists()
 
 
-def test_cli_live_step_can_acknowledge_post_input_state_change(tmp_path: Path, capsys) -> None:
-    ack_fixture = tmp_path / "ack.json"
-    ack_fixture.write_text(
-        json.dumps([{"text": "Single Player", "box": [780, 360, 1140, 430], "confidence": 0.99}]),
-        encoding="utf-8",
+def test_cli_live_step_accepts_powershell_utf8_bom_fixture(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "ocr.json"
+    fixture.write_text(
+        json.dumps([{"text": "Continue", "box": [700, 650, 850, 720], "confidence": 0.99}]),
+        encoding="utf-8-sig",
     )
 
     exit_code = cli.main(
@@ -81,11 +81,9 @@ def test_cli_live_step_can_acknowledge_post_input_state_change(tmp_path: Path, c
             "--capture-fixture",
             str(_screen(tmp_path / "screen.png")),
             "--ocr-fixture",
-            str(_ocr_fixture(tmp_path / "ocr.json")),
-            "--ack-ocr-fixture",
-            str(ack_fixture),
+            str(fixture),
             "--choice",
-            "pick:strike",
+            "continue",
             "--input-log",
             str(tmp_path / "inputs.jsonl"),
             "--game-version",
@@ -107,8 +105,95 @@ def test_cli_live_step_can_acknowledge_post_input_state_change(tmp_path: Path, c
 
     output = json.loads(capsys.readouterr().out)
     assert exit_code == 0
+    assert output["choice"] == {"action": "pick", "option_id": "continue"}
+
+
+def test_cli_live_step_failure_log_records_unknown_screen_parse_failure(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "unknown.json"
+    failure_log = tmp_path / "failures.jsonl"
+    fixture.write_text("[]", encoding="utf-8")
+
+    exit_code = cli.main(
+        [
+            "live-step",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture",
+            str(fixture),
+            "--choice",
+            "continue",
+            "--input-log",
+            str(tmp_path / "inputs.jsonl"),
+            "--failure-log",
+            str(failure_log),
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    failure = json.loads(failure_log.read_text(encoding="utf-8").splitlines()[0])
+    assert exit_code == 0
+    assert capsys.readouterr().out == ""
+    assert failure["reason"] == "screen_parse_failed"
+    assert failure["controller_error"].startswith("unknown OCR screen layout")
+
+
+def test_cli_live_step_can_acknowledge_post_input_state_change(tmp_path: Path, capsys) -> None:
+    input_log = tmp_path / "inputs.jsonl"
+    ack_fixture = tmp_path / "ack.json"
+    ack_fixture.write_text(
+        json.dumps([{"text": "Single Player", "box": [780, 360, 1140, 430], "confidence": 0.99}]),
+        encoding="utf-8",
+    )
+
+    exit_code = cli.main(
+        [
+            "live-step",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture",
+            str(_ocr_fixture(tmp_path / "ocr.json")),
+            "--ack-ocr-fixture",
+            str(ack_fixture),
+            "--choice",
+            "pick:strike",
+            "--input-log",
+            str(input_log),
+            "--execute",
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    output = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
     assert output["transition_ack"]["status"] == "changed"
     assert output["transition_ack"]["retry_recommended"] is False
+    assert len(input_log.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_cli_live_step_with_model_recommendation_executes_jsonl(tmp_path: Path, monkeypatch, capsys) -> None:

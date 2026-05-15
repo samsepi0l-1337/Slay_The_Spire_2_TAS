@@ -11,6 +11,17 @@ def _blank_screen(path: Path, size: tuple[int, int] = (1920, 1080)) -> Path:
     return path
 
 
+def _neow_choice_screen(path: Path) -> Path:
+    image = Image.new("RGB", (1920, 1080), (10, 35, 55))
+    pixels = image.load()
+    for box in ((470, 740, 1450, 835), (470, 835, 1450, 930), (470, 930, 1450, 1030)):
+        for x in range(box[0], box[2]):
+            for y in range(box[1], box[3]):
+                pixels[x, y] = (18, 105, 140)
+    image.save(path)
+    return path
+
+
 def _token(text: str, box: tuple[int, int, int, int]) -> object:
     return recognition.OcrToken(text=text, box=box, confidence=0.99)
 
@@ -53,6 +64,47 @@ def test_parse_ocr_screen_matches_korean_card_catalog(tmp_path: Path) -> None:
         ("bash", "Bash", "card"),
         ("skip", "Skip", "skip"),
     ]
+
+
+def test_parse_ocr_screen_matches_korean_continue_menu(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("계속", (700, 650, 850, 720))])
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "menu.png"), ocr_provider=provider)
+
+    assert parsed.kind == "main_menu"
+    assert [(option.id, option.name, option.kind) for option in parsed.options] == [
+        ("continue", "Continue", "continue_run")
+    ]
+
+
+def test_parse_ocr_screen_matches_korean_map_legend(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("범례", (1669, 331, 1739, 374))])
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "map.png"), ocr_provider=provider)
+
+    assert parsed.kind == "map"
+
+
+def test_parse_ocr_screen_detects_neow_choice_panels_without_readable_option_text(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("턴 종료", (1711, 850, 1775, 928))])
+
+    parsed = recognition.parse_ocr_screen(_neow_choice_screen(tmp_path / "neow.png"), ocr_provider=provider)
+
+    assert parsed.kind == "event"
+    assert parsed.state_payload == {
+        "event_options": [
+            {"option_id": "neow_option_1", "label": "Neow option 1"},
+            {"option_id": "neow_option_2", "label": "Neow option 2"},
+            {"option_id": "neow_option_3", "label": "Neow option 3"},
+        ]
+    }
+    assert parsed.state_boxes == {
+        "event_option:neow_option_1": (470, 740, 1450, 835),
+        "event_option:neow_option_2": (470, 835, 1450, 930),
+        "event_option:neow_option_3": (470, 930, 1450, 1030),
+    }
+    assert parsed.field_confidence == {"event_options": 0.99}
+    assert "event_options" not in parsed.missing_fields
 
 
 def test_parse_ocr_screen_scales_reward_layout_from_reference_resolution(tmp_path: Path) -> None:
@@ -148,13 +200,56 @@ def test_tesseract_provider_parses_cli_tsv(monkeypatch, tmp_path: Path) -> None:
 
     assert calls == [
         (
-            ["tesseract", str(tmp_path / "screen.png"), "stdout", "-l", "eng+kor", "tsv"],
+            [
+                "tesseract",
+                str(tmp_path / "screen.png"),
+                "stdout",
+                "-l",
+                "eng+kor",
+                "-c",
+                "tessedit_create_tsv=1",
+            ],
             True,
             True,
             True,
         )
     ]
     assert tokens == [_token("Strike", (250, 260, 430, 330))]
+
+
+def test_tesseract_provider_passes_tessdata_dir(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+
+    def fake_run(command, *, capture_output, check, text):
+        calls.append((command, capture_output, check, text))
+
+        class Result:
+            stdout = "level\tpage_num\tblock_num\tpar_num\tline_num\tword_num\tleft\ttop\twidth\theight\tconf\ttext\n"
+
+        return Result()
+
+    monkeypatch.setattr(recognition.subprocess, "run", fake_run)
+
+    provider = recognition.TesseractOcrProvider(
+        language="eng+kor",
+        tessdata_dir=tmp_path / "tessdata",
+        page_segmentation_mode=12,
+    )
+    provider.recognize(_blank_screen(tmp_path / "screen.png"))
+
+    assert calls[0][0] == [
+        "tesseract",
+        str(tmp_path / "screen.png"),
+        "stdout",
+        "-l",
+        "eng+kor",
+        "--tessdata-dir",
+        str(tmp_path / "tessdata"),
+        "--psm",
+        "12",
+        "-c",
+        "tessedit_create_tsv=1",
+    ]
 
 
 def test_tesseract_tsv_parser_adds_multiword_line_tokens() -> None:
@@ -284,6 +379,28 @@ def test_parse_ocr_screen_accepts_map_state_without_reward_options(tmp_path: Pat
 
     assert parsed.kind == "map"
     assert parsed.state_payload["path_candidates"][0]["node_type"] == "elite"
+
+
+@pytest.mark.parametrize(
+    ("token_text", "expected_kind", "payload_key"),
+    [
+        ("Shop item Strike Plus card price 75 card strike", "shop", "shop_items"),
+        ("Event option Take gold", "event", "event_options"),
+        ("Rest option Smith", "rest", "rest_options"),
+    ],
+)
+def test_parse_ocr_screen_accepts_shop_event_and_rest_state_without_reward_options(
+    tmp_path: Path,
+    token_text: str,
+    expected_kind: str,
+    payload_key: str,
+) -> None:
+    provider = recognition.FakeOcrProvider([_token(token_text, (700, 430, 1120, 520))])
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / f"{expected_kind}.png"), ocr_provider=provider)
+
+    assert parsed.kind == expected_kind
+    assert parsed.state_payload[payload_key]
 
 
 def test_tesseract_tsv_parser_accepts_empty_output() -> None:

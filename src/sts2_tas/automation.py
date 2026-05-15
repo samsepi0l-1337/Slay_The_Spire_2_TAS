@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import platform
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -28,6 +28,27 @@ class JsonlInputController:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         with self.log_path.open("a", encoding="utf-8") as file:
             file.write(json.dumps(action.to_event(), sort_keys=True) + "\n")
+
+
+@dataclass
+class DeferredJsonlInputController:
+    log_path: Path
+    events: list[dict[str, object]] = field(default_factory=list)
+
+    def send(self, action: AutomationAction) -> None:
+        self.events.append(action.to_event())
+
+    def commit(self) -> None:
+        if not self.events:
+            return
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.log_path.open("a", encoding="utf-8") as file:
+            for event in self.events:
+                file.write(json.dumps(event, sort_keys=True) + "\n")
+        self.events.clear()
+
+    def rollback(self) -> None:
+        self.events.clear()
 
 
 @dataclass(frozen=True)
@@ -194,21 +215,25 @@ def _windows_target_guard_script(plan: dict[str, object]) -> str:
         + f"$expectedWidth = {plan['expected_width']}\n"
         + f"$expectedHeight = {plan['expected_height']}\n"
         + "$matches = @(Get-Process | Where-Object { "
-        + "$_.MainWindowHandle -ne 0 -and "
-        + "($_.ProcessName -eq $expectedProcess -or $_.Name -eq $expectedProcess -or "
-        + "$_.MainWindowTitle -eq $expectedProcess) -and "
-        + "$_.MainWindowTitle -eq $expectedTitle })\n"
-        + "if ($matches.Count -ne 1) { throw 'target window changed before input' }\n"
-        + "$targetProcess = $matches[0]\n"
+        + "$_.ProcessName -eq $expectedProcess -or $_.Name -eq $expectedProcess -or "
+        + "$_.MainWindowTitle -eq $expectedProcess })\n"
+        + "$windows = @()\n"
+        + "foreach ($process in $matches) {\n"
+        + "  foreach ($window in [Win32Input]::EnumerateProcessWindows([int]$process.Id)) {\n"
+        + "    if ($window.Title -eq $expectedTitle) { $windows += $window }\n"
+        + "  }\n"
+        + "}\n"
+        + "if ($windows.Count -ne 1) { throw 'target window changed before input' }\n"
+        + "$targetWindow = $windows[0]\n"
         + "$rect = New-Object Win32Input+RECT\n"
-        + "if (-not [Win32Input]::GetWindowRect($targetProcess.MainWindowHandle, [ref]$rect)) { "
+        + "if (-not [Win32Input]::GetWindowRect($targetWindow.Handle, [ref]$rect)) { "
         + "throw 'target window changed before input' }\n"
         + "$width = $rect.Right - $rect.Left\n"
         + "$height = $rect.Bottom - $rect.Top\n"
         + "if ($rect.Left -ne $expectedLeft -or $rect.Top -ne $expectedTop -or "
         + "$width -ne $expectedWidth -or $height -ne $expectedHeight) { "
         + "throw 'target window changed before input' }\n"
-        + "if (-not [Win32Input]::SetForegroundWindow($targetProcess.MainWindowHandle)) { "
+        + "if (-not [Win32Input]::SetForegroundWindow($targetWindow.Handle)) { "
         + "throw 'target window changed before input' }\n"
         + action
     )
@@ -218,15 +243,49 @@ def _windows_win32_signature() -> str:
     return (
         "$signature = @'\n"
         "using System;\n"
+        "using System.Collections.Generic;\n"
         "using System.Runtime.InteropServices;\n"
+        "using System.Text;\n"
         "public static class Win32Input {\n"
         "  [StructLayout(LayoutKind.Sequential)] public struct RECT {\n"
         "    public int Left; public int Top; public int Right; public int Bottom;\n"
         "  }\n"
+        "  public sealed class WindowInfo {\n"
+        "    public IntPtr Handle; public string Title; public int Left; public int Top; public int Width; public int Height;\n"
+        "  }\n"
+        "  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);\n"
+        "  [DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);\n"
+        "  [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);\n"
+        "  [DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr hWnd);\n"
+        "  [DllImport(\"user32.dll\")] public static extern int GetWindowTextLength(IntPtr hWnd);\n"
+        "  [DllImport(\"user32.dll\")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);\n"
         "  [DllImport(\"user32.dll\")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);\n"
         "  [DllImport(\"user32.dll\")] public static extern bool SetForegroundWindow(IntPtr hWnd);\n"
         "  [DllImport(\"user32.dll\")] public static extern bool SetCursorPos(int X, int Y);\n"
         "  [DllImport(\"user32.dll\")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);\n"
+        "  public static string GetTitle(IntPtr hWnd) {\n"
+        "    int length = GetWindowTextLength(hWnd);\n"
+        "    StringBuilder builder = new StringBuilder(length + 1);\n"
+        "    GetWindowText(hWnd, builder, builder.Capacity);\n"
+        "    return builder.ToString();\n"
+        "  }\n"
+        "  public static WindowInfo[] EnumerateProcessWindows(int processId) {\n"
+        "    List<WindowInfo> windows = new List<WindowInfo>();\n"
+        "    EnumWindows(delegate (IntPtr hWnd, IntPtr lParam) {\n"
+        "      if (!IsWindowVisible(hWnd)) { return true; }\n"
+        "      uint ownerProcessId;\n"
+        "      GetWindowThreadProcessId(hWnd, out ownerProcessId);\n"
+        "      if (ownerProcessId != processId) { return true; }\n"
+        "      RECT rect;\n"
+        "      if (!GetWindowRect(hWnd, out rect)) { return true; }\n"
+        "      int width = rect.Right - rect.Left;\n"
+        "      int height = rect.Bottom - rect.Top;\n"
+        "      if (width <= 0 || height <= 0) { return true; }\n"
+        "      windows.Add(new WindowInfo { Handle = hWnd, Title = GetTitle(hWnd), Left = rect.Left, Top = rect.Top, Width = width, Height = height });\n"
+        "      return true;\n"
+        "    }, IntPtr.Zero);\n"
+        "    return windows.ToArray();\n"
+        "  }\n"
         "}\n"
         "'@\n"
         "Add-Type -TypeDefinition $signature\n"
@@ -298,15 +357,20 @@ def _macos_target_guard(plan: dict[str, object], action: str) -> str:
         "  set matches to every process whose name is expectedProcess\n"
         '  if (count of matches) is not 1 then error "target window changed before input"\n'
         "  set targetProcess to item 1 of matches\n"
-        '  if (count of windows of targetProcess) is not 1 then error "target window changed before input"\n'
-        "  set targetWindow to window 1 of targetProcess\n"
-        '  if name of targetWindow is not expectedTitle then error "target window changed before input"\n'
-        "  set windowPosition to position of targetWindow\n"
-        "  set windowSize to size of targetWindow\n"
-        '  if item 1 of windowPosition is not expectedLeft then error "target window changed before input"\n'
-        '  if item 2 of windowPosition is not expectedTop then error "target window changed before input"\n'
-        '  if item 1 of windowSize is not expectedWidth then error "target window changed before input"\n'
-        '  if item 2 of windowSize is not expectedHeight then error "target window changed before input"\n'
+        "  set targetWindow to missing value\n"
+        "  repeat with w in (every window of targetProcess)\n"
+        "    set windowPosition to position of w\n"
+        "    set windowSize to size of w\n"
+        "    if (item 1 of windowPosition) is expectedLeft and (item 2 of windowPosition) is expectedTop and "
+        "(item 1 of windowSize) is expectedWidth and (item 2 of windowSize) is expectedHeight then\n"
+        "      set targetWindow to w\n"
+        "      exit repeat\n"
+        "    end if\n"
+        "  end repeat\n"
+        '  if targetWindow is missing value then error "target window changed before input"\n'
+        "  if (length of expectedTitle) is greater than 0 then\n"
+        '    if name of targetWindow is not expectedTitle then error "target window changed before input"\n'
+        "  end if\n"
         f"{_indent_applescript(action)}\n"
         "end tell\n"
     )

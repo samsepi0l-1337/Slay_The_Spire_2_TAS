@@ -70,6 +70,9 @@ def test_load_captured_game_state_uses_full_state_json(tmp_path: Path) -> None:
                         "forced_elite": True,
                     }
                 ],
+                "shop_items": [{"item_id": "strike_plus", "item_type": "card", "price": 75, "card_id": "strike"}],
+                "event_options": [{"option_id": "take_gold", "label": "Take gold", "available": True}],
+                "rest_options": [{"option_id": "rest", "available": True}],
                 "missing_fields": ["draw_pile_order"],
                 "unknown_tokens": ["new_keyword"],
             }
@@ -105,6 +108,9 @@ def test_load_captured_game_state_uses_full_state_json(tmp_path: Path) -> None:
     assert captured.potions[0].requires_target is True
     assert captured.monsters[0].intent_damage == 11
     assert captured.path_candidates[0].forced_elite is True
+    assert captured.shop_items[0].item_id == "strike_plus"
+    assert captured.event_options[0].label == "Take gold"
+    assert captured.rest_options[0].option_id == "rest"
     assert captured.missing_fields == ["draw_pile_order"]
     assert captured.unknown_tokens == ["new_keyword"]
 
@@ -205,6 +211,9 @@ def test_overlay_captured_game_state_replaces_live_entities_and_clears_observed_
                     "boss_distance": 5,
                 }
             ],
+            "shop_items": [{"item_id": "strike_plus", "item_type": "card", "price": 75, "card_id": "strike"}],
+            "event_options": [{"option_id": "take_gold", "label": "Take gold"}],
+            "rest_options": [{"option_id": "rest"}],
         },
         missing_fields=["live_state.partial"],
         unknown_tokens=["new token"],
@@ -217,6 +226,9 @@ def test_overlay_captured_game_state_replaces_live_entities_and_clears_observed_
     assert overlay.potions[0].potion_id == "fire_potion"
     assert overlay.monsters[0].monster_id == "jaw_worm"
     assert overlay.path_candidates[0].node_id == "node-a"
+    assert overlay.shop_items[0].item_id == "strike_plus"
+    assert overlay.event_options[0].option_id == "take_gold"
+    assert overlay.rest_options[0].option_id == "rest"
     assert "player.max_hp" not in overlay.missing_fields
     assert "cards" not in overlay.missing_fields
     assert "live_state.partial" in overlay.missing_fields

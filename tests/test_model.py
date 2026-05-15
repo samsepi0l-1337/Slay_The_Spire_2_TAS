@@ -3,8 +3,10 @@ from pathlib import Path
 import pytest
 import torch
 
+from sts2_tas.catalog import EntityCatalog
 from sts2_tas.model import _torch_device, load_model, recommend, save_model, train_torch_model
 from sts2_tas.schema import ActionCandidate, GameStep, ObservationQuality, PlayerState, StepOutcome, StructuredGameState
+from sts2_tas.torch_model import ActorCriticOutput
 
 
 def _game_step(chosen: str, *, character: str = "ironclad") -> GameStep:
@@ -115,6 +117,27 @@ def test_torch_recommend_uses_first_legal_action_for_query_label() -> None:
     result = recommend(model, query)
 
     assert result.best.option_id == "skip"
+
+
+def test_recommend_returns_sigmoid_value_score_from_value_head() -> None:
+    class FixedActorCritic:
+        def __call__(self, **_kwargs) -> ActorCriticOutput:
+            return ActorCriticOutput(policy_logits=torch.tensor([[2.0, 1.0]]), value=torch.tensor([0.0]))
+
+    step = _game_step("anger")
+    model = type(
+        "Model",
+        (),
+        {
+            "character": "ironclad",
+            "catalog": EntityCatalog.from_steps([step], version="test-catalog"),
+            "model": FixedActorCritic(),
+        },
+    )()
+
+    result = recommend(model, step)
+
+    assert result.value_score == 0.5
 
 
 def test_torch_training_skips_value_loss_without_outcomes(monkeypatch: pytest.MonkeyPatch) -> None:

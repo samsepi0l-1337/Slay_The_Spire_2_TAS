@@ -23,6 +23,10 @@ class WindowDetector:
     def detect(self, process: str) -> TargetWindow:
         system = (self.platform_name or platform.system()).lower()
         if system == "darwin":
+            if self.runner is None:
+                quartz_window = _darwin_target_window_via_quartz(process)
+                if quartz_window is not None:
+                    return quartz_window
             output = self._run(["osascript", "-e", _macos_window_script(process)])
         elif system == "windows":
             output = self._run(["powershell", "-NoProfile", "-Command", _windows_window_script(process)])
@@ -44,6 +48,55 @@ def _run_command(command: list[str]) -> str:
 
 def _run_osascript(command: list[str]) -> str:
     return _run_command(command)
+
+
+def _darwin_target_window_via_quartz(process: str) -> TargetWindow | None:
+    """Resolve the main on-screen window without System Events AppleScript automation.
+
+    Embedded Python (for example Cursor agents) often lacks TCC permission for
+    ``osascript`` → System Events, which returns an empty string. Quartz window
+    listing works in that environment when Screen Recording is available.
+    """
+    if platform.system().lower() != "darwin":
+        return None
+    try:
+        from Quartz import CGWindowListCopyWindowInfo, kCGNullWindowID, kCGWindowListOptionOnScreenOnly
+    except ImportError:
+        return None
+    try:
+        rows = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID)
+    except Exception:
+        return None
+    if not rows:
+        return None
+    best: tuple[float, TargetWindow] | None = None
+    for row in rows:
+        if (row.get("kCGWindowOwnerName") or "") != process:
+            continue
+        if row.get("kCGWindowLayer", 999) != 0:
+            continue
+        bounds = row.get("kCGWindowBounds")
+        if not isinstance(bounds, dict):
+            continue
+        try:
+            left = int(float(bounds.get("X", 0)))
+            top = int(float(bounds.get("Y", 0)))
+            width = int(float(bounds.get("Width", 0)))
+            height = int(float(bounds.get("Height", 0)))
+        except (TypeError, ValueError):
+            continue
+        if width <= 0 or height <= 0:
+            continue
+        area = float(width * height)
+        title = str(row.get("kCGWindowName") or "")
+        candidate = TargetWindow(
+            process=process,
+            title=title,
+            bounds=WindowBounds(left=left, top=top, width=width, height=height),
+        )
+        if best is None or area > best[0]:
+            best = (area, candidate)
+    return None if best is None else best[1]
 
 
 def _macos_window_script(process: str) -> str:
@@ -68,28 +121,60 @@ def _windows_window_script(process: str) -> str:
     return (
         "$signature = @'\n"
         "using System;\n"
+        "using System.Collections.Generic;\n"
         "using System.Runtime.InteropServices;\n"
+        "using System.Text;\n"
         "public static class Win32Window {\n"
         "  [StructLayout(LayoutKind.Sequential)] public struct RECT {\n"
         "    public int Left; public int Top; public int Right; public int Bottom;\n"
         "  }\n"
+        "  public sealed class WindowInfo {\n"
+        "    public IntPtr Handle; public string Title; public int Left; public int Top; public int Width; public int Height;\n"
+        "  }\n"
+        "  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);\n"
+        "  [DllImport(\"user32.dll\")] public static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);\n"
+        "  [DllImport(\"user32.dll\")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);\n"
+        "  [DllImport(\"user32.dll\")] public static extern bool IsWindowVisible(IntPtr hWnd);\n"
+        "  [DllImport(\"user32.dll\")] public static extern int GetWindowTextLength(IntPtr hWnd);\n"
+        "  [DllImport(\"user32.dll\")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);\n"
         "  [DllImport(\"user32.dll\")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);\n"
+        "  public static string GetTitle(IntPtr hWnd) {\n"
+        "    int length = GetWindowTextLength(hWnd);\n"
+        "    StringBuilder builder = new StringBuilder(length + 1);\n"
+        "    GetWindowText(hWnd, builder, builder.Capacity);\n"
+        "    return builder.ToString();\n"
+        "  }\n"
+        "  public static WindowInfo[] EnumerateProcessWindows(int processId) {\n"
+        "    List<WindowInfo> windows = new List<WindowInfo>();\n"
+        "    EnumWindows(delegate (IntPtr hWnd, IntPtr lParam) {\n"
+        "      if (!IsWindowVisible(hWnd)) { return true; }\n"
+        "      uint ownerProcessId;\n"
+        "      GetWindowThreadProcessId(hWnd, out ownerProcessId);\n"
+        "      if (ownerProcessId != processId) { return true; }\n"
+        "      RECT rect;\n"
+        "      if (!GetWindowRect(hWnd, out rect)) { return true; }\n"
+        "      int width = rect.Right - rect.Left;\n"
+        "      int height = rect.Bottom - rect.Top;\n"
+        "      if (width <= 0 || height <= 0) { return true; }\n"
+        "      windows.Add(new WindowInfo { Handle = hWnd, Title = GetTitle(hWnd), Left = rect.Left, Top = rect.Top, Width = width, Height = height });\n"
+        "      return true;\n"
+        "    }, IntPtr.Zero);\n"
+        "    return windows.ToArray();\n"
+        "  }\n"
         "}\n"
         "'@\n"
         "Add-Type -TypeDefinition $signature\n"
         f"$query = '{escaped}'\n"
-        "$matches = @(Get-Process | Where-Object { "
-        "$_.MainWindowHandle -ne 0 -and "
-        "($_.ProcessName -eq $query -or $_.Name -eq $query -or $_.MainWindowTitle -eq $query) "
-        "})\n"
-        "if ($matches.Count -ne 1) { return }\n"
-        "$process = $matches[0]\n"
-        "$rect = New-Object Win32Window+RECT\n"
-        "if (-not [Win32Window]::GetWindowRect($process.MainWindowHandle, [ref]$rect)) { return }\n"
-        "$width = $rect.Right - $rect.Left\n"
-        "$height = $rect.Bottom - $rect.Top\n"
-        "if ($width -le 0 -or $height -le 0) { return }\n"
-        "[Console]::Out.WriteLine(($query, $process.MainWindowTitle, $rect.Left, $rect.Top, $width, $height) -join \"`t\")\n"
+        "$matches = @(Get-Process | Where-Object { $_.ProcessName -eq $query -or $_.Name -eq $query -or $_.MainWindowTitle -eq $query })\n"
+        "$windows = @()\n"
+        "foreach ($process in $matches) {\n"
+        "  foreach ($window in [Win32Window]::EnumerateProcessWindows([int]$process.Id)) {\n"
+        "    $windows += $window\n"
+        "  }\n"
+        "}\n"
+        "if ($windows.Count -ne 1) { return }\n"
+        "$targetWindow = $windows[0]\n"
+        "[Console]::Out.WriteLine(($query, $targetWindow.Title, $targetWindow.Left, $targetWindow.Top, $targetWindow.Width, $targetWindow.Height) -join \"`t\")\n"
     )
 
 

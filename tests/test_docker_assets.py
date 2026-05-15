@@ -75,3 +75,29 @@ def test_docs_explain_windows_docker_and_deferred_scope() -> None:
         'live-step --screenshot-out ... --target-process "Slay the Spire 2" '
         "--input-backend native --execute"
     ) in architecture_doc
+    assert "SlayTheSpire2" in docker_doc
+    assert "--tessdata-dir" in docker_doc
+    assert "kor.traineddata" in docker_doc
+    assert "scripts/run-windows-live-loop.ps1" in docker_doc
+    assert "--policy first-legal" in docker_doc
+    assert "--stop-file" in docker_doc
+
+
+def test_windows_live_loop_script_runs_hidden_interactive_task_until_stop_file() -> None:
+    script = (ROOT / "scripts" / "run-windows-live-loop.ps1").read_text(encoding="utf-8")
+
+    assert "STS2TASLiveLoop" in script
+    assert "Register-ScheduledTask" in script
+    assert "-LogonType Interactive" in script
+    assert "WindowsIdentity]::GetCurrent().Name" in script
+    assert '[ValidateSet("Highest", "Limited")]' in script
+    assert "-RunLevel $RunLevel" in script
+    assert "Register-ScheduledTask" in script and "-ErrorAction Stop" in script
+    assert "-WindowStyle Hidden" in script
+    assert "live-learn-loop" in script
+    assert '"--target-process", $TargetProcess' in script
+    assert '"--input-backend", "native"' in script
+    assert '"--execute"' in script
+    assert '"--policy", "first-legal"' in script
+    assert '"--stop-file", $StopFile' in script
+    assert "Sts2Exe" in script

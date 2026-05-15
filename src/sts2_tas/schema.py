@@ -45,8 +45,6 @@ class TargetWindow:
     def __post_init__(self) -> None:
         if not self.process:
             raise ValueError("target window process is required")
-        if not self.title:
-            raise ValueError("target window title is required")
 
     def to_dict(self) -> dict[str, Any]:
         return {"process": self.process, "title": self.title, "bounds": self.bounds.to_dict()}
@@ -80,6 +78,7 @@ class ParsedScreen:
     state_boxes: dict[str, Box] | None = None
     missing_fields: list[str] | None = None
     unknown_tokens: list[str] | None = None
+    field_confidence: dict[str, float] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -91,6 +90,7 @@ class ParsedScreen:
         }
         data["missing_fields"] = list(self.missing_fields or [])
         data["unknown_tokens"] = list(self.unknown_tokens or [])
+        data["field_confidence"] = dict(self.field_confidence or {})
         return data
 
 
@@ -186,13 +186,17 @@ class SeedEvaluation:
 from .ml_schema import (  # noqa: E402
     ActionCandidate,
     CardInstance,
+    EventOptionState,
     GameStep,
+    LabelSource,
     MonsterState,
     ObservationQuality,
     PathCandidate,
     PlayerState,
     PotionState,
     RelicState,
+    RestOptionState,
+    ShopItemState,
     StepOutcome,
     StructuredGameState,
 )
