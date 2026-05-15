@@ -121,6 +121,7 @@ Restart-Service sshd
 ```
 
 Windows 로컬 실행 디렉터리는 OneDrive/Desktop checkout보다 별도 실행 디렉터리 `C:\Users\steep\sts2-tas-run`을 사용합니다. OneDrive 아래 `.venv`는 `uv trampoline failed to spawn Python child process` / `untrusted mount point (os error 448)`가 발생할 수 있습니다.
+repo에는 `.python-version`을 `3.14.5`로 고정해 Windows SSH에서 `uv`가 `cpython-3.14-*` junction alias를 선택하지 않도록 한다.
 
 ```powershell
 cd C:\Users\steep\sts2-tas-run

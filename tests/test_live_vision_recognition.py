@@ -98,6 +98,24 @@ def test_parse_ocr_screen_matches_korean_continue_menu(tmp_path: Path) -> None:
     ]
 
 
+def test_parse_ocr_screen_matches_split_korean_single_player_menu(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            _token("Ag", (693, 660, 756, 730)),
+            _token("글", (731, 705, 767, 710)),
+            _token("플레이", (766, 693, 846, 725)),
+        ]
+    )
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "menu.png"), ocr_provider=provider)
+
+    assert parsed.kind == "main_menu"
+    assert [(option.id, option.name, option.kind) for option in parsed.options] == [
+        ("single_player", "Single Player", "select_single_player")
+    ]
+    assert parsed.options[0].source_text == "Ag 글 플레이"
+
+
 def test_parse_ocr_screen_matches_korean_map_legend(tmp_path: Path) -> None:
     provider = recognition.FakeOcrProvider([_token("범례", (1669, 331, 1739, 374))])
 

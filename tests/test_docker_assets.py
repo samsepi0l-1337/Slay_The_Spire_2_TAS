@@ -20,6 +20,12 @@ def test_project_requires_python_314() -> None:
     assert pyproject["project"]["requires-python"] == ">=3.14"
 
 
+def test_uv_uses_exact_python_patch_on_windows_ssh() -> None:
+    python_version = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
+
+    assert python_version == "3.14.5"
+
+
 def test_dockerignore_excludes_local_state_and_generated_outputs() -> None:
     patterns = set((ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines())
     gitignore_patterns = set((ROOT / ".gitignore").read_text(encoding="utf-8").splitlines())
@@ -43,6 +49,9 @@ def test_docs_explain_windows_docker_and_deferred_scope() -> None:
 
     assert "Windows PowerShell" in docker_doc
     assert "Python 3.14" in docker_doc
+    assert ".python-version" in docker_doc
+    assert "3.14.5" in docker_doc
+    assert "untrusted mount point" in docker_doc
     assert "docker run --rm" in docker_doc
     assert "volume" in docker_doc
     assert "TasMovie" in implemented_doc

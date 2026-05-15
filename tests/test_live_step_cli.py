@@ -452,8 +452,11 @@ def test_capture_screen_reports_permission_failure(tmp_path: Path) -> None:
     def failing_grabber():
         raise OSError("permission denied")
 
-    with pytest.raises(RuntimeError, match="screen recording permission"):
+    with pytest.raises(RuntimeError) as error:
         runtime.capture_screen(tmp_path / "screen.png", grabber=failing_grabber)
+    assert "screen recording permission" in str(error.value)
+    assert "Windows remote SSH/non-interactive sessions" in str(error.value)
+    assert "scheduled-task wrapper" in str(error.value)
 
 
 def test_cli_live_step_rejects_native_without_execute(tmp_path: Path) -> None:

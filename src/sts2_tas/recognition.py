@@ -207,6 +207,12 @@ def parse_ocr_tokens(
         for token in tokens
         if (option := _recognized_option(token, (width, height), calibration)) is not None
     ]
+    existing_option_ids = {option.id for option in options}
+    options.extend(
+        option
+        for option in _recognized_menu_fragment_options(tokens, (width, height), calibration)
+        if option.id not in existing_option_ids
+    )
     non_skip = sorted((option for option in options if option.kind != "skip"), key=lambda option: option.box[0])
     skip = sorted((option for option in options if option.kind == "skip"), key=lambda option: option.box[0])
     cards = [option for option in non_skip if option.kind == "card"]
@@ -699,8 +705,59 @@ def _menu_kind(options: list[RecognizedOption]) -> DetectionKind | None:
     return None
 
 
+def _recognized_menu_fragment_options(
+    tokens: list[OcrToken],
+    resolution: tuple[int, int],
+    calibration: RegionCalibration | None,
+) -> list[RecognizedOption]:
+    menu_tokens = [
+        token
+        for token in tokens
+        if token.confidence >= MIN_OCR_OPTION_CONFIDENCE
+        and _in_layout_region(token, "select_single_player", resolution, calibration)
+    ]
+    options: list[RecognizedOption] = []
+    for token in menu_tokens:
+        if _normalize_text(token.text) != "플레이":
+            continue
+        line_tokens = [
+            candidate
+            for candidate in menu_tokens
+            if abs(_box_center(candidate.box)[1] - _box_center(token.box)[1]) <= 45
+        ]
+        line_texts = {_normalize_text(candidate.text) for candidate in line_tokens}
+        if not ({"글", "싱글", "ag"} & line_texts):
+            continue
+        box = _union_boxes([candidate.box for candidate in line_tokens])
+        options.append(
+            RecognizedOption(
+                id="single_player",
+                name="Single Player",
+                kind="select_single_player",
+                box=box,
+                confidence=min(candidate.confidence for candidate in line_tokens),
+                source_text=" ".join(candidate.text for candidate in sorted(line_tokens, key=lambda item: item.box[0])),
+                tags=[],
+            )
+        )
+    return options
+
+
 def _normalize_text(text: str) -> str:
     return " ".join(text.casefold().strip().split())
+
+
+def _box_center(box: Box) -> tuple[float, float]:
+    return ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+
+
+def _union_boxes(boxes: list[Box]) -> Box:
+    return (
+        min(box[0] for box in boxes),
+        min(box[1] for box in boxes),
+        max(box[2] for box in boxes),
+        max(box[3] for box in boxes),
+    )
 
 
 def _in_layout_region(
