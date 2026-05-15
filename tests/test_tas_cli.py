@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from sts2_tas import cli
 from sts2_tas.ml_entities import ActionCandidate
 from sts2_tas.tas_checkpoint import TasCheckpoint
@@ -43,6 +45,11 @@ def test_tas_probe_writes_passive_fallback_probe(tmp_path: Path) -> None:
     assert rows[0]["screen_hash"]
 
 
+def test_tas_probe_rejects_non_positive_frame_count(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="frames"):
+        cli.main(["tas-probe", "--target-process", "SlayTheSpire2", "--out", str(tmp_path / "probe.jsonl"), "--frames", "0"])
+
+
 def test_tas_record_writes_empty_semantic_movie(tmp_path: Path) -> None:
     movie_path = tmp_path / "out.sts2movie"
 
@@ -70,6 +77,24 @@ def test_tas_replay_verify_and_tas_verify_accept_victory_movie(tmp_path: Path, c
     assert outputs[1]["all_victory"] is True
 
 
+def test_tas_verify_rejects_non_positive_runs(tmp_path: Path) -> None:
+    movie_path = tmp_path / "run.sts2movie"
+    _victory_movie(movie_path)
+
+    with pytest.raises(ValueError, match="runs"):
+        cli.main(["tas-verify", "--movie", str(movie_path), "--runs", "0"])
+
+
+def test_tas_replay_reports_target_process_mismatch(tmp_path: Path, capsys) -> None:
+    movie_path = tmp_path / "run.sts2movie"
+    _victory_movie(movie_path)
+
+    assert cli.main(["tas-replay", "--movie", str(movie_path), "--target-process", "OtherProcess", "--verify"]) == 0
+
+    report = json.loads(capsys.readouterr().out)
+    assert report["target_window_mismatch_count"] == 1
+
+
 def test_tas_search_validates_checkpoint_and_writes_prefix_movie(tmp_path: Path, capsys) -> None:
     movie_path = tmp_path / "run.sts2movie"
     movie = _victory_movie(movie_path)
@@ -92,6 +117,11 @@ def test_tas_search_validates_checkpoint_and_writes_prefix_movie(tmp_path: Path,
     report = json.loads(capsys.readouterr().out)
     assert report["checkpoint_valid"] is True
     assert TasMovie.load(out).frames == [movie.frames[0]]
+
+
+def test_tas_search_rejects_negative_budget(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="budget"):
+        cli.main(["tas-search", "--checkpoint", str(tmp_path / "checkpoint.json"), "--budget", "-1", "--out", str(tmp_path / "out.sts2movie")])
 
 
 def test_train_verified_label_policy_reports_only_verified_tas_experience(tmp_path: Path, capsys) -> None:

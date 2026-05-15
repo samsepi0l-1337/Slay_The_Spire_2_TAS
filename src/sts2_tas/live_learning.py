@@ -607,7 +607,10 @@ def _finish_deferred_input(controller, *, changed: bool) -> None:
 def _target_window(args: argparse.Namespace) -> TargetWindow | None:
     if args.target_process is None:
         return None
-    return WindowDetector().detect(args.target_process)
+    target_window = WindowDetector().detect(args.target_process)
+    if target_window is None:
+        raise ValueError(f"target process window not found: {args.target_process}")
+    return target_window
 
 
 def _resolve_action_id(step: GameStep, choice: str) -> str:

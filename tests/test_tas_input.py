@@ -125,6 +125,44 @@ def test_choose_path_and_event_actions_keep_click_plan() -> None:
     assert skip_reward.input_plan() == {"kind": "click", "x": 60, "y": 50}
 
 
+def test_plan_action_rejects_missing_click_or_target_boxes() -> None:
+    with pytest.raises(ValueError, match="screen target"):
+        automation.plan_action(
+            _combat_step(actions=[ActionCandidate(action_type="choose_path", path_node_id="0")]),
+            "choose_path:path_node=0",
+            dry_run=True,
+        )
+    with pytest.raises(ValueError, match="target screen box"):
+        automation.plan_action(
+            _combat_step(
+                actions=[
+                    ActionCandidate(
+                        action_type="play_card",
+                        source_card_id="hand-0-strike",
+                        target_monster_id="jaw_worm:0",
+                    )
+                ]
+            ),
+            "play_card:source_card=hand-0-strike|target_monster=jaw_worm:0",
+            dry_run=True,
+        )
+    with pytest.raises(ValueError, match="target screen box"):
+        automation.plan_action(
+            _combat_step(
+                actions=[
+                    ActionCandidate(
+                        action_type="choose_event_option",
+                        event_option_id="attack",
+                        screen_box=(1, 2, 3, 4),
+                        target_monster_id="jaw_worm:0",
+                    )
+                ]
+            ),
+            "choose_event_option|target_monster=jaw_worm:0|event_option=attack",
+            dry_run=True,
+        )
+
+
 def test_windows_dry_run_command_can_be_built_from_action_plan() -> None:
     action = automation.plan_action(
         _combat_step(
@@ -148,6 +186,43 @@ def test_windows_dry_run_command_can_be_built_from_action_plan() -> None:
     assert "SetCursorPos(1360, 465)" in command[3]
 
 
+def test_windows_native_plan_clicks_end_turn_target_when_present() -> None:
+    action = automation.plan_action(
+        _combat_step(actions=[ActionCandidate(action_type="end_turn", screen_box=(1700, 840, 1810, 930))]),
+        "end_turn",
+        dry_run=True,
+    )
+
+    command = tas_input.build_dry_run_command(action, platform_name="Windows")
+
+    assert "SendWait('e')" in command[3]
+    assert "SetCursorPos(1755, 885)" in command[3]
+
+
+def test_non_card_targeted_action_uses_source_and_target_click_sequence() -> None:
+    action = automation.plan_action(
+        _combat_step(
+            actions=[
+                ActionCandidate(
+                    action_type="choose_event_option",
+                    event_option_id="attack",
+                    screen_box=(10, 20, 110, 120),
+                    target_monster_id="jaw_worm:0",
+                    target_screen_box=(1200, 310, 1520, 620),
+                )
+            ]
+        ),
+        "choose_event_option|target_monster=jaw_worm:0|event_option=attack",
+        dry_run=True,
+    )
+
+    assert action.targets == [(10, 20, 110, 120), (1200, 310, 1520, 620)]
+    assert action.input_plan()["steps"] == [
+        {"kind": "click", "x": 60, "y": 70},
+        {"kind": "click", "x": 1360, "y": 465},
+    ]
+
+
 def test_play_card_slot_key_parsing() -> None:
     assert tas_input.play_card_slot_key("hand-0-strike") == "1"
     assert tas_input.play_card_slot_key("hand-9-strike") == "0"
@@ -156,3 +231,20 @@ def test_play_card_slot_key_parsing() -> None:
 def test_play_card_slot_key_rejects_invalid_source_card_id() -> None:
     with pytest.raises(ValueError, match="cannot parse hand slot"):
         tas_input.play_card_slot_key("hand-strike")
+    with pytest.raises(ValueError, match="supported range"):
+        tas_input.play_card_slot_key("hand-10-strike")
+
+
+def test_build_play_card_plan_rejects_non_play_card_or_incomplete_candidate() -> None:
+    with pytest.raises(ValueError, match="only play_card"):
+        tas_input.build_play_card_plan(ActionCandidate(action_type="end_turn"))
+    with pytest.raises(ValueError, match="source_card_id"):
+        tas_input.build_play_card_plan(ActionCandidate(action_type="play_card"))
+    with pytest.raises(ValueError, match="target screen box"):
+        tas_input.build_play_card_plan(
+            ActionCandidate(
+                action_type="play_card",
+                source_card_id="hand-0-strike",
+                target_monster_id="jaw_worm:0",
+            )
+        )

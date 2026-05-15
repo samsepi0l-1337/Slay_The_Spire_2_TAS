@@ -416,9 +416,13 @@ def _input_controller(args: argparse.Namespace) -> JsonlInputController | Native
 
 
 def _target_window(args: argparse.Namespace) -> TargetWindow | None:
-    if getattr(args, "target_process", None) is None:
+    target_process = getattr(args, "target_process", None)
+    if target_process is None:
         return None
-    return WindowDetector().detect(args.target_process)
+    target_window = WindowDetector().detect(target_process)
+    if target_window is None:
+        raise ValueError(f"target process window not found: {target_process}")
+    return target_window
 
 
 def _save_state_backup(args: argparse.Namespace) -> None:

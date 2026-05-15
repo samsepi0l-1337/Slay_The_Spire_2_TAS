@@ -461,6 +461,56 @@ def test_live_learn_loop_can_use_model_tesseract_and_target_window_capture(tmp_p
     assert step.chosen_action_id == "skip_reward|option=skip"
 
 
+def test_live_learn_loop_rejects_missing_target_process_window_before_capture(tmp_path: Path, monkeypatch) -> None:
+    import sts2_tas.live_learning as live_learning
+
+    class Detector:
+        def detect(self, process: str):
+            assert process == "SlayTheSpire2"
+            return None
+
+    def capture_screen(*args, **kwargs):
+        raise AssertionError("capture_screen should not run without the requested target window")
+
+    monkeypatch.setattr(live_learning, "WindowDetector", lambda: Detector())
+    monkeypatch.setattr(live_learning, "capture_screen", capture_screen)
+
+    with pytest.raises(ValueError, match="target process window not found: SlayTheSpire2"):
+        cli.main(
+            [
+                "live-learn-loop",
+                "--screenshot-out",
+                str(tmp_path / "target.png"),
+                "--ocr-fixture",
+                str(_ocr_fixture(tmp_path / "ocr.json")),
+                "--dataset",
+                str(tmp_path / "dataset.jsonl"),
+                "--choice",
+                "skip",
+                "--input-log",
+                str(tmp_path / "inputs.jsonl"),
+                "--target-process",
+                "SlayTheSpire2",
+                "--max-steps",
+                "1",
+                "--game-version",
+                "0.105.1",
+                "--branch",
+                "beta",
+                "--character",
+                "ironclad",
+                "--ascension",
+                "0",
+                "--floor",
+                "1",
+                "--hp",
+                "70",
+                "--gold",
+                "0",
+            ]
+        )
+
+
 def test_live_learn_loop_does_not_self_label_model_choices_by_default(tmp_path: Path, monkeypatch, capsys) -> None:
     import sts2_tas.live_learning as live_learning
 

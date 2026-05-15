@@ -275,6 +275,14 @@ def test_cli_train_rejects_non_pt_model_path_before_training(tmp_path: Path) -> 
         )
 
 
+def test_cli_train_rejects_missing_legacy_model_args(tmp_path: Path) -> None:
+    dataset = tmp_path / "steps.jsonl"
+    dataset.write_text(_game_step("anger").to_json() + "\n")
+
+    with pytest.raises(ValueError, match="requires --model and --character"):
+        cli.main(["train", "--dataset", str(dataset)])
+
+
 def test_cli_label_rejects_missing_pick_option(tmp_path: Path) -> None:
     dataset = tmp_path / "steps.jsonl"
     dataset.write_text(_game_step("anger").to_json() + "\n")

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from sts2_tas.ml_entities import ActionCandidate
-from sts2_tas.tas_experience import TasExperience, supervised_training_experiences
+from sts2_tas.tas_experience import TasExperience, load_tas_experiences, supervised_training_experiences, write_tas_experiences
 from sts2_tas.tas_movie import TasFrame, TasMovie
 
 
@@ -102,6 +104,12 @@ def test_supervised_experience_filter_includes_allowed_sources_and_excludes_reje
     ]
 
 
+def test_tas_experience_default_supervised_rejects_late_quality_gates() -> None:
+    assert not _experience(label_source="human", behavior_policy="failed_rollout").is_default_supervised()
+    assert not _experience(label_source="human", terminal_return=None).is_default_supervised()
+    assert not _experience(label_source="human", legal_selected=False).is_default_supervised()
+
+
 def test_tas_experience_movie_round_trip_uses_frame_index_for_identity() -> None:
     movie = _movie("screen-2")
     experience = TasExperience(
@@ -117,3 +125,44 @@ def test_tas_experience_movie_round_trip_uses_frame_index_for_identity() -> None
     )
 
     assert experience.to_dict()["movie_frame"]["frame"] == 0
+
+
+def test_tas_experience_file_round_trip(tmp_path: Path) -> None:
+    rows = [
+        _experience(label_source="human"),
+        _experience(label_source="verified_heuristic", behavior_policy="verified_heuristic", terminal_return=0.5),
+    ]
+    path = tmp_path / "experience.jsonl"
+
+    write_tas_experiences(path, rows)
+
+    assert load_tas_experiences(path) == rows
+
+
+def test_tas_experience_rejects_invalid_contract_fields() -> None:
+    legal = ActionCandidate(action_type="pick_card", option_id="pick", legal=True)
+    base = {
+        "behavior_policy": "human",
+        "label_source": "human",
+        "movie_frame": _frame(),
+        "run_id": "run-1",
+        "state_fingerprint": "state-0",
+        "legal_actions": [legal],
+        "selected_action": legal,
+        "terminal_return": 1.0,
+    }
+    invalid_cases = [
+        ({"behavior_policy": "unknown"}, "behavior_policy"),
+        ({"label_source": "unknown"}, "label_source"),
+        ({"run_id": ""}, "run_id"),
+        ({"state_fingerprint": ""}, "state_fingerprint"),
+        ({"legal_actions": []}, "legal_actions"),
+        (
+            {"selected_action": ActionCandidate(action_type="end_turn", legal=True)},
+            "selected_action",
+        ),
+    ]
+
+    for overrides, message in invalid_cases:
+        with pytest.raises(ValueError, match=message):
+            TasExperience(**(base | overrides))

@@ -147,7 +147,7 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Pr
 Start-ScheduledTask -TaskName $taskName
 ```
 
-interactive task에서 확인된 게임 process는 `SlayTheSpire2`, SessionId는 `1`이었습니다. borderless/no-title 상태에서는 `MainWindowTitle`과 `MainWindowHandle`이 비어 있을 수 있으므로 `--target-process SlayTheSpire2`를 사용합니다. Windows target guard는 `EnumWindows`/`GetWindowThreadProcessId`로 해당 process의 top-level visible window를 다시 찾고, 빈 title과 bounds를 입력 직전 재검증합니다. 이 경로에서는 `ImageGrab.grab()`이 `1920x1080` capture를 만들고 target window metadata와 click plan을 출력합니다.
+interactive task에서 확인된 게임 process는 `SlayTheSpire2`, SessionId는 `1`이었습니다. borderless/no-title 상태에서는 `MainWindowTitle`과 `MainWindowHandle`이 비어 있을 수 있으므로 `--target-process SlayTheSpire2`를 사용합니다. Windows target guard는 `EnumWindows`/`GetWindowThreadProcessId`로 해당 process의 top-level visible window를 다시 찾고, 빈 title과 bounds를 입력 직전 재검증합니다. `--target-process`가 지정됐는데 visible top-level window를 찾지 못하면 전체 데스크톱을 OCR하지 않고 `target process window not found`로 실패합니다. 이 경로에서는 target window crop, target window metadata, click plan을 함께 확인합니다.
 
 ```powershell
 .\.venv\Scripts\sts2-tas.exe live-step `

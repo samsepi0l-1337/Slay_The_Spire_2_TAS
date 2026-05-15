@@ -29,7 +29,7 @@
 
 - Gate 5 report semantics: static verifier 출력에는 `acceptance_source=static_movie` 같은 구분자가 필요하다. live Windows 검증 결과와 fixture/static 검증 결과가 섞이면 안 된다.
 - Drift evidence: replay drift가 발생했을 때 frame number, last semantic action, before/after screenshot, state fingerprint를 저장하는 report format이 필요하다.
-- Target boundary: 실제 입력 실행은 `--target-process` 없이는 fail-closed 해야 한다. process name selector와 window title helper도 분리해야 한다.
+- Target boundary: `--target-process`가 지정된 live capture는 visible target window가 없으면 전체 화면 fallback 없이 fail-closed 한다. 남은 gap은 실제 입력 실행에서 `--target-process` 없이는 fail-closed 하도록 강제하고, process name selector와 window title helper를 분리하는 것이다.
 - Checkpoint negative path: checkpoint 검증 실패 시 branch movie를 acceptance 산출물처럼 쓰지 않도록 CLI 경로와 테스트를 잠가야 한다.
 - Hook IPC trust boundary: named pipe에는 session nonce, ACL, target pid binding 같은 검증 경계가 필요하다.
 - Foreground metadata: hook scaffold의 foreground-window metadata는 target-bound metadata로 바뀌어야 한다.

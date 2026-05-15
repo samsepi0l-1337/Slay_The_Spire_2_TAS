@@ -116,6 +116,31 @@ def test_parse_ocr_screen_matches_split_korean_single_player_menu(tmp_path: Path
     assert parsed.options[0].source_text == "Ag 글 플레이"
 
 
+def test_parse_ocr_screen_matches_noisy_korean_single_player_menu(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            _token("싱", (702, 693, 727, 725)),
+            _token("도브", (731, 694, 791, 725)),
+            _token("레이", (792, 693, 846, 725)),
+        ]
+    )
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "menu.png"), ocr_provider=provider)
+
+    assert parsed.kind == "main_menu"
+    assert [(option.id, option.name, option.kind) for option in parsed.options] == [
+        ("single_player", "Single Player", "select_single_player")
+    ]
+    assert parsed.options[0].source_text == "싱 도브 레이"
+
+
+def test_parse_ocr_screen_ignores_single_player_fragment_without_prefix(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("플레이", (766, 693, 846, 725))])
+
+    with pytest.raises(ValueError, match="unknown OCR screen layout"):
+        recognition.parse_ocr_screen(_blank_screen(tmp_path / "menu.png"), ocr_provider=provider)
+
+
 def test_parse_ocr_screen_matches_korean_map_legend(tmp_path: Path) -> None:
     provider = recognition.FakeOcrProvider([_token("범례", (1669, 331, 1739, 374))])
 
@@ -141,6 +166,22 @@ def test_parse_ocr_screen_builds_visual_map_candidates_from_legend_screen(tmp_pa
         "path:visual-node-3": (900, 500, 970, 570),
     }
     assert parsed.field_confidence == {"path_candidates": 0.8}
+
+
+def test_visual_map_node_detection_filters_out_of_region_and_bad_area() -> None:
+    image = Image.new("RGB", (1920, 1080), (170, 165, 178))
+    pixels = image.load()
+    for box in (
+        (450, 540, 520, 610),
+        (20, 540, 90, 610),
+        (900, 540, 920, 560),
+        (1000, 500, 1160, 620),
+    ):
+        for x in range(box[0], box[2]):
+            for y in range(box[1], box[3]):
+                pixels[x, y] = (105, 80, 65)
+
+    assert recognition._visual_map_node_boxes(image) == [(450, 540, 520, 610)]
 
 
 def test_parse_ocr_screen_detects_neow_choice_panels_without_readable_option_text(tmp_path: Path) -> None:

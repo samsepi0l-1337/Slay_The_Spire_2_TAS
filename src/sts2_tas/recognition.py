@@ -718,7 +718,8 @@ def _recognized_menu_fragment_options(
     ]
     options: list[RecognizedOption] = []
     for token in menu_tokens:
-        if _normalize_text(token.text) != "플레이":
+        normalized_token = _normalize_text(token.text)
+        if normalized_token not in {"플레이", "레이"}:
             continue
         line_tokens = [
             candidate
@@ -726,7 +727,7 @@ def _recognized_menu_fragment_options(
             if abs(_box_center(candidate.box)[1] - _box_center(token.box)[1]) <= 45
         ]
         line_texts = {_normalize_text(candidate.text) for candidate in line_tokens}
-        if not ({"글", "싱글", "ag"} & line_texts):
+        if not ({"글", "싱글", "싱", "ag"} & line_texts):
             continue
         box = _union_boxes([candidate.box for candidate in line_tokens])
         options.append(

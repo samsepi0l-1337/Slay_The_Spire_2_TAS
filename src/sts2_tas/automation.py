@@ -103,8 +103,6 @@ def plan_action(
     if candidate.action_type == "play_card":
         key, targets = tas_input.build_play_card_plan(candidate)
         target = None
-        if candidate.target_monster_id is not None and candidate.target_screen_box is None:
-            raise ValueError(f"action_id has no target screen box: {action_id}")
     else:
         target = candidate.screen_box
         if automation_action == "pick" and target is None:
