@@ -61,6 +61,7 @@
 - PyTorch `EntityTransformerActorCritic`은 global/player/card/relic/potion/monster/path/action/observation/decision-context token을 인코딩한다.
 - 모델은 legal action mask를 policy logits에 적용하고, behavior cloning policy loss를 학습한다. value head loss는 실제 `StepOutcome`이 있는 row에서만 적용하며, explicit value target, discounted return, reward/floor/HP/terminal signal을 victory-only target보다 우선한다.
 - 캐릭터별 모델 학습을 지원하며, 추천 시 `GameStep` character와 모델 character mismatch를 거부한다.
+- 반복 학습 데이터 누적의 기준 환경은 Windows 로컬 interactive session이다. Mac SSH 또는 Docker는 ML dataset을 쌓는 실제 capture/click 환경이 아니라 파일 전송, 빌드, fixture 처리, 로그 회수, scheduled task 등록을 보조한다.
 - `.pt` checkpoint로 모델 save/load를 수행하고, checkpoint load는 PyTorch safe `weights_only` 경로를 사용한다.
 - 추천 결과는 best candidate와 candidates list를 JSON으로 출력한다.
 - PPO, GNN map encoder, simulator-backed self-play는 확장 지점으로만 남아 있다.
@@ -114,6 +115,7 @@
 - `--train-every N --model-out path.pt` 조합은 N개 신규 labeled row마다, 그리고 terminal return 전파 직후 `train_torch_model(load_game_steps(dataset), character, epochs, batch_size, device)` 후 `save_model`을 호출한다.
 - `KeyboardInterrupt`와 `--stop-file` 감지는 traceback 없이 `steps`, `trained`, `interrupted`, `dataset`, `model` summary JSON을 출력하고 정상 종료한다.
 - `scripts/run-windows-live-loop.ps1`은 Windows interactive scheduled task에서 `live-learn-loop --policy first-legal --ack-live-poll --target-process SlayTheSpire2 --input-backend native --execute --stop-file` 조합을 hidden으로 실행한다. 기본 `-RunLevel Highest` 등록은 관리자 권한이 필요하고, 비관리자에서는 `-RunLevel Limited`를 쓰거나 관리자 PowerShell에서 등록한다.
+- Windows SSH service session은 Session 0에서 동작하므로 게임 화면 capture/click의 검증 기준이 아니다. 실제 데이터 수집은 로그인된 Windows desktop 또는 interactive scheduled task에서 수행한다.
 
 ## Runtime And Evaluation
 

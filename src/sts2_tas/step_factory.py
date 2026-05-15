@@ -29,10 +29,11 @@ _REQUIRED_FIELDS_BY_CONTEXT = {
         "monsters",
     ),
     "map": ("path_candidates",),
-    "shop": ("shop_items",),
+    "shop": ("shop_items", "player.character_resource.gold"),
     "event": ("event_options",),
     "rest": ("rest_options",),
 }
+_LIVE_REQUIRED_FIELDS = {"player.character_resource.gold"}
 
 
 class PerceptionQualityError(ValueError):
@@ -78,7 +79,6 @@ def game_step_from_parsed_screen(
     captured_state: CapturedGameState,
     source_type: str,
 ) -> GameStep:
-    _validate_perception_quality(parsed)
     confidence = fmean(option.confidence for option in parsed.options) if parsed.options else 0.0
     extracted_state = overlay_captured_game_state(
         captured_state,
@@ -86,6 +86,7 @@ def game_step_from_parsed_screen(
         missing_fields=parsed.missing_fields,
         unknown_tokens=parsed.unknown_tokens,
     )
+    _validate_perception_quality(parsed, extracted_state)
     effective_floor = _parsed_floor(parsed, floor)
     enriched_state = _state_with_reward_cards(extracted_state, parsed.options)
     state = _structured_state(
@@ -158,7 +159,7 @@ def _game_step(
     )
 
 
-def _validate_perception_quality(parsed: ParsedScreen) -> None:
+def _validate_perception_quality(parsed: ParsedScreen, captured_state: CapturedGameState | None = None) -> None:
     required_fields = _REQUIRED_FIELDS_BY_CONTEXT.get(parsed.kind, ())
     if not required_fields:
         return
@@ -166,12 +167,15 @@ def _validate_perception_quality(parsed: ParsedScreen) -> None:
     missing_fields = set(parsed.missing_fields or [])
     failures = []
     for field in required_fields:
-        if field in missing_fields or not _field_present(parsed.state_payload or {}, field):
+        parsed_has_field = _field_present(parsed.state_payload or {}, field)
+        captured_has_field = captured_state is not None and _field_present_in_captured(captured_state, field)
+        if field in missing_fields or not parsed_has_field and not captured_has_field:
             failures.append(f"{field}:missing")
             continue
         confidence = None if field_confidence is None else field_confidence.get(field)
         if confidence is None:
-            failures.append(f"{field}:missing_confidence")
+            if parsed_has_field or field in _LIVE_REQUIRED_FIELDS:
+                failures.append(f"{field}:missing_confidence")
         elif confidence < _PERCEPTION_CONFIDENCE_THRESHOLD:
             failures.append(f"{field}:{confidence:.2f}")
     if failures:
@@ -180,9 +184,30 @@ def _validate_perception_quality(parsed: ParsedScreen) -> None:
 
 def _field_present(payload: dict[str, object], field: str) -> bool:
     if field in {"cards", "monsters", "path_candidates", "shop_items", "event_options", "rest_options"}:
-        return bool(payload.get(field))
+        return field in payload
     player = payload.get("player", {})
-    return field.startswith("player.") and isinstance(player, dict) and field.split(".", 1)[1] in player
+    if not field.startswith("player.") or not isinstance(player, dict):
+        return False
+    parts = field.split(".")[1:]
+    current: object = player
+    for part in parts:
+        if not isinstance(current, dict) or part not in current:
+            return False
+        current = current[part]
+    return True
+
+
+def _field_present_in_captured(captured_state: CapturedGameState, field: str) -> bool:
+    if field in captured_state.missing_fields:
+        return False
+    if field in {"cards", "monsters", "path_candidates", "shop_items", "event_options", "rest_options"}:
+        return getattr(captured_state, field) is not None
+    if field.startswith("player.character_resource."):
+        resource = field.rsplit(".", 1)[1]
+        return resource in (captured_state.player.character_resource or {})
+    if field.startswith("player."):
+        return hasattr(captured_state.player, field.split(".", 1)[1])
+    return False
 
 
 def _structured_state(

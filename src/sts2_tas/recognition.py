@@ -313,7 +313,7 @@ def _with_neow_options(extraction: LiveStateExtraction, boxes: list[Box]) -> Liv
         state_payload=payload,
         state_boxes=state_boxes,
         floor=extraction.floor,
-        missing_fields=extraction.missing_fields,
+        missing_fields=[field for field in extraction.missing_fields if field != "event_options"],
         unknown_tokens=extraction.unknown_tokens,
         field_confidence=field_confidence,
     )

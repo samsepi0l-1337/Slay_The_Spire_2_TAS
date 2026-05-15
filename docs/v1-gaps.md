@@ -66,6 +66,7 @@ Window capture
 - Search/TAS loop: save-state restore 기반 branch-and-bound, outcome scorer, MCTS 함수는 생겼다. CLI orchestration, real save-state rollout driver, richer reward/map scorer는 남아 있다.
 - Numeric encoding: HP/gold/floor 등 numeric scale normalization과 observed/missing mask 결합이 필요하다.
 - Windows DPI/hit-test: DPI scaling, clickable region margin, screenshot id, pre/post state hash, latency/error logging을 더해야 한다.
+- Execution framing: live ML data collection은 Windows 로컬 interactive session 작업으로 문서화하고 검증해야 한다. Mac SSH와 Docker는 maintenance, fixture, build, log workflow를 보조할 뿐 실제 desktop capture/click을 대체하지 않는다.
 
 ## Acceptance Targets
 

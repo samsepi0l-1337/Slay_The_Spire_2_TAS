@@ -2,7 +2,7 @@
 
 Slay the Spire 2 화면 인식 기반 TAS 학습/자동화 MVP입니다.
 
-현재 범위는 최초 시작 메뉴, Continue/계속, 싱글 플레이/모드/캐릭터 선택, 카드 보상/유물 선택, combat/map/shop/event/rest OCR state, game over/clear 재시작 화면을 OCR로 파싱하고, gameplay `GameStep`/`TrajectoryStep` JSONL과 PyTorch entity/action ranker로 선택지를 학습/추천하는 것입니다. 실제 입력 실행은 `--execute`가 있을 때만 동작하고, 기본 입력 백엔드는 JSONL 기록입니다. macOS/Windows에서는 `live-step --screenshot-out --target-process "Slay the Spire 2"`로 target window crop을 만들고, 같은 실행 안에서 window-relative 좌표를 native 입력 전 재검증합니다. `live-learn-loop --model`은 기본적으로 모델 선택을 supervised label로 저장하지 않으며, 실험적으로 자기 라벨을 허용할 때만 `--allow-model-self-labels`를 사용합니다.
+현재 범위는 최초 시작 메뉴, Continue/계속, 싱글 플레이/모드/캐릭터 선택, 카드 보상/유물 선택, combat/map/shop/event/rest OCR state, game over/clear 재시작 화면을 OCR로 파싱하고, gameplay `GameStep`/`TrajectoryStep` JSONL과 PyTorch entity/action ranker로 선택지를 학습/추천하는 것입니다. `live-learn-loop`의 주 목적은 Windows 로컬 interactive session에서 실제 게임 화면을 보며 ML 학습 데이터를 누적하는 것입니다. Mac이나 SSH는 repo 동기화, 빌드, 로그 회수, 원격 진단을 위한 보조 경로이며, 게임 화면 capture/click을 대신하는 실행 환경이 아닙니다. 실제 입력 실행은 `--execute`가 있을 때만 동작하고, 기본 입력 백엔드는 JSONL 기록입니다. macOS/Windows에서는 `live-step --screenshot-out --target-process "Slay the Spire 2"`로 target window crop을 만들고, 같은 실행 안에서 window-relative 좌표를 native 입력 전 재검증합니다. `live-learn-loop --model`은 기본적으로 모델 선택을 supervised label로 저장하지 않으며, 실험적으로 자기 라벨을 허용할 때만 `--allow-model-self-labels`를 사용합니다.
 
 ## Quick Start
 
@@ -56,7 +56,7 @@ docker run --rm sts2-tas:local --help
 
 Windows에서는 Docker Desktop의 Linux containers 모드에서 실행하고, screenshot/data/model 폴더를 volume으로 연결합니다. 자세한 명령은 [docs/docker.md](docs/docker.md)를 보세요.
 
-Tailscale SSH로 Windows 실행 노드에 접속해 테스트할 때도 실행 경계는 같습니다. SSH는 파일 전송/빌드/interactive scheduled task 실행에 사용하고, 실제 게임 화면 capture/click은 로그인된 Windows interactive session에서 실행합니다. 연결 설정과 검증 명령은 [docs/docker.md#remote-execution-via-tailscale-ssh](docs/docker.md#remote-execution-via-tailscale-ssh)를 보세요.
+Tailscale SSH로 Windows 실행 노드에 접속할 수 있어도 실행 경계는 같습니다. SSH는 파일 전송, 빌드, 로그 확인, interactive scheduled task 등록에만 사용하고, 실제 게임 화면 capture/click과 ML 데이터 누적은 로그인된 Windows interactive session에서 실행합니다. 연결 설정과 검증 명령은 [docs/docker.md#windows-local-first-execution](docs/docker.md#windows-local-first-execution)를 보세요.
 
 Windows에서 장시간 실제 입력 loop를 hidden scheduled task로 실행하려면 [docs/docker.md#continuous-windows-live-loop](docs/docker.md#continuous-windows-live-loop)의 `scripts/run-windows-live-loop.ps1` 명령을 사용합니다.
 

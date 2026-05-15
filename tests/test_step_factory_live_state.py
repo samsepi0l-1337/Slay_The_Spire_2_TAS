@@ -186,6 +186,7 @@ def test_step_factory_binds_live_shop_event_and_rest_action_boxes() -> None:
             Path("shop.png"),
             (1920, 1080),
             state_payload={
+                "player": {"character_resource": {"gold": 200}},
                 "shop_items": [
                     {"item_id": "strike_plus", "item_type": "card", "price": 75, "card_id": "strike"},
                     {"item_id": "remove_slot", "item_type": "remove", "price": 100, "card_id": "defend"},
@@ -197,7 +198,7 @@ def test_step_factory_binds_live_shop_event_and_rest_action_boxes() -> None:
                 "shop_item:remove_slot": (320, 100, 480, 220),
                 "shop_item:leave_shop": (1700, 930, 1880, 1010),
             },
-            field_confidence={"shop_items": 0.99},
+            field_confidence={"shop_items": 0.99, "player.character_resource.gold": 0.99},
         ),
         game_version="0.105.1",
         branch="beta",
@@ -266,6 +267,7 @@ def test_step_factory_fail_closed_excludes_leave_shop_action_without_observed_le
             Path("shop.png"),
             (1920, 1080),
             state_payload={
+                "player": {"character_resource": {"gold": 200}},
                 "shop_items": [
                     {"item_id": "strike_plus", "item_type": "card", "price": 75, "card_id": "strike"},
                     {"item_id": "strike_plus_2", "item_type": "card", "price": 75, "card_id": "strike"},
@@ -275,7 +277,7 @@ def test_step_factory_fail_closed_excludes_leave_shop_action_without_observed_le
                 "shop_item:strike_plus": (100, 100, 260, 220),
                 "shop_item:strike_plus_2": (320, 100, 480, 220),
             },
-            field_confidence={"shop_items": 0.99},
+            field_confidence={"shop_items": 0.99, "player.character_resource.gold": 0.99},
         ),
         game_version="0.105.1",
         branch="beta",

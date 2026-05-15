@@ -24,6 +24,8 @@ from sts2_tas.step_factory import (
     PerceptionQualityError,
     _action_type,
     _card_type,
+    _field_present,
+    _field_present_in_captured,
     _state_with_reward_cards,
     game_step_from_parsed_screen,
 )
@@ -398,6 +400,45 @@ def test_step_factory_rejects_combat_when_required_field_confidence_is_missing()
 
     with pytest.raises(PerceptionQualityError, match="player.energy:missing_confidence"):
         _make_step(parsed)
+
+
+def test_step_factory_validates_after_captured_state_overlay() -> None:
+    parsed = ParsedScreen(
+        "combat",
+        [],
+        Path("combat.png"),
+        (1920, 1080),
+        state_payload={"cards": []},
+        missing_fields=[],
+        field_confidence={"cards": 0.99},
+    )
+
+    step = _make_step(parsed)
+
+    assert step.state.decision_context == "combat"
+    assert [action.identity for action in step.actions] == ["end_turn"]
+
+
+def test_step_factory_requires_fresh_shop_gold_confidence() -> None:
+    parsed = ParsedScreen(
+        "shop",
+        [],
+        Path("shop.png"),
+        (1920, 1080),
+        state_payload={"shop_items": [{"item_id": "strike", "item_type": "card", "price": 75}]},
+        field_confidence={"shop_items": 0.99},
+    )
+
+    with pytest.raises(PerceptionQualityError, match="player.character_resource.gold"):
+        _make_step(parsed)
+
+
+def test_step_factory_malformed_player_payload_is_not_present() -> None:
+    assert _field_present({"player": "bad-player-payload"}, "player.character_resource.gold") is False
+
+
+def test_step_factory_unknown_captured_field_is_not_present() -> None:
+    assert _field_present_in_captured(_captured_state(), "unknown") is False
 
 
 @pytest.mark.parametrize(

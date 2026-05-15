@@ -121,12 +121,16 @@ def value_target_for_step(step: GameStep) -> float:
         return 0.0
     outcome = step.outcome
     if outcome.value_target is not None:
-        return float(outcome.value_target)
+        return _clamp_probability(outcome.value_target)
     if outcome.discounted_return is not None:
-        return float(outcome.discounted_return)
+        return _clamp_probability(outcome.discounted_return)
     if outcome.immediate_reward != 0.0 or outcome.floor_reached > 0 or outcome.hp_remaining > 0 or outcome.terminal:
         shaped = outcome.immediate_reward + min(outcome.floor_reached, 60) / 60.0 + max(outcome.hp_remaining, 0) / 100.0
         if outcome.terminal and outcome.victory:
             shaped += 0.25
         return max(0.0, min(1.0, shaped))
     return 1.0 if outcome.victory else 0.0
+
+
+def _clamp_probability(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))

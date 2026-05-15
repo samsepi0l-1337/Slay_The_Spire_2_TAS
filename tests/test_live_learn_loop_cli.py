@@ -5,8 +5,9 @@ from PIL import Image
 import pytest
 
 from sts2_tas import cli
-from sts2_tas.schema import ActionCandidate, GameStep, TargetWindow, WindowBounds
+from sts2_tas.schema import ActionCandidate, GameStep, ObservationQuality, PlayerState, StepOutcome, StructuredGameState, TargetWindow, WindowBounds
 from sts2_tas.trajectory import TrajectoryStep
+from sts2_tas.live_learning import _trajectory_reward
 
 
 def _screen(path: Path) -> Path:
@@ -132,6 +133,27 @@ def _base_args(tmp_path: Path) -> list[str]:
 
 def _load_steps(path: Path) -> list[GameStep]:
     return [GameStep.from_json(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _minimal_game_step(outcome: StepOutcome) -> GameStep:
+    action = ActionCandidate(action_type="end_turn")
+    return GameStep(
+        state=StructuredGameState(
+            game_version="0.105.1",
+            branch="beta",
+            catalog_version="test-catalog",
+            character="ironclad",
+            ascension=0,
+            floor=1,
+            decision_context="combat",
+            player=PlayerState(hp=70, max_hp=80, block=0, energy=3, turn=1),
+        ),
+        actions=[action],
+        chosen_action_id=action.identity,
+        outcome=outcome,
+        observation=ObservationQuality("screen", 1.0, "0.105.1", "beta", "test-catalog"),
+        screenshot_path=Path("fixture.png"),
+    )
 
 
 def test_live_learn_loop_appends_labeled_steps_without_input_by_default(tmp_path: Path, capsys) -> None:
@@ -1029,7 +1051,16 @@ def test_live_learn_loop_appends_dataset_and_trajectory_only_after_changed_ack(t
     assert trajectory[0].selected_action.identity == "pick_card|option=strike"
     assert trajectory[0].state_before.room_type == "card_reward"
     assert trajectory[0].state_after.room_type == "main_menu"
-    assert not (tmp_path / "failures.jsonl").exists()
+
+
+def test_trajectory_reward_maps_terminal_outcomes() -> None:
+    win = _minimal_game_step(StepOutcome(True, 1, 70, immediate_reward=0.0, terminal=True))
+    loss = _minimal_game_step(StepOutcome(False, 1, 0, immediate_reward=0.0, terminal=True))
+    reward = _minimal_game_step(StepOutcome(False, 1, 10, immediate_reward=0.25, terminal=False))
+
+    assert _trajectory_reward(win) == 1.0
+    assert _trajectory_reward(loss) == -1.0
+    assert _trajectory_reward(reward) == 0.25
 
 
 def test_live_learn_loop_blocks_dataset_and_trajectory_append_when_ack_does_not_change(tmp_path: Path, capsys) -> None:

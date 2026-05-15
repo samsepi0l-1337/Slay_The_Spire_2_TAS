@@ -70,37 +70,71 @@ def play_evaluation_metrics(rows: list[dict[str, Any]], *, allow_missing_metrics
         "average_hp_remaining": _mean([float(row.get("hp_remaining", 0)) for row in rows]),
         "average_steps": _mean([float(row.get("steps", 0)) for row in rows]),
         "decision_latency_ms": _mean(
+            _present_or_fail(
+                [
+                    _optional_missing_fail_value(
+                        row,
+                        "decision_latency_ms",
+                        MISSING_DECISION_LATENCY_MS,
+                        fail_missing,
+                    )
+                    for row in rows
+                ],
+                fail_missing,
+            )
+        ),
+        "transition_timeout_rate": _mean(
+            _present_or_fail(
+                [
+                    _bool_metric_value(row, "transition_timeout", failure_value=1.0, fail_missing=fail_missing)
+                    for row in rows
+                ],
+                fail_missing,
+            )
+        ),
+        "misclick_rate": _mean(
+            _present_or_fail(
+                [
+                    _optional_missing_fail_value(
+                        row,
+                        "misclicks",
+                        1.0,
+                        fail_missing,
+                    )
+                    for row in rows
+                ],
+                fail_missing,
+            )
+        ),
+        "illegal_action_rate": _mean(
+            _present_or_fail(
+                [
+                    _optional_missing_fail_value(
+                        row,
+                        "illegal_actions",
+                        1.0,
+                        fail_missing,
+                    )
+                    for row in rows
+                ],
+                fail_missing,
+            )
+        ),
+        "candidate_recall": _mean_present(
             [
-                _missing_fail_value(
+                _optional_missing_fail_value(
                     row,
-                    "decision_latency_ms",
-                    MISSING_DECISION_LATENCY_MS,
+                    "candidate_recall",
+                    0.0,
                     fail_missing,
                 )
                 for row in rows
             ]
         ),
-        "transition_timeout_rate": _mean(
-            [
-                _bool_metric_value(row, "transition_timeout", failure_value=1.0, fail_missing=fail_missing)
-                for row in rows
-            ]
-        ),
-        "misclick_rate": _rate(rows, "misclicks", fail_missing=fail_missing),
-        "illegal_action_rate": _rate(rows, "illegal_actions", fail_missing=fail_missing),
-        "candidate_recall": _mean_present(
-            [_optional_missing_fail_value(row, "candidate_recall", 0.0, fail_missing) for row in rows]
-        ),
     }
     if allow_missing_metrics:
         metrics["missing_safety_metric_rows"] = missing_metric_rows
     return metrics
-
-
-def _missing_fail_value(row: dict[str, Any], key: str, failure_value: float, fail_missing: bool) -> float:
-    if key in row:
-        return float(row[key])
-    return failure_value if fail_missing else 0.0
 
 
 def _optional_missing_fail_value(row: dict[str, Any], key: str, failure_value: float, fail_missing: bool) -> float | None:
@@ -109,14 +143,14 @@ def _optional_missing_fail_value(row: dict[str, Any], key: str, failure_value: f
     return failure_value if fail_missing else None
 
 
-def _bool_metric_value(row: dict[str, Any], key: str, *, failure_value: float, fail_missing: bool) -> float:
+def _bool_metric_value(row: dict[str, Any], key: str, *, failure_value: float, fail_missing: bool) -> float | None:
     if key in row:
         return 1.0 if row.get(key) else 0.0
-    return failure_value if fail_missing else 0.0
+    return failure_value if fail_missing else None
 
 
-def _rate(rows: list[dict[str, Any]], key: str, *, fail_missing: bool) -> float:
-    return sum(_missing_fail_value(row, key, 1.0, fail_missing) for row in rows) / len(rows) if rows else 0.0
+def _present_or_fail(values: list[float | None], fail_missing: bool) -> list[float | None] | list[float]:
+    return values if fail_missing else [value for value in values if value is not None]
 
 
 def _score_for(candidates, action_id: str) -> float:

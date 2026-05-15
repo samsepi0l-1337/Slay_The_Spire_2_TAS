@@ -1,9 +1,24 @@
-# Docker
+# Docker and Windows Local Execution
 
 ## Build
 
 macOS, Linux, Windows PowerShell 모두 같은 이미지 이름을 사용합니다.
 이미지는 Python 3.14 slim 런타임을 기준으로 빌드합니다.
+
+## Windows local-first execution
+
+이 프로젝트의 live TAS 경로는 Windows 로컬 interactive session에서 Slay the Spire 2 화면을 직접 보고, OCR 결과와 transition ack가 확인된 gameplay action만 ML dataset으로 누적하는 프로그램입니다. Mac에서 SSH로 Windows를 조종하는 구조가 핵심이 아닙니다.
+
+권장 실행 기준:
+
+- Windows desktop에 사용자가 로그인되어 있고 게임 창이 실제로 열려 있다.
+- `live-learn-loop`는 Windows 로컬 PowerShell 또는 interactive scheduled task에서 실행한다.
+- `--target-process SlayTheSpire2`, `--ack-live-poll`, `--failure-log`, `--input-backend native`, `--execute` 조합은 dry-run 검증 후에만 사용한다.
+- Tesseract binary와 `eng+kor` language data는 Windows host에 설치한다.
+- Mac/Tailscale SSH는 repo 동기화, 빌드, task 등록, 로그 회수에만 사용한다.
+- Docker는 CLI/model/fixture 처리용이며 Windows desktop capture/click을 수행하지 않는다.
+
+현재 실패 진단은 두 층으로 나눈다. 첫째, 로컬 unit test가 실패하면 live 실행 전 코드 회귀를 먼저 고친다. 최근 확인된 실패 유형은 JSONL preflight가 실패 경로에서도 dataset/trajectory 파일을 만들어 append 차단 계약을 깨는 문제와, shop 화면의 `player.character_resource.gold` required-field 처리에서 captured state와 OCR confidence gate가 충돌하는 문제다. 둘째, unit test가 green이어도 실제 게임에서는 OCR/Tesseract, target process, Windows session, screen capture 권한, transition ack 설정을 별도 확인한다.
 
 ```bash
 docker build -t sts2-tas:local .
@@ -48,7 +63,7 @@ Generated datasets and models should stay outside the image:
 - `data/*.png`
 - `models/*.pt`
 
-## Remote execution via Tailscale SSH
+## Tailscale SSH as a helper
 
 현재 확인된 Windows 실행 노드는 Tailscale IP `100.71.5.113`, SSH alias `sts2-windows`, Windows 계정 `samsepi0l\steep`입니다. Tailscale은 사설 네트워크 경로만 제공하고, 로그인/권한은 Windows OpenSSH와 SSH key가 처리합니다. 따라서 Tailscale ping이 되어도 TCP 22와 SSH 인증을 별도로 확인해야 합니다.
 
@@ -105,7 +120,7 @@ icacls $adminAk /inheritance:r /grant 'Administrators:F' /grant 'SYSTEM:F'
 Restart-Service sshd
 ```
 
-원격 repo 실행은 OneDrive/Desktop checkout보다 별도 실행 디렉터리 `C:\Users\steep\sts2-tas-run`을 사용합니다. OneDrive 아래 `.venv`는 `uv trampoline failed to spawn Python child process` / `untrusted mount point (os error 448)`가 발생할 수 있습니다.
+Windows 로컬 실행 디렉터리는 OneDrive/Desktop checkout보다 별도 실행 디렉터리 `C:\Users\steep\sts2-tas-run`을 사용합니다. OneDrive 아래 `.venv`는 `uv trampoline failed to spawn Python child process` / `untrusted mount point (os error 448)`가 발생할 수 있습니다.
 
 ```powershell
 cd C:\Users\steep\sts2-tas-run

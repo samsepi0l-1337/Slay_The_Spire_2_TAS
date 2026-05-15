@@ -280,6 +280,42 @@ def test_evaluate_play_allow_missing_candidate_recall_does_not_lower_average(tmp
     assert metrics["missing_safety_metric_rows"] == 1
 
 
+def test_evaluate_play_allow_missing_omits_unknown_safety_values(tmp_path: Path) -> None:
+    episodes = tmp_path / "episodes.jsonl"
+    out = tmp_path / "play-eval.json"
+    episodes.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "seed": 7,
+                        "victory": True,
+                        "floor": 20,
+                        "hp_remaining": 44,
+                        "steps": 12,
+                        "decision_latency_ms": 30,
+                        "transition_timeout": False,
+                        "misclicks": 0,
+                        "illegal_actions": 0,
+                    }
+                ),
+                json.dumps({"seed": 8, "victory": False, "floor": 10, "hp_remaining": 0, "steps": 8}),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = cli.main(["evaluate-play", "--episodes", str(episodes), "--out", str(out), "--allow-missing-metrics"])
+
+    metrics = json.loads(out.read_text(encoding="utf-8"))
+    assert exit_code == 0
+    assert metrics["decision_latency_ms"] == 30.0
+    assert metrics["transition_timeout_rate"] == 0.0
+    assert metrics["misclick_rate"] == 0.0
+    assert metrics["illegal_action_rate"] == 0.0
+
+
 def test_evaluate_play_missing_candidate_recall_fails_closed_by_default(tmp_path: Path) -> None:
     episodes = tmp_path / "episodes.jsonl"
     out = tmp_path / "play-eval.json"

@@ -145,7 +145,8 @@ def _run_live_learn_iteration(args: argparse.Namespace, state: _LoopState) -> No
     append_game_step(args.dataset, labeled_step)
     if args.trajectory_out is not None and action_result.after_step is not None:
         _append_trajectory_step(args.trajectory_out, labeled_step, action_result.after_step, action_id, state.steps)
-    state.pending_labeled_steps += 1
+    if _is_supervised_label(labeled_step):
+        state.pending_labeled_steps += 1
     state.episode_labeled_steps += 1
     _train_if_due(args, state)
 
@@ -231,6 +232,10 @@ def _should_append_training_label(args: argparse.Namespace) -> bool:
         or getattr(args, "policy", None) is not None
         or bool(getattr(args, "allow_model_self_labels", False))
     )
+
+
+def _is_supervised_label(step: GameStep) -> bool:
+    return step.label_source in {"human", "search", "heuristic"}
 
 
 def _stop_requested(args: argparse.Namespace) -> bool:
@@ -461,6 +466,8 @@ def _frame_tokens(frame) -> list[OcrToken]:
 def _preflight_append(args: argparse.Namespace, step: GameStep) -> bool:
     try:
         _preflight_jsonl_append(args.dataset)
+        if args.trajectory_out is not None:
+            _preflight_jsonl_append(args.trajectory_out)
     except OSError as error:
         if args.failure_log is None:
             raise
@@ -481,15 +488,13 @@ def _preflight_append(args: argparse.Namespace, step: GameStep) -> bool:
 
 def _preflight_jsonl_append(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        if path.is_dir():
-            raise IsADirectoryError(f"dataset path is a directory: {path}")
-        with path.open("a", encoding="utf-8"):
-            pass
-        return
-    probe = path.parent / f".{path.name}.preflight.tmp"
-    probe.write_text("", encoding="utf-8")
-    probe.unlink()
+    if path.exists() and path.is_dir():
+        raise IsADirectoryError(f"jsonl path is a directory: {path}")
+    existed = path.exists()
+    with path.open("a", encoding="utf-8"):
+        pass
+    if not existed:
+        path.unlink()
 
 
 def _append_trajectory_step(
@@ -511,13 +516,23 @@ def _append_trajectory_step(
         legal_actions=[action for action in before.actions if action.legal],
         selected_action=selected,
         state_after=_episode_state(after, turn_index + 1),
-        reward=0.0 if after.outcome is None else after.outcome.immediate_reward,
+        reward=_trajectory_reward(after),
         terminal=False if after.outcome is None else after.outcome.terminal,
         label_source=before.label_source,
     )
     trajectory_out.parent.mkdir(parents=True, exist_ok=True)
     with trajectory_out.open("a", encoding="utf-8") as file:
         file.write(trajectory.to_json() + "\n")
+
+
+def _trajectory_reward(after: GameStep) -> float:
+    if after.outcome is None:
+        return 0.0
+    if after.outcome.terminal and after.outcome.victory:
+        return 1.0
+    if after.outcome.terminal:
+        return -1.0
+    return after.outcome.immediate_reward
 
 
 def _episode_state(step: GameStep, turn_index: int) -> EpisodeState:

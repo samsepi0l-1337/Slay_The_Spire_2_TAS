@@ -104,6 +104,7 @@ def test_parse_ocr_screen_detects_neow_choice_panels_without_readable_option_tex
         "event_option:neow_option_3": (470, 930, 1450, 1030),
     }
     assert parsed.field_confidence == {"event_options": 0.99}
+    assert "event_options" not in parsed.missing_fields
 
 
 def test_parse_ocr_screen_scales_reward_layout_from_reference_resolution(tmp_path: Path) -> None:

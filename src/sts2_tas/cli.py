@@ -277,13 +277,13 @@ def _live_step(args: argparse.Namespace) -> None:
     coordinate_space: CoordinateSpace = "window_relative" if target_window is not None and not args.capture_fixture else "screen_absolute"
     try:
         step = _step_from_screen(args, screenshot_path)
-    except PerceptionQualityError as error:
+    except (PerceptionQualityError, ValueError) as error:
         if args.failure_log is None:
             raise
         _append_failure_log(
             args.failure_log,
             {
-                "reason": "fail_closed_perception",
+                "reason": "fail_closed_perception" if isinstance(error, PerceptionQualityError) else "screen_parse_failed",
                 "action_id": None,
                 "before_signature": None,
                 "after_signature": None,

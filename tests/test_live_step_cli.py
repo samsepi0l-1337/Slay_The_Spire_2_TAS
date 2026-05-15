@@ -108,6 +108,48 @@ def test_cli_live_step_accepts_powershell_utf8_bom_fixture(tmp_path: Path, capsy
     assert output["choice"] == {"action": "pick", "option_id": "continue"}
 
 
+def test_cli_live_step_failure_log_records_unknown_screen_parse_failure(tmp_path: Path, capsys) -> None:
+    fixture = tmp_path / "unknown.json"
+    failure_log = tmp_path / "failures.jsonl"
+    fixture.write_text("[]", encoding="utf-8")
+
+    exit_code = cli.main(
+        [
+            "live-step",
+            "--capture-fixture",
+            str(_screen(tmp_path / "screen.png")),
+            "--ocr-fixture",
+            str(fixture),
+            "--choice",
+            "continue",
+            "--input-log",
+            str(tmp_path / "inputs.jsonl"),
+            "--failure-log",
+            str(failure_log),
+            "--game-version",
+            "0.105.1",
+            "--branch",
+            "beta",
+            "--character",
+            "ironclad",
+            "--ascension",
+            "0",
+            "--floor",
+            "1",
+            "--hp",
+            "70",
+            "--gold",
+            "0",
+        ]
+    )
+
+    failure = json.loads(failure_log.read_text(encoding="utf-8").splitlines()[0])
+    assert exit_code == 0
+    assert capsys.readouterr().out == ""
+    assert failure["reason"] == "screen_parse_failed"
+    assert failure["controller_error"].startswith("unknown OCR screen layout")
+
+
 def test_cli_live_step_can_acknowledge_post_input_state_change(tmp_path: Path, capsys) -> None:
     input_log = tmp_path / "inputs.jsonl"
     ack_fixture = tmp_path / "ack.json"
