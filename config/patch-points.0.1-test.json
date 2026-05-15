@@ -1,0 +1,8 @@
+{
+  "game_version": "0.1-test",
+  "symbols": {
+    "telemetry_snapshot": "FixtureTelemetrySource.EmitSnapshot",
+    "macro_action_command": "FixtureCommandSink.Accept"
+  },
+  "fail_closed": true
+}
