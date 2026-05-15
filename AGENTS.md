@@ -41,6 +41,20 @@
 - 전체 문서 인덱스: `docs/README.md`
 - 코드 수정 시 관련 문서도 업데이트한다.
 
+## Module Ownership
+
+- `src/sts2_tas/telemetry_schema.py`: `TelemetrySnapshot`, `ValidAction`, `MacroAction`, `MacroActionCommand`, run record validation.
+- `src/sts2_tas/telemetry_client.py`: named pipe/WebSocket transport, reconnect, frame ordering, corrupt-frame rejection.
+- `src/sts2_tas/env.py`: Gymnasium `Sts2Env`, `reset(seed)`, `step(action)`, `action_masks()`.
+- `src/sts2_tas/action_space.py`: deterministic macro-action flatten/unflatten and valid action masks.
+- `src/sts2_tas/executor.py`: dry-run/native macro-action executor with target-window guard and `--execute` gate.
+- `src/sts2_tas/heuristic.py`: combat/reward/map/shop/event/rest baseline policy.
+- `src/sts2_tas/bc.py`: behavioral cloning training and inference.
+- `src/sts2_tas/rl.py`: MaskablePPO training and evaluation.
+- `src/sts2_tas/dataset.py`: JSONL first transition logging with SQLite/Parquet-compatible records.
+- `bridge/Sts2TelemetryBridge/`: Godot 4 C#/.NET bridge, checked-in `.sln`/`.csproj`, Harmony bootstrap, patch point config, named pipe/WebSocket transport.
+- `.github/workflows/windows-exe.yml`: Windows executable workflow for the new CLI surface and bridge smoke fixtures.
+
 ## Project
 
 - PR comment에는 `@codex review`, 문제, 원인, 수정 범위, 검증 결과, UI 변경 시 스크린샷을 포함한다.

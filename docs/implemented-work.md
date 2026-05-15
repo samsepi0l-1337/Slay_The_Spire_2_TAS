@@ -1,98 +1,54 @@
-# Implemented Work
+# Target Architecture Baseline
 
-현재 코드 기준으로 구현된 TAS v1 범위만 정리한다.
+## Not Current Implementation
 
-## CLI
+This document intentionally describes the target public surface for the rewrite, not a claim that every item is already implemented. Existing code still contains old runtime paths until later implementation phases remove them.
 
-- `tas-probe`
-  - passive probe JSONL을 기록한다.
-  - native hook이 없으면 `hook_attached=false`, `mode=python_fallback`, `tas_grade=false`를 명시한다.
-- `tas-record`
-  - `.sts2movie` 파일 계약과 metadata를 생성한다.
-- `tas-replay --verify`
-  - movie를 읽고 frame count, victory, drift count, unclassified screen count, target mismatch count를 출력한다.
-- `tas-verify --runs N`
-  - 같은 movie 검증을 N회 반복하고 victory/drift aggregate를 출력한다.
-- `tas-search`
-  - `TasCheckpoint`의 save hash, movie prefix hash, screen/state fingerprint를 검증하고 prefix movie를 쓴다.
-- `train --label-policy verified`
-  - `TasExperience` JSONL에서 기본 supervised 후보 row 수를 검증한다.
-- 기존 `train --model --character`
-  - `GameStep` 기반 Torch 학습 경로로 유지한다.
+## Target Public Commands
 
-## Data Model
+- [ ] `bridge-smoke`: load a telemetry fixture or local bridge frame and validate schema compatibility.
+- [ ] `env-step`: run one Gymnasium-style environment step from a snapshot and macro action.
+- [ ] `collect-demo`: collect human or heuristic demonstrations into JSONL.
+- [ ] `train-bc`: train a behavioral cloning policy from demonstrations.
+- [ ] `train-ppo`: fine-tune with MaskablePPO and valid action masks.
+- [ ] `evaluate-policy`: evaluate BC/PPO/heuristic policies against recorded episodes.
+- [ ] `act`: convert a macro action or policy choice into a dry-run or `--execute` input plan.
+- [ ] `run-local`: run the local bridge, policy, environment step loop, dataset logging, and dry-run/native executor boundary in one command.
 
-- `TasMovie`
-  - ordered `TasFrame` 목록, game version, branch, target process, stable prefix hash를 제공한다.
-- `TasFrame`
-  - semantic action, physical input, screen hash, state fingerprint, decision context, source policy, label source, outcome reference를 저장한다.
-- `PhysicalInput`
-  - `key_tap`, `click`, `wait` 입력을 표현한다.
-- `TasCheckpoint`
-  - save file SHA-256, movie prefix hash/length, screen hash, state fingerprint를 저장한다.
-- `TasExperience`
-  - movie frame, run id, state fingerprint, legal actions, selected action, behavior policy, label source, changed ack, terminal return, failure/no-op/drift markers를 저장한다.
+## Target Python Modules
 
-## Input Runtime
+- [ ] `telemetry_schema.py`: typed state, `TelemetrySnapshot`, `ValidAction`, `MacroAction`, validation.
+- [ ] `telemetry_client.py`: named pipe/WebSocket transport, reconnect, frame ordering, corrupt-frame rejection.
+- [ ] `env.py`: Gymnasium `Env` adapter with `reset`, `step`, `action_masks`, reward, terminal handling.
+- [ ] `action_space.py`: deterministic flatten/unflatten and mask generation.
+- [ ] `executor.py`: guarded window-relative macro-action execution.
+- [ ] `heuristic.py`: baseline combat/reward/map/shop/event/rest policy.
+- [ ] `bc.py`: behavioral cloning training and inference.
+- [ ] `rl.py`: MaskablePPO training and evaluation.
+- [ ] `dataset.py`: JSONL first, SQLite/Parquet compatible transition logging.
 
-- combat `play_card`는 `source_card_id=hand-N-*`를 숫자키로 변환한다.
-- targeted card는 keypress 뒤 target click을 하나의 sequence로 만든다.
-- non-target card는 keypress만 만든다.
-- combat `end_turn`은 `E` keypress다.
-- non-combat action은 shortcut이 검증되기 전까지 screen box click을 유지한다.
-- Windows native backend는 keypress+click sequence를 하나의 guarded PowerShell script로 생성한다.
-- target window가 지정되면 input 직전에 process/title/bounds를 다시 확인하고 mismatch면 실패한다.
+## Target Bridge Surface
 
-## Native Hook Scaffold
+- [ ] `bridge/Sts2TelemetryBridge`: Godot .NET C# project.
+- [ ] `.sln` and `.csproj`: checked in with the bridge project so Godot 4 C#/.NET build shape is versioned.
+- [ ] Harmony bootstrap for versioned patch points.
+- [ ] `patch-points.<game_version>.json` records inspected symbols and source assumptions.
+- [ ] Named pipe default transport and optional WebSocket transport.
+- [ ] `MacroActionCommand`: Python-to-bridge command envelope for validated executor requests.
+- [ ] Schema-versioned frame emission and fail-closed diagnostics.
 
-`native/sts2_tas_hook/`에 다음 scaffold가 있다.
+## Dependency Contract
 
-- `CMakeLists.txt`
-- `README.md`
-- `ipc_contract.md`
-- `sts2_tas_hook.cpp`
+- [ ] Keep: `numpy`, `torch`, `pillow`.
+- [ ] Add: `gymnasium`, `stable-baselines3`, `sb3-contrib`, `pydantic`, `pandas`, `pyautogui`, `pynput`, `mss`, `opencv-python`, `mlflow`.
+- [ ] Keep dev/build: `pytest`, `pytest-cov`, Windows executable workflow, bridge build/test helpers.
+- [ ] Update `uv.lock`, Docker, and Windows executable workflow when the implementation lands.
 
-계약:
+## Safety Checklist
 
-- x64 Windows
-- Detours 기반 future Present hook
-- frame counter
-- foreground/window metadata
-- optional screenshot/hash
-- passive-only
-- no input hook
-- no time hook
-
-현재 빌드, 주입, 실제 hook attach는 구현하지 않았다.
-
-## Documentation
-
-- `docs/architecture.md`: 현재 v1 구조만 유지한다.
-- `docs/tas-runtime.md`: CLI, movie, checkpoint, ML gate, hook boundary를 설명한다.
-- `docs/README.md`: 현재 방향성의 인덱스와 scope만 유지한다.
-
-## Verification Evidence
-
-로컬 macOS/Python 3.14 환경에서 확인한 범위:
-
-```bash
-PYTHONPATH=src uv run --extra dev pytest
-git diff --check
-```
-
-통과 기준:
-
-- unit: movie/checkpoint/experience/input mapping
-- integration: TAS CLI, existing CLI, native input backend, live loop regression
-- asset: Windows hook scaffold token/contract
-
-## Not Implemented
-
-- real Windows hook build/injection
-- SlayTheSpire2 process attach
-- live frame screenshot hash from Present
-- real movie recording from live gameplay
-- real physical replay against the game
-- save restore + prefix replay on Windows
-- `tas-verify --runs 5` live victory acceptance
-- `TasExperience` to Torch tensor training integration
+- [ ] Single-player/local research wording appears in README and architecture docs.
+- [ ] Online co-op and Steam Leaderboards automation are explicitly forbidden.
+- [ ] Native input remains gated by `--execute`.
+- [ ] The model never predicts raw mouse coordinates.
+- [ ] Invalid action masks fail closed.
+- [ ] Runtime logs include enough state/action/reward context for audit and replay of decisions.

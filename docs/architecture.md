@@ -2,116 +2,114 @@
 
 ## Goal
 
-v1 목표는 Windows interactive desktop에서 실제 Slay the Spire 2를 대상으로 같은 movie를 재생했을 때 drift 없이 같은 결과에 도달하는 TAS runtime을 만드는 것이다. 현재 repo는 이 목표를 위한 artifact/schema/static verifier 경계까지 구현되어 있고, live Windows replay backend는 gap으로 남아 있다.
+The target architecture is a telemetry-driven ML automation research stack for Slay the Spire 2. The canonical runtime flow is:
 
-v1의 결정성 기준:
+```text
+Game -> C# telemetry bridge -> Python Gymnasium env/ML -> macro-action executor
+```
 
-1. semantic movie 기록
-2. deterministic physical input replay
-3. cold checkpoint restore
-4. 5회 replay verification
-
-mid-frame memory savestate, simulation tick freeze, RNG/time hook은 v1 완료 기준이 아니다.
+The old TAS movie/replay/checkpoint and native canary direction is retired. Remove those public surfaces as the rewrite proceeds. Historical artifacts may stay in git history, but new docs, tests, and CLI contracts should describe telemetry snapshots, valid action masks, Gymnasium steps, and macro actions.
 
 ## Runtime Flow
 
 ```mermaid
 flowchart LR
-    Probe["tas-probe\npassive canary/fallback"]
-    Record["tas-record\nTasMovie"]
-    Replay["tas-replay --verify\nstatic report now"]
-    Verify["tas-verify --runs 5\nstatic repeat now"]
-    Checkpoint["TasCheckpoint\nsave + prefix hash"]
-    Search["tas-search\nrestore + prefix replay"]
-    Experience["TasExperience\nverified labels"]
-    Train["train --label-policy verified"]
+    Game["Slay the Spire 2"]
+    Bridge["C# Godot/Harmony telemetry bridge"]
+    Client["Python telemetry client"]
+    Env["Gymnasium Env"]
+    Policy["BC / MaskablePPO policy"]
+    Executor["Macro-action executor"]
+    Logs["JSONL / SQLite / Parquet logs"]
 
-    Probe --> Record
-    Record --> Replay
-    Replay --> Verify
-    Record --> Checkpoint
-    Checkpoint --> Search
-    Replay --> Experience
-    Search --> Experience
-    Experience --> Train
+    Game --> Bridge
+    Bridge --> Client
+    Client --> Env
+    Env --> Policy
+    Policy --> Executor
+    Executor --> Game
+    Env --> Logs
 ```
 
-## Data Contracts
+The bridge is the authority for structured game state when available. Vision/OCR can become an optional fallback, but it is not the primary state contract.
 
-`TasMovie` is the replay artifact. It stores ordered `TasFrame` rows with:
+## Bridge Project
 
-- `semantic_action`
-- `physical_input`
-- `screen_hash`
-- `state_fingerprint`
-- `decision_context`
-- `source_policy`
-- `label_source`
-- `outcome_ref`
+`bridge/Sts2TelemetryBridge` is a Godot 4 C#/.NET project. The `.sln` and `.csproj` files are version-controlled so the bridge build shape is explicit. Harmony patch bootstrap reads `config/patch-points.<game_version>.json`; if inspected symbols do not match the running game version, the bridge emits fail-closed diagnostics instead of guessing.
 
-`TasCheckpoint` is a cold checkpoint artifact. It stores:
+The default transport is a Windows named pipe. WebSocket is an optional transport for tooling. The bridge emits `TelemetrySnapshot` frames and accepts `MacroActionCommand` envelopes from Python only after schema and target validation.
 
-- explicit save file path and SHA-256
-- movie prefix length and prefix hash
-- screen hash and state fingerprint expected after restore + prefix replay
+## TelemetrySnapshot
 
-`TasExperience` is the ML provenance artifact. It keeps the selected action, legal actions, policy source, label source, movie frame, state fingerprint, transition ack, terminal return, and failure/no-op/drift markers.
+A `TelemetrySnapshot` is the Python bridge input. It must include:
 
-## Input Model
+- `game_version`, `mod_version`, `schema_version`, `seed`, `timestamp`
+- `phase`: `combat`, `card_reward`, `map`, `shop`, `event`, `rest`, `terminal`, or `menu`
+- `floor`, `act`, `screen_id`
+- `player`: hp, max hp, energy, block, gold, powers, resources
+- `hand`, `draw_pile`, `discard_pile`, `exhaust_pile`
+- `enemies` with ids, slots, hp, block, intent, powers
+- `relics`, `potions`, map choices, reward choices, shop choices, event/rest choices
+- `valid_actions`: canonical macro actions available in the current phase
 
-Semantic actions are stored as game-level choices. Physical inputs are produced only for replay/execution.
+Unknown or patch-sensitive fields belong in `extras` with the source `game_version`. Required fields must fail validation instead of being silently guessed.
 
-- `play_card` in combat maps hand slot to `DigitN`.
-- targeted attack cards map to `DigitN -> monster click`.
-- non-targeted cards map to `DigitN`.
-- `end_turn` maps to `E`.
-- map, event, reward skip, proceed, and other non-verified shortcuts stay coordinate click based.
+## Valid Action Mask
 
-Combat classification must beat card reward classification so the card reward parser cannot steal combat card text.
+The Python action space owns deterministic flattening. Every `ValidAction` gets a stable id derived from action type and arguments. `action_space.py` maps between:
 
-## Windows Hook Boundary
+- structured `MacroAction`
+- flattened `Discrete(N)` index
+- boolean valid action mask
+- executor command payload
 
-`native/sts2_tas_hook/` is a passive-only x64 Windows canary scaffold.
+The model may only select legal actions. All-false masks, duplicate action identities, malformed arguments, and stale masks are hard failures.
+
+## MacroAction
+
+The policy chooses macro actions, not coordinates.
+
+Supported initial action types:
+
+- `play_card(hand_slot, target_slot?)`
+- `end_turn`
+- `choose_reward(choice_slot)`
+- `choose_map_node(node_slot)`
+- `choose_event_option(choice_slot)`
+- `shop_buy(item_slot)`
+- `shop_remove(card_slot)`
+
+The executor converts macro actions to guarded input sequences using current target window metadata. Coordinates are window-relative. Native input requires `--execute`; dry-run writes the planned input to logs.
+
+## Logging
+
+Every environment transition writes audit-ready records:
+
+- `run_id`, `game_version`, `mod_version`, `seed`, `timestamp`
+- `floor`, `phase`, `state_json`
+- `valid_actions_json`, `chosen_action_json`
+- `reward`, `terminal`, `result`
+- optional `screenshot_path`, `policy_id`, `latency_ms`, `failure_reason`
+
+JSONL is the default append-only format. SQLite and Parquet are planned once schemas stabilize.
+
+## Safety Boundary
 
 Allowed:
 
-- Detours-based future `IDXGISwapChain::Present` observation
-- frame counter
-- foreground/window metadata
-- optional screenshot/frame hash evidence
+- single-player local research
+- structured state export through a local bridge
+- dry-run action planning
+- explicitly gated local OS input
+- offline training and evaluation
 
-Forbidden in v1 canary:
+Forbidden:
 
-- input hook
-- time hook
-- focus stealing
-- memory mutation
-- RNG/tick patching
-- network side effects
+- online co-op automation
+- Steam Leaderboards automation
+- memory writes or result mutation
+- anti-cheat bypass design
+- public-match automation
+- network side effects from the bridge
 
-If hook attach fails, Python live/fallback paths may still emit diagnostics, but those rows are `tas_grade=false` and cannot satisfy TAS acceptance.
-
-## ML Gate
-
-Default supervised `TasExperience` rows require:
-
-- `label_source` is `human`, `search_success`, or `verified_heuristic`
-- `changed_ack=true`
-- selected action is legal and present in legal actions
-- `terminal_return is not None`
-- no failure reason
-- no no-op marker
-- no drift marker
-
-`model_self`, failed rollout, no-op, drift, illegal, and no-terminal rows are retained only for evaluation or negative analysis.
-
-## Target Acceptance Gates
-
-현재 코드가 모두 만족한다는 뜻이 아니라, v1 TAS-grade로 인정하기 위한 목표 Gate다. static verifier와 Python fallback output은 Gate 5 acceptance evidence가 아니다.
-
-- Gate 0: `tas-probe` attaches or records passive fallback with explicit `tas_grade=false`.
-- Gate 1: short movie replay has no screen/state fingerprint drift.
-- Gate 2: combat input uses numeric card selection, target click, non-target card keypress, and `E`.
-- Gate 3: checkpoint restore + prefix replay reaches the same decision fingerprint.
-- Gate 4: trainable TAS experience rows pass the verified label gate.
-- Gate 5: live Windows `tas-verify --runs 5` reports five victories, zero drift, zero unclassified screen, zero target-window mismatch.
+If target process, bridge schema, versioned patch points, or action acknowledgement do not match expectations, the runtime must fail closed and log diagnostics.
