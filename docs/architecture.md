@@ -31,7 +31,7 @@ flowchart LR
     Env --> Logs
 ```
 
-The bridge is the authority for structured game state when available. Vision/OCR can become an optional fallback, but it is not the primary state contract.
+The bridge is the authority for structured game state. OCR-first runtime paths are retired public surfaces and should be removed as the rewrite proceeds.
 
 ## Bridge Project
 

@@ -25,7 +25,6 @@
 - Add richer entity encoders for cards, enemies, relics, and map choices.
 - Add parallel env collection once one local bridge loop is stable.
 - Add transformer policy experiments for larger card/relic/action spaces.
-- Add optional vision fallback for bridge outages, clearly marked lower confidence.
 - Add MLflow experiment tracking and Parquet export for larger runs.
 - Keep `AGENTS.md` module ownership current whenever paths move or old runtime surfaces are deleted.
 

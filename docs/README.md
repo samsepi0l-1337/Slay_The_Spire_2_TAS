@@ -3,7 +3,7 @@
 - [Architecture](architecture.md): Game -> C# telemetry bridge -> Python Gymnasium env/ML -> macro-action executor.
 - [Rewrite plan](plan.md): decision record for the complete architecture rewrite, dependencies, tests, and source references.
 - [Implemented work](implemented-work.md): target architecture baseline and public-surface checklist.
-- [Roadmap](roadmap.md): P0/P1/P2 implementation order for telemetry, Gymnasium, BC, MaskablePPO, and optional vision fallback.
+- [Roadmap](roadmap.md): P0/P1/P2 implementation order for telemetry, Gymnasium, BC, MaskablePPO, experiment tracking, and export work.
 - [Docker](docker.md): Python 3.14 container boundary, local data volumes, and why desktop capture/input stays on the host.
 - [AGENTS.md](../AGENTS.md): module ownership and path guidance for the telemetry rewrite.
 
