@@ -21,6 +21,7 @@ param(
     [int]$BatchSize = 64,
     [string]$Device = "cpu",
     [string]$ModelOut = "models\windows-live-loop.pt",
+    [int]$MaxSteps = 0,
     [string]$Sts2Exe = "",
     [string]$UserId = "",
     [ValidateSet("Highest", "Limited")]
@@ -39,7 +40,7 @@ function Resolve-WorkspacePath([string]$PathValue) {
 }
 
 function Quote-Argument([string]$Value) {
-    return '"' + $Value.Replace('"', '\"') + '"'
+    return '"' + $Value.Replace('"', '""') + '"'
 }
 
 $WorkDir = [System.IO.Path]::GetFullPath($WorkDir)
@@ -110,6 +111,9 @@ if ($Run) {
         "--hp", "$Hp",
         "--gold", "$Gold"
     )
+    if ($MaxSteps -gt 0) {
+        $liveArgs += @("--max-steps", "$MaxSteps")
+    }
     $logPath = Join-Path $DataDir "live-loop.log"
     if ($useExe) {
         & $Sts2Exe @liveArgs *> $logPath
@@ -152,7 +156,8 @@ $argumentParts = @(
     "-Epochs", $Epochs,
     "-BatchSize", $BatchSize,
     "-Device", (Quote-Argument $Device),
-    "-ModelOut", (Quote-Argument $ModelOut)
+    "-ModelOut", (Quote-Argument $ModelOut),
+    "-MaxSteps", $MaxSteps
 )
 if (-not [string]::IsNullOrWhiteSpace($Sts2Exe)) {
     $argumentParts += @("-Sts2Exe", (Quote-Argument $Sts2Exe))

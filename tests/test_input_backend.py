@@ -249,13 +249,14 @@ def test_plan_action_builds_multi_click_sequence_for_targeted_combat_action(tmp_
 
     action = automation.plan_action(step, "play_card:source_card=hand-0-strike|target_monster=jaw_worm:0", dry_run=True)
 
-    assert action.target == (100, 800, 220, 980)
-    assert action.targets == [(100, 800, 220, 980), (1200, 310, 1520, 620)]
-    assert action.to_event()["targets"] == [[100, 800, 220, 980], [1200, 310, 1520, 620]]
+    assert action.target is None
+    assert action.key == "1"
+    assert action.targets == [(1200, 310, 1520, 620)]
+    assert action.to_event()["targets"] == [[1200, 310, 1520, 620]]
     assert action.input_plan() == {
         "kind": "sequence",
         "steps": [
-            {"kind": "click", "x": 160, "y": 890},
+            {"kind": "keypress", "key": "1"},
             {"kind": "click", "x": 1360, "y": 465},
         ],
     }
@@ -564,13 +565,16 @@ def test_native_input_controller_maps_platform_commands(monkeypatch) -> None:
     )
     assert "340" in windows_click_script
     assert "295" in windows_click_script
+    windows_skip_click = subprocess_calls[0][0][-1]
+    assert "SetCursorPos(960, 960)" in windows_skip_click
+    assert "mouse_event" in windows_skip_click
     assert subprocess_calls == [
         (
             [
                 "powershell",
                 "-NoProfile",
                 "-Command",
-                "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{ESC}')",
+                windows_skip_click,
             ],
             True,
         )

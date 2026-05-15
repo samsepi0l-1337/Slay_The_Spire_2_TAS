@@ -119,6 +119,12 @@ class AutomationAction:
 
     def input_plan(self) -> dict[str, Any]:
         target_boxes = self.targets or ([] if self.target is None else [self.target])
+        if self.key is not None:
+            key_step: dict[str, str] = {"kind": "keypress", "key": self.key}
+            if not target_boxes:
+                return key_step
+            steps = [key_step, *[_click_step(box, self.coordinate_space, self.target_window) for box in target_boxes]]
+            return {"kind": "sequence", "steps": steps}
         if not target_boxes:
             if self.action == "pick":
                 raise ValueError("pick automation actions require target")

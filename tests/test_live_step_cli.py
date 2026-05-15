@@ -396,6 +396,50 @@ def test_cli_live_step_captures_target_window_bbox(tmp_path: Path, monkeypatch, 
     assert output["input_plan"] == {"kind": "click", "x": 1060, "y": 1160}
 
 
+def test_cli_live_step_rejects_missing_target_process_window_before_capture(tmp_path: Path, monkeypatch) -> None:
+    class Detector:
+        def detect(self, process: str):
+            assert process == "SlayTheSpire2"
+            return None
+
+    def capture_screen(*args, **kwargs):
+        raise AssertionError("capture_screen should not run without the requested target window")
+
+    monkeypatch.setattr(cli, "WindowDetector", lambda: Detector())
+    monkeypatch.setattr(cli, "capture_screen", capture_screen)
+
+    with pytest.raises(ValueError, match="target process window not found: SlayTheSpire2"):
+        cli.main(
+            [
+                "live-step",
+                "--screenshot-out",
+                str(tmp_path / "target.png"),
+                "--ocr-fixture",
+                str(_ocr_fixture(tmp_path / "ocr.json")),
+                "--choice",
+                "skip",
+                "--input-log",
+                str(tmp_path / "inputs.jsonl"),
+                "--target-process",
+                "SlayTheSpire2",
+                "--game-version",
+                "0.105.1",
+                "--branch",
+                "beta",
+                "--character",
+                "ironclad",
+                "--ascension",
+                "0",
+                "--floor",
+                "1",
+                "--hp",
+                "70",
+                "--gold",
+                "0",
+            ]
+        )
+
+
 def test_capture_screen_uses_injected_grabber(tmp_path: Path) -> None:
     screenshot = tmp_path / "screen.png"
 
@@ -452,8 +496,11 @@ def test_capture_screen_reports_permission_failure(tmp_path: Path) -> None:
     def failing_grabber():
         raise OSError("permission denied")
 
-    with pytest.raises(RuntimeError, match="screen recording permission"):
+    with pytest.raises(RuntimeError) as error:
         runtime.capture_screen(tmp_path / "screen.png", grabber=failing_grabber)
+    assert "screen recording permission" in str(error.value)
+    assert "Windows remote SSH/non-interactive sessions" in str(error.value)
+    assert "scheduled-task wrapper" in str(error.value)
 
 
 def test_cli_live_step_rejects_native_without_execute(tmp_path: Path) -> None:

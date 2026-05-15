@@ -275,6 +275,14 @@ def test_cli_train_rejects_non_pt_model_path_before_training(tmp_path: Path) -> 
         )
 
 
+def test_cli_train_rejects_missing_legacy_model_args(tmp_path: Path) -> None:
+    dataset = tmp_path / "steps.jsonl"
+    dataset.write_text(_game_step("anger").to_json() + "\n")
+
+    with pytest.raises(ValueError, match="requires --model and --character"):
+        cli.main(["train", "--dataset", str(dataset)])
+
+
 def test_cli_label_rejects_missing_pick_option(tmp_path: Path) -> None:
     dataset = tmp_path / "steps.jsonl"
     dataset.write_text(_game_step("anger").to_json() + "\n")
@@ -316,3 +324,43 @@ def test_cli_label_rejects_skip_when_skip_is_not_an_option(tmp_path: Path) -> No
 
     with pytest.raises(ValueError, match="not present"):
         cli.main(["label", "--dataset", str(dataset), "--index", "0", "--choice", "skip"])
+
+
+def test_cli_parse_screen_can_write_separate_ocr_report(tmp_path: Path) -> None:
+    image_path = tmp_path / "reward.png"
+    Image.new("RGB", (1920, 1080), (15, 18, 24)).save(image_path)
+    fixture = tmp_path / "ocr.json"
+    fixture.write_text(
+        json.dumps(
+            [
+                {"text": "Strike", "box": [250, 260, 430, 330], "confidence": 0.99},
+                {"text": "Defend", "box": [760, 260, 940, 330], "confidence": 0.59},
+                {"text": "Bash", "box": [1270, 260, 1450, 330], "confidence": 0.99},
+                {"text": "Skip", "box": [880, 930, 1040, 990], "confidence": 0.99},
+                {"text": "Striek", "box": [250, 600, 430, 660], "confidence": 0.99},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    parsed_path = tmp_path / "parsed.json"
+    report_path = tmp_path / "ocr-report.json"
+
+    with pytest.raises(ValueError, match="unknown OCR screen layout"):
+        cli.main(
+            [
+                "parse-screen",
+                "--screenshot",
+                str(image_path),
+                "--ocr-fixture",
+                str(fixture),
+                "--out",
+                str(parsed_path),
+                "--ocr-report",
+                str(report_path),
+            ]
+        )
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert not parsed_path.exists()
+    assert [item["entry_id"] for item in report["low_confidence_catalog_candidates"]] == ["defend"]
+    assert [item["entry_id"] for item in report["fuzzy_candidates"]] == ["strike"]

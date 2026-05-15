@@ -47,7 +47,9 @@ def capture_screen(screenshot_out: Path, *, grabber: ScreenGrabber | None = None
         image.save(screenshot_out)
     except Exception as error:
         raise RuntimeError(
-            "live screen capture failed; check OS screen recording permission or use --capture-fixture"
+            "live screen capture failed; on macOS check screen recording permission; "
+            "on Windows remote SSH/non-interactive sessions use the interactive "
+            "scheduled-task wrapper or use --capture-fixture"
         ) from error
     return screenshot_out
 

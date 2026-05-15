@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 import time
 
+from PIL import Image
+
 from .automation import DeferredJsonlInputController, JsonlInputController, NativeInputController, apply_action, plan_action
 from .capture_state import load_captured_game_state
 from .cv_calibration import RegionCalibration, load_region_calibration
@@ -16,10 +18,20 @@ from .live_learning import run_live_learn_loop
 from .ml_cli import add_ml_parsers
 from .ml_entities import resolve_action_identity
 from .model import load_model, recommend
-from .recognition import FakeOcrProvider, OcrProvider, OcrToken, TesseractOcrProvider, detect_screen, parse_ocr_screen
+from .recognition import (
+    FakeOcrProvider,
+    OcrProvider,
+    OcrToken,
+    TesseractOcrProvider,
+    build_ocr_token_report_from_tokens,
+    detect_screen,
+    parse_ocr_screen,
+    parse_ocr_tokens,
+)
 from .runtime import backup_save, capture_screen, restore_save, run_seed_loop
 from .schema import CoordinateSpace, GameStep, TargetWindow
 from .step_factory import PerceptionQualityError, game_step_from_detection, game_step_from_parsed_screen
+from .tas_cli import add_tas_parsers
 from .torch_dataset import append_game_step, load_game_steps, write_game_steps
 from .transition import acknowledge_transition
 from .windowing import WindowDetector
@@ -55,6 +67,7 @@ def _parser() -> argparse.ArgumentParser:
 
     add_ml_parsers(subparsers)
     add_evaluation_parsers(subparsers)
+    add_tas_parsers(subparsers)
 
     parse_screen = subparsers.add_parser("parse-screen")
     parse_screen.add_argument("--screenshot", type=Path, required=True)
@@ -66,6 +79,7 @@ def _parser() -> argparse.ArgumentParser:
     parse_screen.add_argument("--ocr-psm", type=int)
     parse_screen.add_argument("--region-calibration", type=Path)
     parse_screen.add_argument("--out", type=Path, required=True)
+    parse_screen.add_argument("--ocr-report", type=Path)
     parse_screen.set_defaults(handler=_parse_screen)
 
     capture_live = subparsers.add_parser("capture-live")
@@ -255,9 +269,22 @@ def _label(args: argparse.Namespace) -> None:
 
 
 def _parse_screen(args: argparse.Namespace) -> None:
-    parsed = parse_ocr_screen(args.screenshot, _ocr_provider(args), calibration=_region_calibration(args))
+    provider = _ocr_provider(args)
+    calibration = _region_calibration(args)
+    tokens = provider.recognize(args.screenshot)
+    resolution = _image_resolution(args.screenshot)
+    if args.ocr_report is not None:
+        report = build_ocr_token_report_from_tokens(tokens, resolution, calibration=calibration)
+        args.ocr_report.parent.mkdir(parents=True, exist_ok=True)
+        args.ocr_report.write_text(json.dumps(report.to_dict(), sort_keys=True), encoding="utf-8")
+    parsed = parse_ocr_tokens(args.screenshot, tokens, resolution, calibration=calibration)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(parsed.to_dict(), sort_keys=True), encoding="utf-8")
+
+
+def _image_resolution(image_path: Path) -> tuple[int, int]:
+    with Image.open(image_path) as image:
+        return image.size
 
 
 def _capture_live(args: argparse.Namespace) -> None:
@@ -389,9 +416,13 @@ def _input_controller(args: argparse.Namespace) -> JsonlInputController | Native
 
 
 def _target_window(args: argparse.Namespace) -> TargetWindow | None:
-    if getattr(args, "target_process", None) is None:
+    target_process = getattr(args, "target_process", None)
+    if target_process is None:
         return None
-    return WindowDetector().detect(args.target_process)
+    target_window = WindowDetector().detect(target_process)
+    if target_window is None:
+        raise ValueError(f"target process window not found: {target_process}")
+    return target_window
 
 
 def _save_state_backup(args: argparse.Namespace) -> None:

@@ -121,6 +121,7 @@ Restart-Service sshd
 ```
 
 Windows 로컬 실행 디렉터리는 OneDrive/Desktop checkout보다 별도 실행 디렉터리 `C:\Users\steep\sts2-tas-run`을 사용합니다. OneDrive 아래 `.venv`는 `uv trampoline failed to spawn Python child process` / `untrusted mount point (os error 448)`가 발생할 수 있습니다.
+repo에는 `.python-version`을 `3.14.5`로 고정해 Windows SSH에서 `uv`가 `cpython-3.14-*` junction alias를 선택하지 않도록 한다.
 
 ```powershell
 cd C:\Users\steep\sts2-tas-run
@@ -146,7 +147,7 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Pr
 Start-ScheduledTask -TaskName $taskName
 ```
 
-interactive task에서 확인된 게임 process는 `SlayTheSpire2`, SessionId는 `1`이었습니다. borderless/no-title 상태에서는 `MainWindowTitle`과 `MainWindowHandle`이 비어 있을 수 있으므로 `--target-process SlayTheSpire2`를 사용합니다. Windows target guard는 `EnumWindows`/`GetWindowThreadProcessId`로 해당 process의 top-level visible window를 다시 찾고, 빈 title과 bounds를 입력 직전 재검증합니다. 이 경로에서는 `ImageGrab.grab()`이 `1920x1080` capture를 만들고 target window metadata와 click plan을 출력합니다.
+interactive task에서 확인된 게임 process는 `SlayTheSpire2`, SessionId는 `1`이었습니다. borderless/no-title 상태에서는 `MainWindowTitle`과 `MainWindowHandle`이 비어 있을 수 있으므로 `--target-process SlayTheSpire2`를 사용합니다. Windows target guard는 `EnumWindows`/`GetWindowThreadProcessId`로 해당 process의 top-level visible window를 다시 찾고, 빈 title과 bounds를 입력 직전 재검증합니다. `--target-process`가 지정됐는데 visible top-level window를 찾지 못하면 전체 데스크톱을 OCR하지 않고 `target process window not found`로 실패합니다. 이 경로에서는 target window crop, target window metadata, click plan을 함께 확인합니다.
 
 ```powershell
 .\.venv\Scripts\sts2-tas.exe live-step `

@@ -1,78 +1,52 @@
 # V1 Gaps
 
-검토 기준: `StS2_TAS_critical_improvement_plan_KR.docx`, 2026-05-14.
+현재 문서는 Windows Slay the Spire 2 TAS runtime 방향성에 맞춘 남은 gap만 추적한다. v1 TAS acceptance 기준과 직접 연결되지 않는 예전 자동화 세부 항목은 제외한다.
 
-현재 구현은 안전한 화면 인식/입력 MVP다. 상시 실행 TAS로 보려면 아래 루프를 닫아야 한다.
+## Current Baseline
 
-```text
-Window capture
--> OCR/CV perception
--> structured state with confidence/missing masks
--> legal action generator
--> rule/model/search decision
--> target-guarded input
--> transition acknowledgement
--> trajectory/reward feedback
-```
+구현되어 있는 것은 TAS artifact와 정적 검증 경계다.
 
-## Implemented In This Update
+- `TasMovie`, `TasFrame`, `PhysicalInput`
+- `TasCheckpoint`
+- `TasExperience`
+- numeric-key combat input mapping
+- passive-only Windows hook scaffold
+- static `tas-replay --verify`
+- static `tas-verify --runs N`
+- verified-label `train --label-policy verified`
 
-- `actions.generate_legal_actions()`를 추가해 combat/card_reward/map의 state-derived legal action generator 경계를 만들었다.
-- `live_state.extract_live_state()`를 추가해 OCR text에서 HP/max HP, block, energy, turn, gold, floor, hand card, potion, monster HP/intent, map node를 typed payload와 screen box로 추출한다.
-- `step_factory`가 parsed OCR state+screen evidence를 병합하고 `generate_legal_actions()` 결과에 screen box를 붙여 combat/card_reward/map live path에서 같은 후보 표면을 사용한다.
-- `transition.acknowledge_transition()`과 `live-step --ack-ocr-fixture`를 추가해 입력 후 changed/no-op/timeout과 retry 권고를 분리하는 검증 경계를 만들었다.
-- `live-learn-loop` terminal outcome을 같은 episode의 gameplay `GameStep` row에 Monte Carlo return 형태의 `StepOutcome`으로 전파한다.
-- `runtime.branch_and_bound_seed()`와 `search_save_state_branches()`를 추가해 save backup/restore 기반 branch 평가 시작점을 만들었다.
-- `evaluate-seeds --baseline`을 추가해 candidate episode와 rule baseline episode의 win rate/average steps/victory delta를 리포트한다.
-- `live-learn-loop --model`의 self-label 저장을 기본 차단하고, 명시적 실험 플래그 `--allow-model-self-labels`만 허용했다.
-- `act --target-process`는 `--coordinate-space window_relative`가 있을 때만 허용한다.
-- Windows native target input은 process/title/bounds recheck, `SetForegroundWindow`, input 실행을 한 PowerShell script 안에 묶는다.
-- OCR catalog match는 confidence `0.60` 미만 token을 action option으로 쓰지 않는다.
-- source artifact hygiene를 위해 `.uv-cache/`, `build/`, `dist/`, `*.spec`을 ignore 대상에 추가했다.
-- `cv_calibration.RegionCalibration`과 `--region-calibration`을 추가해 OCR option filtering과 color component detection이 calibrated card/relic/skip/menu regions를 사용한다.
-- targeted combat card/potion action에 `target_screen_box`를 연결하고 source+monster multi-click sequence를 `AutomationAction`/jsonl/native backend까지 전달한다.
-- `live-step --ack-ocr-fixture-sequence`와 `--ack-live-poll`에 `--ack-max-retries`를 연결해 no-op/timeout acknowledgement에서 실제 input은 재전송하지 않고 post-input frame poll만 retry한다.
-- `score_branch_outcome()`과 `mcts_seed_search()`를 추가해 branch outcome scorer와 UCT-style MCTS candidate search를 제공한다.
-- Tesseract split token의 `Game`/`Over`, 한국어 `승리`/`게임 오버` terminal alias를 confidence `0.60` 이상일 때만 episode boundary로 처리한다.
-- `live-learn-loop`가 combat/map도 gameplay로 취급해 manual/model choice, dataset append, training path를 동일하게 탄다.
-- terminal return 전파 직후 모델을 재학습하고, 반복 terminal frame은 steps=0 episode summary로 중복 기록하지 않는다.
-- combat `end_turn`은 targetless skip/Escape가 아니라 `e` keypress로 실행 계획을 만든다.
-- transition signature는 legal action identity를 정렬해 OCR ordering 변화만으로 retry가 suppress되지 않게 한다.
-- save-state branch search는 bound scorer 평가 전에도 save를 복원한다.
-- live OCR overlay가 `cards` 같은 entity payload를 제공하면 `cards.metadata` 같은 stale nested missing field를 제거한다.
-- `--ack-max-retries` 음수 입력을 실행 전 명시적으로 거부한다.
-- `EpisodeState`/`TrajectoryStep` JSONL을 추가해 run id, seed, game version, floor, room type, turn index, state before/after, legal/selected action, reward, terminal, label source를 transition row로 저장한다.
-- `label_source`를 `human`, `heuristic`, `search`, `model_shadow`, `model_self`로 분리하고 기존 `GameStep` row는 `human`으로 역직렬화한다.
-- 기본 학습은 `human`/`search`와 heuristic row만 사용하고 `model_shadow`/`model_self` row를 제외한다.
-- value target은 explicit `value_target`, `discounted_return`, reward/floor/HP/terminal signal을 우선하고, richer signal이 없을 때만 victory boolean으로 fallback한다.
-- `evaluate-model`과 `evaluate-play`를 추가해 model holdout/top-k/legal mask/calibration/value proxy와 play latency/timeout/misclick/illegal action/candidate recall을 리포트한다.
-- `ObservationQuality.field_confidence`와 context별 required field gate를 추가해 combat/map/shop/event/rest 인식이 missing 또는 confidence `<0.60`이면 fail-closed한다.
-- shop/event/rest typed option state, legal action generator, OCR fixture grammar, screen box binding을 추가했다. 중복 shop/event option은 slot id로 분리하고, shop buy/remove는 player gold가 price 이상일 때만 생성하며, shop `leave_shop`은 관측된 leave option이 있을 때만 후보로 생성한다.
-- `live-learn-loop --execute`는 gameplay label/model action에서 transition ack `changed`일 때만 `GameStep`/`TrajectoryStep`을 append하고, ack 없음/no-op/timeout/controller error/perception failure/preflight failure는 failure log만 기록한다.
-- `evaluate-model`은 `--eval-dataset`과 value-head sigmoid score 기반 `value_correlation`을 사용한다.
-- `evaluate-play`는 safety metric이 빠진 row를 기본 실패 지표로 계산하고, `--allow-missing-metrics`에서만 missing row count를 리포트한다. 이 허용 모드에서는 missing candidate recall을 평균에서 제외한다.
+아직 구현되어 있지 않은 것은 Windows 실제 게임을 대상으로 한 live replay acceptance다.
 
 ## P0 Gaps
 
-- Live state extractor: OCR text grammar 기반 HP/max HP, block, energy, turn, gold, floor, hand, potion, monster, map, shop/event/rest option 추출과 calibrated CV/OCR region filtering은 시작됐다. draw/discard/exhaust, relic counters, per-entity status detail은 남아 있다.
-- Legal action integration: combat/card_reward/relic_choice/map/shop/event/rest는 live state와 generator가 연결됐다. non-monster targeting과 복합 이벤트/상점 제약은 남아 있다.
-- Transition acknowledgement: changed/no-op/timeout 분리, fixture sequence ack polling retry, live frame polling retry, action-order stable signature, execute+changed-only append는 구현됐다. debounce, retry backoff policy, real animation latency tuning은 남아 있다.
-- Trajectory return: terminal outcome을 gameplay rows에 Monte Carlo return으로 전파하고 terminal 직후 재학습한다. `TrajectoryStep` JSONL, reward/return-aware value target, changed-only trajectory append는 구현됐다. TD target과 richer per-step reward shaping은 남아 있다.
+- Live replay backend: `tas-replay --verify`는 아직 Windows target process에 입력을 보내고 frame/state drift를 재측정하지 않는다. 현재는 저장된 `.sts2movie`를 읽어 hash/fingerprint 존재와 stored outcome을 검사한다.
+- Five-run acceptance: `tas-verify --runs 5`는 아직 실제 5회 게임 replay가 아니다. 같은 movie의 static verification을 N회 반복한다. Gate 5는 live backend가 붙은 뒤에만 TAS-grade acceptance로 인정한다.
+- Real recording: `tas-record`는 movie metadata와 파일 구조를 만든다. live gameplay에서 semantic action, physical input, screen hash, state fingerprint를 채우는 recorder는 남아 있다.
+- Checkpoint replay: `tas-search`는 save hash와 prefix hash를 검증하지만 실제 save restore, movie prefix replay, decision fingerprint 도달 확인을 수행하지 않는다.
+- Native canary attach: `native/sts2_tas_hook/`는 passive scaffold다. Detours/Present attach, frame hash 수집, IPC transport, Python consumer 연결은 남아 있다.
 
 ## P1 Gaps
 
-- Versioned catalog: catalog를 외부 JSON으로 분리하고 Early Access patch drift를 기록해야 한다.
-- Unknown OCR logging: unknown token, fuzzy match 후보, confidence threshold 통계를 field-level report로 남겨야 한다.
-- Search/TAS loop: save-state restore 기반 branch-and-bound, outcome scorer, MCTS 함수는 생겼다. CLI orchestration, real save-state rollout driver, richer reward/map scorer는 남아 있다.
-- Numeric encoding: HP/gold/floor 등 numeric scale normalization과 observed/missing mask 결합이 필요하다.
-- Windows DPI/hit-test: DPI scaling, clickable region margin, screenshot id, pre/post state hash, latency/error logging을 더해야 한다.
-- Execution framing: live ML data collection은 Windows 로컬 interactive session 작업으로 문서화하고 검증해야 한다. Mac SSH와 Docker는 maintenance, fixture, build, log workflow를 보조할 뿐 실제 desktop capture/click을 대체하지 않는다.
+- Gate 5 report semantics: static verifier 출력에는 `acceptance_source=static_movie` 같은 구분자가 필요하다. live Windows 검증 결과와 fixture/static 검증 결과가 섞이면 안 된다.
+- Drift evidence: replay drift가 발생했을 때 frame number, last semantic action, before/after screenshot, state fingerprint를 저장하는 report format이 필요하다.
+- Target boundary: `--target-process`가 지정된 live capture는 visible target window가 없으면 전체 화면 fallback 없이 fail-closed 한다. 남은 gap은 실제 입력 실행에서 `--target-process` 없이는 fail-closed 하도록 강제하고, process name selector와 window title helper를 분리하는 것이다.
+- Checkpoint negative path: checkpoint 검증 실패 시 branch movie를 acceptance 산출물처럼 쓰지 않도록 CLI 경로와 테스트를 잠가야 한다.
+- Hook IPC trust boundary: named pipe에는 session nonce, ACL, target pid binding 같은 검증 경계가 필요하다.
+- Foreground metadata: hook scaffold의 foreground-window metadata는 target-bound metadata로 바뀌어야 한다.
 
-## Acceptance Targets
+## P2 Gaps
 
-- state field accuracy >= 99%, unknown/missing field는 명시 기록.
-- candidate recall >= 99%, illegal action execution 0건.
-- target window race/move/focus 변경 시 fail-closed.
-- model holdout top-1/top-3, calibration, value correlation이 rule baseline보다 우수.
-- 동일 seed에서 floor/win rate/decision time이 rule baseline보다 개선.
-- CI unit/integration tests, Windows exe smoke, source artifact hygiene 통과.
+- ML JSONL strict types: `TasExperience.from_dict()`는 문자열 `"false"` 같은 truthy 값을 boolean으로 받아들이지 않도록 strict parsing이 필요하다.
+- Numeric slot edges: `hand-10-*`, `hand-99-*`, `hand-01-*`, invalid target box에 대한 fail-closed 테스트가 필요하다.
+- Click box validation: zero-area, inverted, negative, out-of-bounds screen box를 실행 전에 거부해야 한다.
+- Windows task wording: scheduled task wrapper 문구는 hidden/elevated execution이 아니라 explicit interactive local run boundary를 드러내도록 정리해야 한다.
+
+## Acceptance Boundary
+
+TAS-grade acceptance는 아래 조건이 모두 충족된 뒤에만 주장한다.
+
+- Windows target process가 확인된 상태에서 replay가 실제 입력을 보낸다.
+- replay마다 live frame hash와 state fingerprint를 새로 수집한다.
+- 같은 movie가 5회 모두 victory에 도달한다.
+- drift 0건, unclassified screen 0건, target-window mismatch 0건이다.
+- fallback probe/static verifier 결과는 acceptance evidence에 포함하지 않는다.

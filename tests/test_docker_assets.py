@@ -20,6 +20,12 @@ def test_project_requires_python_314() -> None:
     assert pyproject["project"]["requires-python"] == ">=3.14"
 
 
+def test_uv_uses_exact_python_patch_on_windows_ssh() -> None:
+    python_version = (ROOT / ".python-version").read_text(encoding="utf-8").strip()
+
+    assert python_version == "3.14.5"
+
+
 def test_dockerignore_excludes_local_state_and_generated_outputs() -> None:
     patterns = set((ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines())
     gitignore_patterns = set((ROOT / ".gitignore").read_text(encoding="utf-8").splitlines())
@@ -38,43 +44,39 @@ def test_docs_explain_windows_docker_and_deferred_scope() -> None:
     docker_doc = (ROOT / "docs" / "docker.md").read_text(encoding="utf-8")
     architecture_doc = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
     implemented_doc = (ROOT / "docs" / "implemented-work.md").read_text(encoding="utf-8")
+    gaps_doc = (ROOT / "docs" / "v1-gaps.md").read_text(encoding="utf-8")
     index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
     assert "Windows PowerShell" in docker_doc
     assert "Python 3.14" in docker_doc
+    assert ".python-version" in docker_doc
+    assert "3.14.5" in docker_doc
+    assert "untrusted mount point" in docker_doc
     assert "docker run --rm" in docker_doc
     assert "volume" in docker_doc
-    assert "OCR" in implemented_doc
-    assert "Steam/Godot process memory" in implemented_doc
-    assert "--execute" in implemented_doc
-    assert "PPO, GNN map encoder, simulator-backed self-play" in implemented_doc
-    assert "self-label" in implemented_doc
-    assert "state-derived legal action generator" in implemented_doc
-    assert "Quartz/PyObjC targeted PID event delivery" in architecture_doc
+    assert "TasMovie" in implemented_doc
+    assert "TasCheckpoint" in implemented_doc
+    assert "TasExperience" in implemented_doc
+    assert "Steam/Godot process memory" not in implemented_doc
+    assert "PPO, GNN map encoder, simulator-backed self-play" not in implemented_doc
+    assert "Detours" in architecture_doc
+    assert "Present" in architecture_doc
+    assert "input hook" in architecture_doc
+    assert "time hook" in architecture_doc
     assert "window focus management" not in implemented_doc
     assert "Docker" in index
     assert "v1-gaps.md" in index
-    assert "v1-gaps.md" in readme
-    assert "allow-model-self-labels" in architecture_doc
-    assert "--coordinate-space window_relative" in architecture_doc
-    assert "Windows executable" in index
+    assert "semantic movie" in index
     assert "PYTHONPATH=src" in index
-    assert "--no-editable" in index
-    assert "scripts/build-windows-exe.ps1" in readme
-    assert "sts2-tas-windows-x64" in readme
-    assert "dist/sts2-tas.exe" in readme
-    assert "PYTHONPATH=src" in readme
-    assert "--no-editable" in readme
-    assert (
-        'live-step --screenshot-out live.png --ocr-provider tesseract --choice pick_card:strike '
-        "--input-log inputs.jsonl"
-    ) in readme
-    assert '--target-process "Slay the Spire 2" --input-backend native --execute' in readme
-    assert (
-        'live-step --screenshot-out ... --target-process "Slay the Spire 2" '
-        "--input-backend native --execute"
-    ) in architecture_doc
+    assert "tas-verify --runs 5" in architecture_doc
+    assert "live Windows `tas-verify --runs 5`" in architecture_doc
+    assert "train --label-policy verified" in implemented_doc
+    assert "static `tas-replay --verify`" in gaps_doc
+    assert "Five-run acceptance" in gaps_doc
+    assert "TAS-grade acceptance" in gaps_doc
+    assert "화면 인식/입력 MVP" not in gaps_doc
+    assert "OCR-first MVP" not in gaps_doc
+    assert "PPO" not in gaps_doc
     assert "SlayTheSpire2" in docker_doc
     assert "--tessdata-dir" in docker_doc
     assert "kor.traineddata" in docker_doc

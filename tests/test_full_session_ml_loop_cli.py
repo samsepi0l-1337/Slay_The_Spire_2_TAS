@@ -129,6 +129,63 @@ def test_parse_ocr_screen_maps_game_over_restart_action(tmp_path: Path) -> None:
     assert [(option.id, option.kind) for option in parsed.options] == [("new_run", "restart_run")]
 
 
+def test_parse_ocr_screen_maps_compact_singleplayer_menu_text(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            recognition.OcrToken("Singleplayer", (780, 360, 1140, 430), 0.99),
+        ]
+    )
+
+    parsed = recognition.parse_ocr_screen(_screen(tmp_path / "main-menu.png"), provider)
+
+    assert parsed.kind == "main_menu"
+    assert [(option.id, option.kind) for option in parsed.options] == [
+        ("single_player", "select_single_player")
+    ]
+
+
+def test_parse_ocr_screen_maps_the_ironclad_character_title(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            recognition.OcrToken("The Ironclad", (3, 352, 501, 447), 0.96),
+        ]
+    )
+
+    parsed = recognition.parse_ocr_screen(_screen(tmp_path / "character-select.png"), provider)
+
+    assert parsed.kind == "character_select"
+    assert [(option.id, option.kind) for option in parsed.options] == [("ironclad", "select_character")]
+
+
+def test_parse_ocr_screen_maps_right_side_loot_skip(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            recognition.OcrToken("Loot!", (910, 247, 1014, 286), 0.96),
+            recognition.OcrToken("Skip", (1685, 809, 1755, 843), 0.96),
+        ]
+    )
+
+    parsed = recognition.parse_ocr_screen(_screen(tmp_path / "loot.png"), provider)
+
+    assert parsed.kind == "card_reward"
+    assert [(option.id, option.kind) for option in parsed.options] == [("skip", "skip")]
+
+
+def test_parse_ocr_screen_uses_visual_right_side_skip_when_ocr_misses_text(tmp_path: Path) -> None:
+    screen = _screen(tmp_path / "visual-skip.png")
+    image = Image.open(screen)
+    for x in range(1580, 1860):
+        for y in range(760, 875):
+            image.putpixel((x, y), (165, 35, 28))
+    image.save(screen)
+    provider = recognition.FakeOcrProvider([])
+
+    parsed = recognition.parse_ocr_screen(screen, provider)
+
+    assert parsed.kind == "card_reward"
+    assert [(option.id, option.kind) for option in parsed.options] == [("skip", "skip")]
+
+
 def test_parse_ocr_screen_fails_closed_on_low_confidence_catalog_tokens(tmp_path: Path) -> None:
     provider = recognition.FakeOcrProvider(
         [

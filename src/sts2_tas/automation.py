@@ -8,7 +8,15 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from .ml_entities import resolve_action_identity
-from .schema import AutomationAction, Box, CoordinateSpace, GameStep, TargetWindow
+from .schema import (
+    AutomationAction,
+    Box,
+    CoordinateSpace,
+    GameStep,
+    TargetWindow,
+    _click_step,
+)
+from . import tas_input
 from .windowing import WindowDetector, WindowDetectorProtocol
 
 
@@ -83,15 +91,25 @@ def plan_action(
     _validate_target_window(coordinate_space, target_window)
     resolved_action_id = resolve_action_identity(step.actions, action_id)
     candidate = next(action for action in step.actions if action.identity == resolved_action_id)
-    automation_action = "skip" if candidate.action_type in {"skip_reward", "end_turn"} else "pick"
-    option_id = _automation_option_id(candidate, automation_action)
+    automation_action = (
+        "skip" if candidate.action_type in {"skip_reward", "end_turn", "play_card"} else "pick"
+    )
+    option_id = (
+        candidate.identity
+        if candidate.action_type == "play_card"
+        else _automation_option_id(candidate, automation_action)
+    )
     key = "e" if candidate.action_type == "end_turn" else None
-    target = candidate.screen_box
-    if automation_action == "pick" and target is None:
-        raise ValueError(f"action_id has no screen target: {action_id}")
-    if automation_action == "pick" and candidate.target_monster_id is not None and candidate.target_screen_box is None:
-        raise ValueError(f"action_id has no target screen box: {action_id}")
-    targets = _input_targets(candidate, target)
+    if candidate.action_type == "play_card":
+        key, targets = tas_input.build_play_card_plan(candidate)
+        target = None
+    else:
+        target = candidate.screen_box
+        if automation_action == "pick" and target is None:
+            raise ValueError(f"action_id has no screen target: {action_id}")
+        if automation_action == "pick" and candidate.target_monster_id is not None and candidate.target_screen_box is None:
+            raise ValueError(f"action_id has no target screen box: {action_id}")
+        targets = _input_targets(candidate, target)
     return AutomationAction(
         action=automation_action,
         option_id=option_id,
@@ -115,6 +133,10 @@ def apply_action(action: AutomationAction, controller: InputController | None) -
 
 def _run_command(command: list[str]) -> None:
     subprocess.run(command, check=True)
+
+
+def native_command(action: AutomationAction, platform_name: str) -> list[str]:
+    return _native_command(action, platform_name)
 
 
 def _input_targets(candidate, target: Box | None) -> list[Box] | None:
@@ -144,8 +166,19 @@ def _native_command(action: AutomationAction, platform_name: str) -> list[str]:
 
 
 def _native_input_plan(action: AutomationAction, system: str) -> dict[str, object]:
-    if system == "windows" and action.action == "skip" and action.key is None:
+    if system == "windows" and action.action == "skip" and action.key is None and action.target is None:
         plan = {"kind": "keypress", "key": "escape"}
+    elif action.key is not None:
+        target_boxes: list[Box] = []
+        if action.targets is not None:
+            target_boxes = action.targets
+        elif action.target is not None:
+            target_boxes = [action.target]
+        if not target_boxes:
+            plan = {"kind": "keypress", "key": action.key}
+        else:
+            steps = [_click_step(target, action.coordinate_space, action.target_window) for target in target_boxes]
+            plan = {"kind": "sequence", "steps": [{"kind": "keypress", "key": action.key}, *steps]}
     else:
         plan = action.input_plan()
     if action.target_window is not None:

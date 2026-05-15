@@ -22,6 +22,27 @@ def _neow_choice_screen(path: Path) -> Path:
     return path
 
 
+def _neow_proceed_screen(path: Path) -> Path:
+    image = Image.new("RGB", (1920, 1080), (10, 35, 55))
+    pixels = image.load()
+    for x in range(470, 1450):
+        for y in range(950, 1035):
+            pixels[x, y] = (18, 105, 140)
+    image.save(path)
+    return path
+
+
+def _visual_map_screen(path: Path) -> Path:
+    image = Image.new("RGB", (1920, 1080), (170, 165, 178))
+    pixels = image.load()
+    for box in ((450, 540, 520, 610), (900, 500, 970, 570), (1040, 540, 1110, 610)):
+        for x in range(box[0], box[2]):
+            for y in range(box[1], box[3]):
+                pixels[x, y] = (105, 80, 65)
+    image.save(path)
+    return path
+
+
 def _token(text: str, box: tuple[int, int, int, int]) -> object:
     return recognition.OcrToken(text=text, box=box, confidence=0.99)
 
@@ -77,12 +98,90 @@ def test_parse_ocr_screen_matches_korean_continue_menu(tmp_path: Path) -> None:
     ]
 
 
+def test_parse_ocr_screen_matches_split_korean_single_player_menu(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            _token("Ag", (693, 660, 756, 730)),
+            _token("글", (731, 705, 767, 710)),
+            _token("플레이", (766, 693, 846, 725)),
+        ]
+    )
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "menu.png"), ocr_provider=provider)
+
+    assert parsed.kind == "main_menu"
+    assert [(option.id, option.name, option.kind) for option in parsed.options] == [
+        ("single_player", "Single Player", "select_single_player")
+    ]
+    assert parsed.options[0].source_text == "Ag 글 플레이"
+
+
+def test_parse_ocr_screen_matches_noisy_korean_single_player_menu(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            _token("싱", (702, 693, 727, 725)),
+            _token("도브", (731, 694, 791, 725)),
+            _token("레이", (792, 693, 846, 725)),
+        ]
+    )
+
+    parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "menu.png"), ocr_provider=provider)
+
+    assert parsed.kind == "main_menu"
+    assert [(option.id, option.name, option.kind) for option in parsed.options] == [
+        ("single_player", "Single Player", "select_single_player")
+    ]
+    assert parsed.options[0].source_text == "싱 도브 레이"
+
+
+def test_parse_ocr_screen_ignores_single_player_fragment_without_prefix(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("플레이", (766, 693, 846, 725))])
+
+    with pytest.raises(ValueError, match="unknown OCR screen layout"):
+        recognition.parse_ocr_screen(_blank_screen(tmp_path / "menu.png"), ocr_provider=provider)
+
+
 def test_parse_ocr_screen_matches_korean_map_legend(tmp_path: Path) -> None:
     provider = recognition.FakeOcrProvider([_token("범례", (1669, 331, 1739, 374))])
 
     parsed = recognition.parse_ocr_screen(_blank_screen(tmp_path / "map.png"), ocr_provider=provider)
 
     assert parsed.kind == "map"
+
+
+def test_parse_ocr_screen_builds_visual_map_candidates_from_legend_screen(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("Legend", (1630, 340, 1770, 390))])
+
+    parsed = recognition.parse_ocr_screen(_visual_map_screen(tmp_path / "visual-map.png"), ocr_provider=provider)
+
+    assert parsed.kind == "map"
+    assert [path["node_id"] for path in parsed.state_payload["path_candidates"]] == [
+        "visual-node-1",
+        "visual-node-2",
+        "visual-node-3",
+    ]
+    assert parsed.state_boxes == {
+        "path:visual-node-1": (450, 540, 520, 610),
+        "path:visual-node-2": (1040, 540, 1110, 610),
+        "path:visual-node-3": (900, 500, 970, 570),
+    }
+    assert parsed.field_confidence == {"path_candidates": 0.8}
+
+
+def test_visual_map_node_detection_filters_out_of_region_and_bad_area() -> None:
+    image = Image.new("RGB", (1920, 1080), (170, 165, 178))
+    pixels = image.load()
+    for box in (
+        (450, 540, 520, 610),
+        (20, 540, 90, 610),
+        (900, 540, 920, 560),
+        (1000, 500, 1160, 620),
+    ):
+        for x in range(box[0], box[2]):
+            for y in range(box[1], box[3]):
+                pixels[x, y] = (105, 80, 65)
+
+    assert recognition._visual_map_node_boxes(image) == [(450, 540, 520, 610)]
 
 
 def test_parse_ocr_screen_detects_neow_choice_panels_without_readable_option_text(tmp_path: Path) -> None:
@@ -105,6 +204,17 @@ def test_parse_ocr_screen_detects_neow_choice_panels_without_readable_option_tex
     }
     assert parsed.field_confidence == {"event_options": 0.99}
     assert "event_options" not in parsed.missing_fields
+
+
+def test_parse_ocr_screen_detects_single_neow_proceed_panel(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("Proceed", (490, 980, 580, 1018))])
+
+    parsed = recognition.parse_ocr_screen(_neow_proceed_screen(tmp_path / "neow-proceed.png"), ocr_provider=provider)
+
+    assert parsed.kind == "event"
+    assert parsed.state_payload == {"event_options": [{"option_id": "neow_option_1", "label": "Neow option 1"}]}
+    assert parsed.state_boxes == {"event_option:neow_option_1": (470, 950, 650, 1035)}
+    assert parsed.field_confidence == {"event_options": 0.99}
 
 
 def test_parse_ocr_screen_scales_reward_layout_from_reference_resolution(tmp_path: Path) -> None:
@@ -177,6 +287,78 @@ def test_parse_ocr_screen_ignores_unknown_catalog_text(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="unknown OCR screen layout"):
         recognition.parse_ocr_screen(_blank_screen(tmp_path / "screen.png"), ocr_provider=provider)
+
+
+def test_ocr_token_report_records_discarded_and_fuzzy_candidates(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            recognition.OcrToken("Strike", (250, 260, 430, 330), 0.59),
+            recognition.OcrToken("Defend", (760, 900, 940, 970), 0.99),
+            recognition.OcrToken("Striek", (1270, 260, 1450, 330), 0.99),
+            recognition.OcrToken("Mystery", (880, 930, 1040, 990), 0.99),
+            recognition.OcrToken("Striking", (300, 600, 430, 660), 0.99),
+            recognition.OcrToken("   ", (450, 600, 520, 660), 0.99),
+        ]
+    )
+
+    report = recognition.build_ocr_token_report(
+        _blank_screen(tmp_path / "screen.png"),
+        ocr_provider=provider,
+    ).to_dict()
+
+    assert report["unknown_tokens"] == [
+        {"text": "Striek", "box": [1270, 260, 1450, 330], "confidence": 0.99},
+        {"text": "Mystery", "box": [880, 930, 1040, 990], "confidence": 0.99},
+        {"text": "Striking", "box": [300, 600, 430, 660], "confidence": 0.99},
+        {"text": "   ", "box": [450, 600, 520, 660], "confidence": 0.99},
+    ]
+    assert report["low_confidence_catalog_candidates"] == [
+        {
+            "token": {"text": "Strike", "box": [250, 260, 430, 330], "confidence": 0.59},
+            "entry_id": "strike",
+            "entry_name": "Strike",
+            "entry_kind": "card",
+            "matched_alias": "strike",
+        }
+    ]
+    assert report["layout_rejected_catalog_candidates"] == [
+        {
+            "token": {"text": "Defend", "box": [760, 900, 940, 970], "confidence": 0.99},
+            "entry_id": "defend",
+            "entry_name": "Defend",
+            "entry_kind": "card",
+            "matched_alias": "defend",
+        }
+    ]
+    assert report["fuzzy_candidates"] == [
+        {
+            "token": {"text": "Striek", "box": [1270, 260, 1450, 330], "confidence": 0.99},
+            "entry_id": "strike",
+            "entry_name": "Strike",
+            "entry_kind": "card",
+            "alias": "strike",
+            "reason": "edit_distance",
+            "distance": 2,
+        },
+        {
+            "token": {"text": "Striking", "box": [300, 600, 430, 660], "confidence": 0.99},
+            "entry_id": "strike",
+            "entry_name": "Strike",
+            "entry_kind": "card",
+            "alias": "strike",
+            "reason": "prefix",
+        },
+    ]
+
+
+def test_ocr_fuzzy_candidates_handles_empty_and_prefix_only_text() -> None:
+    assert recognition._fuzzy_candidates(recognition.OcrToken("", (0, 0, 1, 1), 0.99)) == []
+
+    candidates = recognition._fuzzy_candidates(recognition.OcrToken("strike plus", (0, 0, 1, 1), 0.99))
+
+    assert [(candidate.entry.id, candidate.reason, candidate.distance) for candidate in candidates] == [
+        ("strike", "prefix", None)
+    ]
 
 
 def test_tesseract_provider_parses_cli_tsv(monkeypatch, tmp_path: Path) -> None:

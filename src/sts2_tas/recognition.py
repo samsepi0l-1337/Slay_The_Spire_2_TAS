@@ -20,11 +20,13 @@ MIN_OCR_OPTION_CONFIDENCE = 0.60
 VICTORY_TERMS = {"victory", "victory!", "clear", "run clear", "승리", "승리!", "클리어"}
 GAME_OVER_TERMS = {"game over", "defeat", "defeated", "게임 오버", "게임오버", "패배"}
 MAP_MARKER_TERMS = {"legend", "범례"}
+LOOT_MARKER_TERMS = {"loot", "loot!"}
 NEOW_CHOICE_REFERENCE_BOXES: tuple[Box, ...] = (
     (470, 740, 1450, 835),
     (470, 835, 1450, 930),
     (470, 930, 1450, 1030),
 )
+NEOW_PROCEED_REFERENCE_BOX: Box = (470, 950, 650, 1035)
 
 
 class OcrProvider(Protocol):
@@ -41,6 +43,64 @@ class CatalogEntry:
     tags: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class OcrTokenReportCandidate:
+    token: OcrToken
+    entry: CatalogEntry
+    matched_alias: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "token": _token_dict(self.token),
+            "entry_id": self.entry.id,
+            "entry_name": self.entry.name,
+            "entry_kind": self.entry.kind,
+            "matched_alias": self.matched_alias,
+        }
+
+
+@dataclass(frozen=True)
+class OcrFuzzyCandidate:
+    token: OcrToken
+    entry: CatalogEntry
+    alias: str
+    reason: str
+    distance: int | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "token": _token_dict(self.token),
+            "entry_id": self.entry.id,
+            "entry_name": self.entry.name,
+            "entry_kind": self.entry.kind,
+            "alias": self.alias,
+            "reason": self.reason,
+        }
+        if self.distance is not None:
+            payload["distance"] = self.distance
+        return payload
+
+
+@dataclass(frozen=True)
+class OcrTokenReport:
+    unknown_tokens: list[OcrToken]
+    low_confidence_catalog_candidates: list[OcrTokenReportCandidate]
+    layout_rejected_catalog_candidates: list[OcrTokenReportCandidate]
+    fuzzy_candidates: list[OcrFuzzyCandidate]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "unknown_tokens": [_token_dict(token) for token in self.unknown_tokens],
+            "low_confidence_catalog_candidates": [
+                candidate.to_dict() for candidate in self.low_confidence_catalog_candidates
+            ],
+            "layout_rejected_catalog_candidates": [
+                candidate.to_dict() for candidate in self.layout_rejected_catalog_candidates
+            ],
+            "fuzzy_candidates": [candidate.to_dict() for candidate in self.fuzzy_candidates],
+        }
+
+
 CATALOG = (
     CatalogEntry("strike", "Strike", "card", ("strike", "\ud0c0\uaca9"), ("attack",)),
     CatalogEntry("defend", "Defend", "card", ("defend", "\uc218\ube44"), ("skill",)),
@@ -54,6 +114,7 @@ CATALOG = (
         "select_single_player",
         (
             "single player",
+            "singleplayer",
             "\uc2f1\uae00 \ud50c\ub808\uc774",
             "\uc2f1\uae00\ud50c\ub808\uc774",
             "\uc2f1\uae00 \uae00 \ud50c\ub808\uc774",
@@ -62,7 +123,12 @@ CATALOG = (
     ),
     CatalogEntry("continue", "Continue", "continue_run", ("continue", "resume", "\uacc4\uc18d")),
     CatalogEntry("standard", "Standard", "select_mode", ("standard", "\ud45c\uc900", "\uc77c\ubc18", "\uae30\ubcf8")),
-    CatalogEntry("ironclad", "Ironclad", "select_character", ("ironclad", "\uc544\uc774\uc5b8\ud074\ub798\ub4dc")),
+    CatalogEntry(
+        "ironclad",
+        "Ironclad",
+        "select_character",
+        ("ironclad", "the ironclad", "\uc544\uc774\uc5b8\ud074\ub798\ub4dc"),
+    ),
     CatalogEntry("new_run", "New Run", "restart_run", ("new run", "play again", "retry", "\uc0c8 \ub7f0", "\ub2e4\uc2dc \uc2dc\uc791")),
 )
 
@@ -123,14 +189,30 @@ def parse_ocr_screen(
     calibration: RegionCalibration | None = None,
 ) -> ParsedScreen:
     image = Image.open(image_path)
-    width, height = image.size
     tokens = ocr_provider.recognize(image_path)
+    return parse_ocr_tokens(image_path, tokens, image.size, calibration=calibration)
+
+
+def parse_ocr_tokens(
+    image_path: Path,
+    tokens: list[OcrToken],
+    resolution: tuple[int, int],
+    *,
+    calibration: RegionCalibration | None = None,
+) -> ParsedScreen:
+    width, height = resolution
     extraction = extract_live_state(tokens)
     options = [
         option
         for token in tokens
         if (option := _recognized_option(token, (width, height), calibration)) is not None
     ]
+    existing_option_ids = {option.id for option in options}
+    options.extend(
+        option
+        for option in _recognized_menu_fragment_options(tokens, (width, height), calibration)
+        if option.id not in existing_option_ids
+    )
     non_skip = sorted((option for option in options if option.kind != "skip"), key=lambda option: option.box[0])
     skip = sorted((option for option in options if option.kind == "skip"), key=lambda option: option.box[0])
     cards = [option for option in non_skip if option.kind == "card"]
@@ -142,6 +224,14 @@ def parse_ocr_screen(
     menu_kind = _menu_kind(non_skip)
     if menu_kind is not None:
         return _parsed(menu_kind.value, _slot_ids(non_skip), image_path, (width, height), extraction)
+    if skip and _has_loot_marker(tokens):
+        return _parsed(
+            DetectionKind.CARD_REWARD.value,
+            [skip[0]],
+            image_path,
+            (width, height),
+            extraction,
+        )
     if len(cards) == 3 and len(cards) == len(non_skip) and skip:
         return _parsed(
             DetectionKind.CARD_REWARD.value,
@@ -155,18 +245,81 @@ def parse_ocr_screen(
     if extraction.state_payload.get("path_candidates"):
         return _parsed("map", [], image_path, (width, height), extraction)
     if _has_map_marker(tokens):
-        return _parsed("map", [], image_path, (width, height), extraction)
+        image = Image.open(image_path)
+        return _parsed("map", [], image_path, (width, height), _with_visual_map_candidates(extraction, image))
     if extraction.state_payload.get("shop_items"):
         return _parsed("shop", [], image_path, (width, height), extraction)
     if extraction.state_payload.get("event_options"):
         return _parsed("event", [], image_path, (width, height), extraction)
     if extraction.state_payload.get("rest_options"):
         return _parsed("rest", [], image_path, (width, height), extraction)
+    image = Image.open(image_path)
+    if _has_proceed_marker(tokens) and (proceed_box := _neow_proceed_box(image)):
+        return _parsed("event", [], image_path, (width, height), _with_neow_options(extraction, [proceed_box]))
     if neow_boxes := _neow_choice_boxes(image):
         return _parsed("event", [], image_path, (width, height), _with_neow_options(extraction, neow_boxes))
     if extraction.state_payload.get("cards") or extraction.state_payload.get("monsters"):
         return _parsed("combat", [], image_path, (width, height), extraction)
+    if visual_skip := _right_side_skip_box(image):
+        return _parsed(
+            DetectionKind.CARD_REWARD.value,
+            [
+                RecognizedOption(
+                    id="skip",
+                    name="Skip",
+                    kind="skip",
+                    box=visual_skip,
+                    confidence=1.0,
+                    source_text="visual-skip",
+                    tags=[],
+                )
+            ],
+            image_path,
+            (width, height),
+            extraction,
+        )
     raise ValueError(f"unknown OCR screen layout for {image_path}")
+
+
+def build_ocr_token_report(
+    image_path: Path,
+    ocr_provider: OcrProvider,
+    *,
+    calibration: RegionCalibration | None = None,
+) -> OcrTokenReport:
+    image = Image.open(image_path)
+    tokens = ocr_provider.recognize(image_path)
+    return build_ocr_token_report_from_tokens(tokens, image.size, calibration=calibration)
+
+
+def build_ocr_token_report_from_tokens(
+    tokens: list[OcrToken],
+    resolution: tuple[int, int],
+    *,
+    calibration: RegionCalibration | None = None,
+) -> OcrTokenReport:
+    unknown_tokens: list[OcrToken] = []
+    low_confidence: list[OcrTokenReportCandidate] = []
+    layout_rejected: list[OcrTokenReportCandidate] = []
+    fuzzy: list[OcrFuzzyCandidate] = []
+    for token in tokens:
+        match = _catalog_match_with_alias(token.text)
+        if match is None:
+            unknown_tokens.append(token)
+            fuzzy.extend(_fuzzy_candidates(token))
+            continue
+        entry, alias = match
+        candidate = OcrTokenReportCandidate(token, entry, alias)
+        if token.confidence < MIN_OCR_OPTION_CONFIDENCE:
+            low_confidence.append(candidate)
+        elif not _in_layout_region(token, entry.kind, resolution, calibration):
+            layout_rejected.append(candidate)
+    return OcrTokenReport(
+        unknown_tokens=unknown_tokens,
+        low_confidence_catalog_candidates=low_confidence,
+        layout_rejected_catalog_candidates=layout_rejected,
+        fuzzy_candidates=fuzzy,
+    )
 
 
 def _parsed(
@@ -262,9 +415,31 @@ def _is_skip_gray(pixel: tuple[int, int, int]) -> bool:
     return 70 <= red <= 105 and 70 <= green <= 105 and 70 <= blue <= 105
 
 
+def _is_skip_red(pixel: tuple[int, int, int]) -> bool:
+    red, green, blue = pixel
+    return red >= 110 and green <= 85 and blue <= 85 and red >= green + 45
+
+
+def _right_side_skip_box(image: Image.Image) -> Box | None:
+    width, height = image.size
+    candidates = [
+        box
+        for box in _components(image, _is_skip_red)
+        if (box[0] + box[2]) / 2 >= width * 0.70 and (box[1] + box[3]) / 2 >= height * 0.60
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=_area)
+
+
 def _neow_choice_boxes(image: Image.Image) -> list[Box]:
     boxes = [_scale_reference_box(box, image.size) for box in NEOW_CHOICE_REFERENCE_BOXES]
     return boxes if sum(1 for box in boxes if _blue_panel_ratio(image, box) >= 0.20) >= 3 else []
+
+
+def _neow_proceed_box(image: Image.Image) -> Box | None:
+    box = _scale_reference_box(NEOW_PROCEED_REFERENCE_BOX, image.size)
+    return box if _blue_panel_ratio(image, box) >= 0.20 else None
 
 
 def _scale_reference_box(box: Box, resolution: tuple[int, int]) -> Box:
@@ -296,6 +471,61 @@ def _blue_panel_ratio(image: Image.Image, box: Box) -> float:
 def _is_neow_panel_pixel(pixel: tuple[int, int, int]) -> bool:
     red, green, blue = pixel
     return red <= 80 and green >= 65 and blue >= 85 and blue >= red + 30
+
+
+def _with_visual_map_candidates(extraction: LiveStateExtraction, image: Image.Image) -> LiveStateExtraction:
+    boxes = _visual_map_node_boxes(image)
+    if not boxes:
+        return extraction
+    payload = dict(extraction.state_payload)
+    state_boxes = dict(extraction.state_boxes)
+    paths = []
+    for index, box in enumerate(boxes, start=1):
+        node_id = f"visual-node-{index}"
+        paths.append(
+            {
+                "node_id": node_id,
+                "node_type": "unknown",
+                "depth": 1,
+                "elite_count_ahead": 0,
+                "rest_count_ahead": 0,
+                "shop_count_ahead": 0,
+                "event_count_ahead": 0,
+                "boss_distance": 5,
+                "forced_elite": False,
+            }
+        )
+        state_boxes[f"path:{node_id}"] = box
+    payload["path_candidates"] = paths
+    field_confidence = dict(extraction.field_confidence)
+    field_confidence["path_candidates"] = 0.80
+    return LiveStateExtraction(
+        state_payload=payload,
+        state_boxes=state_boxes,
+        floor=extraction.floor,
+        missing_fields=[field for field in extraction.missing_fields if field != "path_candidates"],
+        unknown_tokens=extraction.unknown_tokens,
+        field_confidence=field_confidence,
+    )
+
+
+def _visual_map_node_boxes(image: Image.Image) -> list[Box]:
+    width, height = image.size
+    boxes = []
+    for box in _components(image, _is_map_node_pixel):
+        center_x = (box[0] + box[2]) / 2
+        center_y = (box[1] + box[3]) / 2
+        if not (width * 0.15 <= center_x <= width * 0.82 and height * 0.45 <= center_y <= height * 0.65):
+            continue
+        if not (1_000 <= _area(box) <= 10_000):
+            continue
+        boxes.append(box)
+    return sorted(boxes, key=lambda box: (-(box[1] + box[3]), box[0]))[:4]
+
+
+def _is_map_node_pixel(pixel: tuple[int, int, int]) -> bool:
+    red, green, blue = pixel
+    return 45 <= red <= 130 and 35 <= green <= 120 and 30 <= blue <= 115
 
 
 def _with_neow_options(extraction: LiveStateExtraction, boxes: list[Box]) -> LiveStateExtraction:
@@ -356,11 +586,64 @@ def _slot_ids(options: list[RecognizedOption]) -> list[RecognizedOption]:
 
 
 def _catalog_match(text: str) -> CatalogEntry | None:
+    match = _catalog_match_with_alias(text)
+    if match is None:
+        return None
+    return match[0]
+
+
+def _catalog_match_with_alias(text: str) -> tuple[CatalogEntry, str] | None:
     normalized = _normalize_text(text)
     for entry in CATALOG:
-        if normalized in {_normalize_text(alias) for alias in entry.aliases}:
-            return entry
+        for alias in entry.aliases:
+            if normalized == _normalize_text(alias):
+                return entry, _normalize_text(alias)
     return None
+
+
+def _fuzzy_candidates(token: OcrToken) -> list[OcrFuzzyCandidate]:
+    normalized = _normalize_text(token.text)
+    if not normalized:
+        return []
+    candidates: list[OcrFuzzyCandidate] = []
+    for entry in CATALOG:
+        for alias in entry.aliases:
+            normalized_alias = _normalize_text(alias)
+            distance = _edit_distance(normalized, normalized_alias, limit=2)
+            if distance is not None:
+                candidates.append(OcrFuzzyCandidate(token, entry, normalized_alias, "edit_distance", distance))
+            elif _prefix_similar(normalized, normalized_alias):
+                candidates.append(OcrFuzzyCandidate(token, entry, normalized_alias, "prefix"))
+    return candidates
+
+
+def _edit_distance(left: str, right: str, *, limit: int) -> int | None:
+    if abs(len(left) - len(right)) > limit:
+        return None
+    previous = list(range(len(right) + 1))
+    for index, left_char in enumerate(left, start=1):
+        current = [index]
+        row_min = index
+        for offset, right_char in enumerate(right, start=1):
+            cost = 0 if left_char == right_char else 1
+            value = min(previous[offset] + 1, current[offset - 1] + 1, previous[offset - 1] + cost)
+            current.append(value)
+            row_min = min(row_min, value)
+        if row_min > limit:
+            return None
+        previous = current
+    distance = previous[-1]
+    return distance if 0 < distance <= limit else None
+
+
+def _prefix_similar(left: str, right: str) -> bool:
+    if min(len(left), len(right)) < 4:
+        return False
+    return left.startswith(right[:4]) or right.startswith(left[:4])
+
+
+def _token_dict(token: OcrToken) -> dict[str, object]:
+    return {"text": token.text, "box": list(token.box), "confidence": token.confidence}
 
 
 def _terminal_kind(tokens: list[OcrToken]) -> DetectionKind | None:
@@ -375,6 +658,22 @@ def _terminal_kind(tokens: list[OcrToken]) -> DetectionKind | None:
 def _has_map_marker(tokens: list[OcrToken]) -> bool:
     return any(
         _normalize_text(token.text) in MAP_MARKER_TERMS
+        for token in tokens
+        if token.confidence >= MIN_OCR_OPTION_CONFIDENCE
+    )
+
+
+def _has_loot_marker(tokens: list[OcrToken]) -> bool:
+    return any(
+        _normalize_text(token.text) in LOOT_MARKER_TERMS
+        for token in tokens
+        if token.confidence >= MIN_OCR_OPTION_CONFIDENCE
+    )
+
+
+def _has_proceed_marker(tokens: list[OcrToken]) -> bool:
+    return any(
+        _normalize_text(token.text) == "proceed"
         for token in tokens
         if token.confidence >= MIN_OCR_OPTION_CONFIDENCE
     )
@@ -406,8 +705,60 @@ def _menu_kind(options: list[RecognizedOption]) -> DetectionKind | None:
     return None
 
 
+def _recognized_menu_fragment_options(
+    tokens: list[OcrToken],
+    resolution: tuple[int, int],
+    calibration: RegionCalibration | None,
+) -> list[RecognizedOption]:
+    menu_tokens = [
+        token
+        for token in tokens
+        if token.confidence >= MIN_OCR_OPTION_CONFIDENCE
+        and _in_layout_region(token, "select_single_player", resolution, calibration)
+    ]
+    options: list[RecognizedOption] = []
+    for token in menu_tokens:
+        normalized_token = _normalize_text(token.text)
+        if normalized_token not in {"플레이", "레이"}:
+            continue
+        line_tokens = [
+            candidate
+            for candidate in menu_tokens
+            if abs(_box_center(candidate.box)[1] - _box_center(token.box)[1]) <= 45
+        ]
+        line_texts = {_normalize_text(candidate.text) for candidate in line_tokens}
+        if not ({"글", "싱글", "싱", "ag"} & line_texts):
+            continue
+        box = _union_boxes([candidate.box for candidate in line_tokens])
+        options.append(
+            RecognizedOption(
+                id="single_player",
+                name="Single Player",
+                kind="select_single_player",
+                box=box,
+                confidence=min(candidate.confidence for candidate in line_tokens),
+                source_text=" ".join(candidate.text for candidate in sorted(line_tokens, key=lambda item: item.box[0])),
+                tags=[],
+            )
+        )
+    return options
+
+
 def _normalize_text(text: str) -> str:
     return " ".join(text.casefold().strip().split())
+
+
+def _box_center(box: Box) -> tuple[float, float]:
+    return ((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)
+
+
+def _union_boxes(boxes: list[Box]) -> Box:
+    return (
+        min(box[0] for box in boxes),
+        min(box[1] for box in boxes),
+        max(box[2] for box in boxes),
+        max(box[3] for box in boxes),
+    )
 
 
 def _in_layout_region(
@@ -423,7 +774,7 @@ def _in_layout_region(
     center_x = (token.box[0] + token.box[2]) / 2 / width
     center_y = (token.box[1] + token.box[3]) / 2 / height
     if kind == "skip":
-        return 0.35 <= center_x <= 0.65 and center_y >= 0.75
+        return 0.35 <= center_x <= 0.95 and center_y >= 0.70
     if kind == "card":
         return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.55
     if kind in {"continue_run", "select_single_player", "select_mode", "select_character", "restart_run"}:
