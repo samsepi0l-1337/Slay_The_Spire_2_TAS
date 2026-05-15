@@ -23,6 +23,10 @@ class WindowDetector:
     def detect(self, process: str) -> TargetWindow:
         system = (self.platform_name or platform.system()).lower()
         if system == "darwin":
+            if self.runner is None:
+                quartz_window = _darwin_target_window_via_quartz(process)
+                if quartz_window is not None:
+                    return quartz_window
             output = self._run(["osascript", "-e", _macos_window_script(process)])
         elif system == "windows":
             output = self._run(["powershell", "-NoProfile", "-Command", _windows_window_script(process)])
@@ -44,6 +48,55 @@ def _run_command(command: list[str]) -> str:
 
 def _run_osascript(command: list[str]) -> str:
     return _run_command(command)
+
+
+def _darwin_target_window_via_quartz(process: str) -> TargetWindow | None:
+    """Resolve the main on-screen window without System Events AppleScript automation.
+
+    Embedded Python (for example Cursor agents) often lacks TCC permission for
+    ``osascript`` → System Events, which returns an empty string. Quartz window
+    listing works in that environment when Screen Recording is available.
+    """
+    if platform.system().lower() != "darwin":
+        return None
+    try:
+        from Quartz import CGWindowListCopyWindowInfo, kCGNullWindowID, kCGWindowListOptionOnScreenOnly
+    except ImportError:
+        return None
+    try:
+        rows = CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly, kCGNullWindowID)
+    except Exception:
+        return None
+    if not rows:
+        return None
+    best: tuple[float, TargetWindow] | None = None
+    for row in rows:
+        if (row.get("kCGWindowOwnerName") or "") != process:
+            continue
+        if row.get("kCGWindowLayer", 999) != 0:
+            continue
+        bounds = row.get("kCGWindowBounds")
+        if not isinstance(bounds, dict):
+            continue
+        try:
+            left = int(float(bounds.get("X", 0)))
+            top = int(float(bounds.get("Y", 0)))
+            width = int(float(bounds.get("Width", 0)))
+            height = int(float(bounds.get("Height", 0)))
+        except (TypeError, ValueError):
+            continue
+        if width <= 0 or height <= 0:
+            continue
+        area = float(width * height)
+        title = str(row.get("kCGWindowName") or "")
+        candidate = TargetWindow(
+            process=process,
+            title=title,
+            bounds=WindowBounds(left=left, top=top, width=width, height=height),
+        )
+        if best is None or area > best[0]:
+            best = (area, candidate)
+    return None if best is None else best[1]
 
 
 def _macos_window_script(process: str) -> str:

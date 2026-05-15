@@ -361,6 +361,43 @@ def test_native_input_controller_keeps_target_keypress_inside_window_guard() -> 
     _assert_target_action_runs_inside_guard(commands[0][-1], "key code 53")
 
 
+def test_macos_native_input_accepts_borderless_empty_window_title() -> None:
+    commands = []
+    target_window = TargetWindow(
+        process="Slay the Spire 2",
+        title="",
+        bounds=WindowBounds(left=0, top=0, width=1920, height=1080),
+    )
+
+    class Detector:
+        def detect(self, process: str) -> TargetWindow:
+            assert process == "Slay the Spire 2"
+            return target_window
+
+    controller = automation.NativeInputController(
+        platform_name="Darwin",
+        runner=commands.append,
+        window_detector=Detector(),
+    )
+
+    controller.send(
+        AutomationAction(
+            action="pick",
+            option_id="continue",
+            dry_run=False,
+            target=(480, 960, 560, 1030),
+            coordinate_space="window_relative",
+            target_window=target_window,
+        )
+    )
+
+    script = commands[0][-1]
+    assert "every window of targetProcess" in script
+    assert "(length of expectedTitle) is greater than 0" in script
+    assert script.index("(length of expectedTitle) is greater than 0") < script.index("click at {520, 995}")
+    _assert_target_action_runs_inside_guard(script, "click at {520, 995}")
+
+
 def test_windows_native_input_keeps_target_guard_and_click_in_one_script() -> None:
     commands = []
     target_window = _target_window()
@@ -489,10 +526,10 @@ def test_native_input_controller_fails_closed_when_target_window_changes() -> No
 
 
 def _assert_target_action_runs_inside_guard(script: str, action_line: str) -> None:
-    last_bounds_check = script.index("if item 2 of windowSize is not expectedHeight")
+    match_line = "repeat with w in (every window of targetProcess)"
     first_end_tell = script.index("end tell")
     action_index = script.index(action_line)
-    assert last_bounds_check < action_index < first_end_tell
+    assert script.index(match_line) < action_index < first_end_tell
 
 
 def test_native_input_controller_maps_platform_commands(monkeypatch) -> None:

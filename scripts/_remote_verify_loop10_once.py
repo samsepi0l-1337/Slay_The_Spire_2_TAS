@@ -1,7 +1,11 @@
-"""One-off remote verification: fixtures + live-learn-loop --max-steps 10. Not imported by package."""
+"""One-off remote verification: fixtures + live-learn-loop --max-steps 10. Not imported by package.
+
+Set STS2_EXE to a full path of sts2-tas.exe to exercise the frozen build; otherwise uses .venv python -m sts2_tas.
+"""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -30,10 +34,8 @@ def main() -> int:
     ocr.write_text(json.dumps(frames), encoding="utf-8")
 
     py = wd / ".venv" / "Scripts" / "python.exe"
-    cmd = [
-        str(py),
-        "-m",
-        "sts2_tas",
+    sts2_exe = os.environ.get("STS2_EXE", "").strip()
+    subcmd = [
         "live-learn-loop",
         "--capture-fixture",
         str(screen),
@@ -62,6 +64,10 @@ def main() -> int:
         "--gold",
         "0",
     ]
+    if sts2_exe:
+        cmd = [sts2_exe, *subcmd]
+    else:
+        cmd = [str(py), "-m", "sts2_tas", *subcmd]
     proc = subprocess.run(cmd, cwd=wd, check=False)
     return proc.returncode
 

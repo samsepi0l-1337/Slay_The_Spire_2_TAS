@@ -15,7 +15,7 @@
 - 절대 main agent가 subagents의 작업을 대신 수행하지 않는다.
 - 작업의 크기와 복잡성에 따라 필요한 만큼 subagents를 생성한다.
 - subagents에 작성해야하는 항목: 모델, 추론 강도, 전달할 최소 컨텍스트(독립 윈도우), 역할(전용 지시), 허용 도구와 권한(기본은 좁게, 넓히면 이유)을 명시한다.
-- subagents에서 gpt-5.3-codex-spark 모델은 대부분의 코드 작성 사용한다.
+- subagents에서 gpt-5.3-codex-spark 모델은 코드 작성에 사용한다.
 - subagents에서 gpt-5.4-mini 모델은 commit, push, 검색, 간단한 검증, 간단한 분석 작업, mcp와 skills와 subagent를 선택할 사용한다.
 - subagents에서 gpt-5.5 모델은 복잡한 코드 작성, 복잡한 검증, 복잡한 분석, 문서 작성 작업에 사용한다.
 - 코드 작성 subagents의 작업을 완료하면 코드 검증 subagents를 생성하여 검증하고, 만약 검증 subagents에서 문제가 있다면 다시 코드 작성 subagents를 생성하여 작업을 반복한다.

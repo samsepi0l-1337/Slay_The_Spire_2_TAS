@@ -73,7 +73,7 @@
 - `--input-backend native --execute`는 platform command로 실제 입력 계획을 전달한다.
 - macOS native backend는 `osascript` System Events를 사용한다.
 - `live-step --screenshot-out --target-process "Slay the Spire 2"`는 macOS `osascript` 또는 Windows PowerShell/user32 기반 detector로 정확히 하나의 matching process/window를 찾고, target-window crop을 window-relative action plan으로 처리한다.
-- macOS native backend는 target process가 있으면 하나의 AppleScript 안에서 application activate, window identity/bounds 재조회, expected metadata 비교, click/key 실행을 순서대로 수행한다.
+- macOS native backend는 target process가 있으면 하나의 AppleScript 안에서 application activate, `every window` 중 expected bounds와 일치하는 창을 선택(다중 창·오버레이 대비), `expectedTitle`이 비어 있으면 제목 검사를 생략(Quartz 감지의 빈 `kCGWindowName`과 System Events 창 제목 불일치 방지), click/key 실행을 순서대로 수행한다.
 - Windows native backend는 target process가 있으면 하나의 PowerShell script 안에서 process/title/bounds 재조회, `SetForegroundWindow`, click/key 실행을 순서대로 수행한다.
 - Linux native backend는 `xdotool`을 사용한다.
 - Windows native backend는 PowerShell/user32 `SetCursorPos`/`mouse_event`로 click을 보내고, keypress는 기존 PowerShell SendKeys 경로를 유지한다.

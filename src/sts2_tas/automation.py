@@ -357,15 +357,20 @@ def _macos_target_guard(plan: dict[str, object], action: str) -> str:
         "  set matches to every process whose name is expectedProcess\n"
         '  if (count of matches) is not 1 then error "target window changed before input"\n'
         "  set targetProcess to item 1 of matches\n"
-        '  if (count of windows of targetProcess) is not 1 then error "target window changed before input"\n'
-        "  set targetWindow to window 1 of targetProcess\n"
-        '  if name of targetWindow is not expectedTitle then error "target window changed before input"\n'
-        "  set windowPosition to position of targetWindow\n"
-        "  set windowSize to size of targetWindow\n"
-        '  if item 1 of windowPosition is not expectedLeft then error "target window changed before input"\n'
-        '  if item 2 of windowPosition is not expectedTop then error "target window changed before input"\n'
-        '  if item 1 of windowSize is not expectedWidth then error "target window changed before input"\n'
-        '  if item 2 of windowSize is not expectedHeight then error "target window changed before input"\n'
+        "  set targetWindow to missing value\n"
+        "  repeat with w in (every window of targetProcess)\n"
+        "    set windowPosition to position of w\n"
+        "    set windowSize to size of w\n"
+        "    if (item 1 of windowPosition) is expectedLeft and (item 2 of windowPosition) is expectedTop and "
+        "(item 1 of windowSize) is expectedWidth and (item 2 of windowSize) is expectedHeight then\n"
+        "      set targetWindow to w\n"
+        "      exit repeat\n"
+        "    end if\n"
+        "  end repeat\n"
+        '  if targetWindow is missing value then error "target window changed before input"\n'
+        "  if (length of expectedTitle) is greater than 0 then\n"
+        '    if name of targetWindow is not expectedTitle then error "target window changed before input"\n'
+        "  end if\n"
         f"{_indent_applescript(action)}\n"
         "end tell\n"
     )
