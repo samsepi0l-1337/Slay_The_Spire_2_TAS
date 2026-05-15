@@ -89,9 +89,9 @@ class TasExperience:
             terminal_return=(
                 None if data["terminal_return"] is None else float(data["terminal_return"])
             ),
-            changed_ack=bool(data.get("changed_ack", False)),
-            no_op=bool(data.get("no_op", False)),
-            drift_detected=bool(data.get("drift_detected", False)),
+            changed_ack=_strict_bool(data.get("changed_ack", False), "changed_ack"),
+            no_op=_strict_bool(data.get("no_op", False), "no_op"),
+            drift_detected=_strict_bool(data.get("drift_detected", False), "drift_detected"),
             failure_reason=data.get("failure_reason"),
         )
 
@@ -116,3 +116,9 @@ def write_tas_experiences(path: Path, experiences: Iterable[TasExperience]) -> N
     with path.open("w", encoding="utf-8") as file:
         for experience in experiences:
             file.write(experience.to_json() + "\n")
+
+
+def _strict_bool(value: Any, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError(f"{field} must be a boolean")
+    return value

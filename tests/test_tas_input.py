@@ -199,6 +199,27 @@ def test_windows_native_plan_clicks_end_turn_target_when_present() -> None:
     assert "SetCursorPos(1755, 885)" in command[3]
 
 
+def test_play_card_slot_rejects_ambiguous_or_out_of_range_hand_ids() -> None:
+    for source_card_id in ("hand-10-strike", "hand-99-strike", "hand-01-strike"):
+        with pytest.raises(ValueError, match="hand slot"):
+            tas_input.play_card_slot_key(source_card_id)
+
+
+def test_automation_action_rejects_invalid_click_boxes() -> None:
+    invalid_boxes = [
+        (10, 10, 10, 20),
+        (20, 10, 10, 20),
+        (-1, 10, 10, 20),
+    ]
+    for box in invalid_boxes:
+        with pytest.raises(ValueError, match="click box"):
+            automation.plan_action(
+                _combat_step(actions=[ActionCandidate(action_type="choose_path", path_node_id="0", screen_box=box)]),
+                "choose_path:path_node=0",
+                dry_run=True,
+            )
+
+
 def test_non_card_targeted_action_uses_source_and_target_click_sequence() -> None:
     action = automation.plan_action(
         _combat_step(

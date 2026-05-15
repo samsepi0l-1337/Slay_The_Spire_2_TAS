@@ -116,6 +116,8 @@ class AutomationAction:
             raise ValueError("window_relative actions require target_window metadata")
         if self.targets is not None and not self.targets:
             raise ValueError("target sequence cannot be empty")
+        for box in self.targets or ([] if self.target is None else [self.target]):
+            _validate_click_box(box, self.coordinate_space, self.target_window)
 
     def input_plan(self) -> dict[str, Any]:
         target_boxes = self.targets or ([] if self.target is None else [self.target])
@@ -165,6 +167,17 @@ def _click_step(
         x += target_window.bounds.left
         y += target_window.bounds.top
     return {"kind": "click", "x": x, "y": y}
+
+
+def _validate_click_box(
+    target: Box,
+    coordinate_space: CoordinateSpace,
+    target_window: TargetWindow | None,
+) -> None:
+    _ = coordinate_space, target_window
+    left, top, right, bottom = target
+    if left < 0 or top < 0 or right <= left or bottom <= top:
+        raise ValueError(f"invalid click box: {target}")
 
 
 @dataclass(frozen=True)

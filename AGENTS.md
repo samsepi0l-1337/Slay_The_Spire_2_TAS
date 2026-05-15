@@ -1,3 +1,8 @@
+---
+description: 
+alwaysApply: false
+---
+
 # AGENTS.md
 
 ## Communication

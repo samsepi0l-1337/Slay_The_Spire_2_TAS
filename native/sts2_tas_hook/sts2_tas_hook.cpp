@@ -35,6 +35,7 @@ constexpr const char* kSchemaVersion = "sts2-hook-canary.v1";
 constexpr const char* kPolicy = "passive-only/no input/no time hook";
 constexpr const char* kHookPlan = "Detours based Present hook";
 constexpr const char* kCapturePlan = "frame screenshot/hash";
+constexpr const char* kIpcPlan = "named pipe JSONL with session nonce and target pid binding";
 
 struct WindowMetadata {
   HWND hwnd;

@@ -20,6 +20,9 @@ REQUIRED_HOOK_TOKENS = [
     "passive-only",
     "no input hook",
     "no time hook",
+    "session nonce",
+    "target pid binding",
+    "named pipe",
 ]
 
 

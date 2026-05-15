@@ -7,6 +7,8 @@
 - [TAS runtime v1](tas-runtime.md): semantic movie, checkpoint, replay/verify CLI, ML experience gate, Windows passive hook canary.
 - [Docker and Windows local execution](docker.md): Windows interactive desktop 실행 보조 경계.
 - [V1 gaps](v1-gaps.md): 남은 gap과 acceptance 기준.
+- [V1 implementation directive](v1-implementation-directive.md): v1 gap을 live replay acceptance로 구현하기 위한 지시서.
+- [Memory based play directive](memory-based-play-directive.md): 실제 게임 메모리/RAM 기준 플레이가 필요할 때의 별도 read-only 구현 지시서.
 
 ## Current Scope
 
@@ -18,6 +20,8 @@
 - 숫자키 hybrid combat input
 - verified `TasExperience` data gate
 - `tas-probe`, `tas-record`, `tas-replay`, `tas-verify`, `tas-search`
+- `memory-snapshot` read-only process memory snapshot path
+- `hook-memory-play` fail-closed hook IPC + read-only memory snapshot path
 
 제외:
 

@@ -12,7 +12,10 @@ def play_card_slot_to_digit(source_card_id: str) -> int:
     match = _HAND_CARD_ID.match(source_card_id)
     if match is None:
         raise ValueError(f"cannot parse hand slot from action source_card_id: {source_card_id}")
-    return int(match.group(1))
+    slot_text = match.group(1)
+    if len(slot_text) > 1 and slot_text.startswith("0"):
+        raise ValueError(f"cannot parse hand slot from action source_card_id: {source_card_id}")
+    return int(slot_text)
 
 
 def play_card_slot_key(source_card_id: str) -> str:

@@ -135,7 +135,7 @@ uv sync --extra dev
 
 마지막 확인 결과는 `31 passed in 9.48s`였습니다.
 
-SSH service session은 Windows SessionId `0`에서 실행되므로 실제 desktop capture/input 경로가 아닙니다. 직접 SSH에서 `ImageGrab.grab()`은 `OSError: screen grab failed`가 날 수 있고, desktop window enumeration도 interactive session window를 보지 못할 수 있습니다. 실제 게임 화면 테스트는 로그인된 Windows interactive session에서 직접 실행하거나, `Interactive` scheduled task로 실행합니다. scheduled task는 `-WindowStyle Hidden`으로 실행해 PowerShell 콘솔 창이 게임 화면 캡처와 클릭 좌표를 가리지 않게 합니다.
+SSH service session은 Windows SessionId `0`에서 실행되므로 실제 desktop capture/input 경로가 아닙니다. 직접 SSH에서 `ImageGrab.grab()`은 `OSError: screen grab failed`가 날 수 있고, desktop window enumeration도 interactive session window를 보지 못할 수 있습니다. 실제 게임 화면 테스트는 logged-in local interactive session에서 직접 실행하거나, 같은 로그인 세션의 `Interactive` scheduled task로 실행합니다. scheduled task의 `-WindowStyle Hidden`은 콘솔 창이 게임 화면 캡처와 클릭 좌표를 가리지 않게 하는 표시 방식일 뿐, SSH/service session을 acceptance 실행 환경으로 바꾸지 않습니다.
 
 ```powershell
 $taskName = 'STS2TASRemoteSmoke'
@@ -203,7 +203,7 @@ Invoke-WebRequest `
 
 ## Continuous Windows Live Loop
 
-Windows interactive session에서 게임 창이 열린 상태라면 `scripts/run-windows-live-loop.ps1`로 hidden scheduled task를 등록해 사용자가 멈출 때까지 실행할 수 있습니다. 이 wrapper는 `live-learn-loop`를 `--max-steps` 없이 실행하고, `--policy first-legal`, `--ack-live-poll`, `--target-process SlayTheSpire2`, `--input-backend native`, `--execute`, `--stop-file`을 함께 전달합니다. 승리 또는 게임 오버 terminal 화면에서 `New Run`/`다시 시작`이 인식되면 restart action을 클릭하고 다음 run으로 이어갑니다.
+Windows logged-in local interactive session에서 게임 창이 열린 상태라면 `scripts/run-windows-live-loop.ps1`로 interactive scheduled task를 등록해 사용자가 멈출 때까지 실행할 수 있습니다. 이 wrapper는 `live-learn-loop`를 `--max-steps` 없이 실행하고, `--policy first-legal`, `--ack-live-poll`, `--target-process SlayTheSpire2`, `--input-backend native`, `--execute`, `--stop-file`을 함께 전달합니다. 승리 또는 게임 오버 terminal 화면에서 `New Run`/`다시 시작`이 인식되면 restart action을 클릭하고 다음 run으로 이어갑니다.
 
 기본값은 `-RunLevel Highest`라 `Register-ScheduledTask`에 **관리자 권한**이 필요합니다. `Access is denied`가 나오면 PowerShell을 **관리자로 실행**한 뒤 같은 명령을 쓰거나, `-RunLevel Limited`로 등록을 낮춥니다(일부 환경에서 입력/포커스 동작이 달라질 수 있음).
 

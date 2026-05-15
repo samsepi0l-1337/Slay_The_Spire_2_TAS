@@ -14,6 +14,8 @@ from sts2_tas.schema import (
     TargetWindow,
     WindowBounds,
 )
+from sts2_tas.tas_movie import PhysicalInput
+from sts2_tas.tas_replay import automation_action_from_physical_input
 
 
 def _step(path: Path, *, actions: list[ActionCandidate] | None = None) -> Path:
@@ -229,6 +231,14 @@ def test_plan_action_accepts_window_relative_step(tmp_path: Path) -> None:
 
     assert action.coordinate_space == "window_relative"
     assert action.input_plan() == {"kind": "click", "x": 440, "y": 495}
+
+
+def test_physical_click_rejects_coordinates_outside_target_window() -> None:
+    with pytest.raises(ValueError, match="click box"):
+        automation_action_from_physical_input(
+            PhysicalInput(index=0, kind="click", x=50, y=100),
+            target_window=_target_window(),
+        )
 
 
 def test_plan_action_builds_multi_click_sequence_for_targeted_combat_action(tmp_path: Path) -> None:

@@ -29,6 +29,8 @@ Required fields:
 | `frame_counter` | integer | Monotonic counter incremented by the Present hook. |
 | `timestamp_utc` | string | ISO-8601 UTC timestamp captured without a time hook. |
 | `process_id` | integer | Windows process id for the observed process. |
+| `target_pid` | integer | Expected target process id bound by the Python reader. |
+| `session_nonce` | string | Per-run nonce required for the named pipe reader to accept the event. |
 | `thread_id` | integer | Windows thread id that observed Present. |
 | `passive_only` | boolean | Must be `true`. |
 | `foreground` | boolean | Whether the observed game window is foreground. |
@@ -62,7 +64,7 @@ Capture object:
 ## Example
 
 ```json
-{"schema_version":"sts2-hook-canary.v1","event_type":"present_frame","frame_counter":42,"timestamp_utc":"2026-05-15T00:00:00Z","process_id":1234,"thread_id":5678,"passive_only":true,"foreground":true,"window":{"hwnd":"0x00000000000ABC","title":"Slay the Spire 2","class_name":"UnityWndClass","process_name":"SlayTheSpire2.exe","client_width":1920,"client_height":1080,"screen_bounds":{"left":0,"top":0,"right":1920,"bottom":1080}},"capture":{"mode":"hash_only","frame_hash":"sha256:example","hash_algorithm":"sha256","screenshot_path":null,"width":1920,"height":1080,"format":"DXGI_FORMAT_R8G8B8A8_UNORM"}}
+{"schema_version":"sts2-hook-canary.v1","event_type":"present_frame","frame_counter":42,"timestamp_utc":"2026-05-15T00:00:00Z","process_id":1234,"target_pid":1234,"session_nonce":"nonce-example","thread_id":5678,"passive_only":true,"foreground":true,"window":{"hwnd":"0x00000000000ABC","title":"Slay the Spire 2","class_name":"UnityWndClass","process_name":"SlayTheSpire2.exe","client_width":1920,"client_height":1080,"screen_bounds":{"left":0,"top":0,"right":1920,"bottom":1080}},"capture":{"mode":"hash_only","frame_hash":"sha256:example","hash_algorithm":"sha256","screenshot_path":null,"width":1920,"height":1080,"format":"DXGI_FORMAT_R8G8B8A8_UNORM"}}
 ```
 
 ## Passive-only invariants
@@ -70,6 +72,8 @@ Capture object:
 The IPC producer must preserve these invariants for every event:
 
 - `passive_only` is always `true`.
+- `session_nonce` must match the Python reader's expected nonce.
+- `target_pid` must match the Python reader's expected process id.
 - Present hook observation does not send input.
 - Present hook observation does not hook or patch time.
 - Frame screenshot/hash collection is best-effort and may be skipped rather than

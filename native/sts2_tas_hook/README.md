@@ -14,6 +14,7 @@ state.
 - Runtime mode: passive-only canary.
 - Output: frame counter, foreground window metadata, and optional frame
   screenshot/hash evidence.
+- IPC guard: named pipe JSONL with session nonce and target pid binding.
 - Non-goal: input automation, simulation speed changes, RNG hooks, or game
   state mutation.
 
@@ -60,6 +61,8 @@ Required evidence per frame:
   screen bounds.
 - `frame_hash`: content hash when screenshot capture is enabled.
 - `screenshot`: optional path or shared-buffer metadata for the copied frame.
+- `session_nonce`: per-run nonce supplied by the Python reader.
+- `target_pid`: process id binding for the expected game process.
 
 ## Detours integration notes
 
@@ -81,5 +84,6 @@ Detours, or a game process.
 - Frame counter is monotonic.
 - Foreground/window metadata is collected without changing focus.
 - Frame screenshot/hash collection is optional and best-effort.
+- Named pipe events include session nonce and target pid binding.
 - Passive-only/no input/no time hook policy is documented in code and README.
 - No actual build, injection, or execution is required for this scaffold.

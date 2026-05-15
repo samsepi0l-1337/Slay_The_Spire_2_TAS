@@ -4,6 +4,7 @@ import argparse
 from dataclasses import asdict
 import json
 from pathlib import Path
+import platform
 import time
 
 from PIL import Image
@@ -15,6 +16,14 @@ from .json_io import load_json_file
 from .evaluation import write_evaluation_report
 from .evaluation_cli import add_evaluation_parsers
 from .live_learning import run_live_learn_loop
+from .memory_play import (
+    MemoryAttachRequest,
+    WindowsReadOnlyProcessMemoryReader,
+    cross_check_memory_state,
+    load_memory_signature_registry,
+    load_memory_snapshot,
+    memory_snapshot_from_reader,
+)
 from .ml_cli import add_ml_parsers
 from .ml_entities import resolve_action_identity
 from .model import load_model, recommend
@@ -32,6 +41,7 @@ from .runtime import backup_save, capture_screen, restore_save, run_seed_loop
 from .schema import CoordinateSpace, GameStep, TargetWindow
 from .step_factory import PerceptionQualityError, game_step_from_detection, game_step_from_parsed_screen
 from .tas_cli import add_tas_parsers
+from .tas_hook_ipc import read_hook_jsonl
 from .torch_dataset import append_game_step, load_game_steps, write_game_steps
 from .transition import acknowledge_transition
 from .windowing import WindowDetector
@@ -173,6 +183,46 @@ def _parser() -> argparse.ArgumentParser:
     live_learn_loop.add_argument("--floor", type=int, required=True)
     _add_state_args(live_learn_loop)
     live_learn_loop.set_defaults(handler=_live_learn_loop)
+
+    hook_memory_play = subparsers.add_parser("hook-memory-play")
+    hook_memory_play.add_argument("--capture-fixture", type=Path, required=True)
+    hook_memory_play.add_argument("--ocr-fixture", type=Path)
+    hook_memory_play.add_argument("--ocr-provider", choices=["fixture", "tesseract"], default="fixture")
+    hook_memory_play.add_argument("--ocr-language", default="eng+kor")
+    hook_memory_play.add_argument("--tesseract-binary", default="tesseract")
+    hook_memory_play.add_argument("--tessdata-dir", type=Path)
+    hook_memory_play.add_argument("--ocr-psm", type=int)
+    hook_memory_play.add_argument("--region-calibration", type=Path)
+    hook_memory_play.add_argument("--hook-jsonl", type=Path, required=True)
+    hook_memory_play.add_argument("--hook-session-nonce", required=True)
+    hook_memory_play.add_argument("--hook-target-pid", type=int, required=True)
+    hook_memory_play.add_argument("--memory-registry", type=Path, required=True)
+    hook_memory_play.add_argument("--memory-snapshot", type=Path, required=True)
+    hook_memory_play.add_argument("--memory-critical-fields", required=True)
+    hook_memory_play.add_argument("--choice", required=True)
+    hook_memory_play.add_argument("--input-log", type=Path, required=True)
+    hook_memory_play.add_argument("--input-backend", choices=["jsonl", "native"], default="jsonl")
+    hook_memory_play.add_argument("--execute", action="store_true")
+    hook_memory_play.add_argument("--target-process")
+    hook_memory_play.add_argument("--game-version", required=True)
+    hook_memory_play.add_argument("--branch", required=True)
+    hook_memory_play.add_argument("--character", required=True)
+    hook_memory_play.add_argument("--ascension", type=int, required=True)
+    hook_memory_play.add_argument("--floor", type=int, required=True)
+    _add_state_args(hook_memory_play)
+    hook_memory_play.set_defaults(handler=_hook_memory_play)
+
+    memory_snapshot = subparsers.add_parser("memory-snapshot")
+    memory_snapshot.add_argument("--target-process", required=True)
+    memory_snapshot.add_argument("--pid", type=int, required=True)
+    memory_snapshot.add_argument("--platform-name", default=None)
+    memory_snapshot.add_argument("--memory-registry", type=Path, required=True)
+    memory_snapshot.add_argument("--game-version", required=True)
+    memory_snapshot.add_argument("--branch", required=True)
+    memory_snapshot.add_argument("--binary-signature", required=True)
+    memory_snapshot.add_argument("--out", type=Path, required=True)
+    memory_snapshot.set_defaults(handler=_memory_snapshot)
+
     act = subparsers.add_parser("act")
     act.add_argument("--step", type=Path, required=True)
     act.add_argument("--choice", required=True)
@@ -389,6 +439,117 @@ def _live_learn_loop(args: argparse.Namespace) -> None:
     print(json.dumps(run_live_learn_loop(args).to_dict(), sort_keys=True))
 
 
+def _hook_memory_play(args: argparse.Namespace) -> None:
+    hook_events = read_hook_jsonl(
+        args.hook_jsonl,
+        expected_nonce=args.hook_session_nonce,
+        expected_pid=args.hook_target_pid,
+    )
+    if not hook_events:
+        raise ValueError("hook IPC stream has no events")
+    base_step = _step_from_screen(args, args.capture_fixture)
+    snapshot = load_memory_snapshot(args.memory_snapshot)
+    registry = load_memory_signature_registry(args.memory_registry)
+    snapshot.validate_against(registry)
+    critical_fields = _csv(args.memory_critical_fields)
+    cross_check = cross_check_memory_state(
+        ocr_payload=base_step.state.to_dict(),
+        memory_payload=snapshot.state_payload,
+        critical_fields=critical_fields,
+    )
+    hook_event = hook_events[-1]
+    report: dict[str, object] = {
+        "hook": hook_event.to_dict(),
+        "memory_usable": cross_check.usable,
+        "mismatches": _jsonable_mismatches(cross_check.mismatches),
+    }
+    if not cross_check.usable:
+        report["state_source"] = "ocr"
+        report["fail_closed_reason"] = "memory_ocr_mismatch"
+        print(json.dumps(report, sort_keys=True))
+        return
+    memory_state = snapshot.to_structured_state(base_step.state, source_type="memory_cross_checked")
+    step = GameStep(
+        state=memory_state,
+        actions=base_step.actions,
+        chosen_action_id=base_step.chosen_action_id,
+        outcome=base_step.outcome,
+        observation=type(base_step.observation)(
+            source_type="memory_cross_checked",
+            ocr_confidence=base_step.observation.ocr_confidence,
+            game_version=base_step.observation.game_version,
+            branch=base_step.observation.branch,
+            catalog_version=base_step.observation.catalog_version,
+            missing_fields=base_step.observation.missing_fields,
+            unknown_tokens=base_step.observation.unknown_tokens,
+            field_confidence=base_step.observation.field_confidence,
+        ),
+        screenshot_path=base_step.screenshot_path,
+        label_source=base_step.label_source,
+    )
+    action_id = _resolve_action_id(step, args.choice)
+    target_window = _target_window(args)
+    coordinate_space: CoordinateSpace = "window_relative" if target_window is not None else "screen_absolute"
+    action = plan_action(
+        step,
+        action_id,
+        dry_run=not args.execute,
+        target_window=target_window,
+        coordinate_space=coordinate_space,
+    )
+    if args.input_backend == "native" and not args.execute:
+        raise ValueError("native input backend requires --execute")
+    controller = _input_controller(args) if args.execute else None
+    action_report = apply_action(action, controller)
+    action_report["success"] = True
+    report.update(
+        {
+            "state_source": "memory_cross_checked",
+            "step": step.to_dict(),
+            "choice": _automation_choice(action),
+            "input_plan": action.input_plan(),
+            "action": action_report,
+        }
+    )
+    print(json.dumps(report, sort_keys=True))
+
+
+def _memory_snapshot(args: argparse.Namespace) -> None:
+    registry = load_memory_signature_registry(args.memory_registry)
+    request = MemoryAttachRequest(
+        target_process=args.target_process,
+        pid=args.pid,
+        platform_name=args.platform_name or platform.system(),
+    )
+    reader = WindowsReadOnlyProcessMemoryReader(args.pid)
+    try:
+        snapshot = memory_snapshot_from_reader(
+            request=request,
+            registry=registry,
+            game_version=args.game_version,
+            branch=args.branch,
+            binary_signature=args.binary_signature,
+            reader=reader,
+        )
+    finally:
+        reader.close()
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(
+        json.dumps(
+            {
+                "game_version": snapshot.game_version,
+                "branch": snapshot.branch,
+                "binary_signature": snapshot.binary_signature,
+                "state_payload": snapshot.state_payload,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    print(json.dumps({"memory_snapshot": str(args.out), "access_mode": request.access_mode()}, sort_keys=True))
+
+
 def _act(args: argparse.Namespace) -> None:
     step = GameStep.from_json(args.step.read_text(encoding="utf-8"))
     if args.target_process is not None and args.coordinate_space != "window_relative":
@@ -423,6 +584,14 @@ def _target_window(args: argparse.Namespace) -> TargetWindow | None:
     if target_window is None:
         raise ValueError(f"target process window not found: {target_process}")
     return target_window
+
+
+def _csv(value: str) -> list[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _jsonable_mismatches(mismatches: dict[str, tuple[object, object]]) -> dict[str, list[object]]:
+    return {key: [left, right] for key, (left, right) in mismatches.items()}
 
 
 def _save_state_backup(args: argparse.Namespace) -> None:

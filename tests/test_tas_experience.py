@@ -166,3 +166,15 @@ def test_tas_experience_rejects_invalid_contract_fields() -> None:
     for overrides, message in invalid_cases:
         with pytest.raises(ValueError, match=message):
             TasExperience(**(base | overrides))
+
+
+def test_tas_experience_from_dict_rejects_non_bool_quality_flags() -> None:
+    payload = _experience(label_source="human").to_dict()
+
+    for field in ("changed_ack", "no_op", "drift_detected"):
+        bad_payload = payload | {field: "false"}
+        with pytest.raises(ValueError, match=field):
+            TasExperience.from_dict(bad_payload)
+
+    with pytest.raises(ValueError, match="changed_ack"):
+        TasExperience.from_dict(payload | {"changed_ack": 1})

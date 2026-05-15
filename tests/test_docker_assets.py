@@ -45,6 +45,8 @@ def test_docs_explain_windows_docker_and_deferred_scope() -> None:
     architecture_doc = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
     implemented_doc = (ROOT / "docs" / "implemented-work.md").read_text(encoding="utf-8")
     gaps_doc = (ROOT / "docs" / "v1-gaps.md").read_text(encoding="utf-8")
+    v1_directive = (ROOT / "docs" / "v1-implementation-directive.md").read_text(encoding="utf-8")
+    memory_directive = (ROOT / "docs" / "memory-based-play-directive.md").read_text(encoding="utf-8")
     index = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
 
     assert "Windows PowerShell" in docker_doc
@@ -66,6 +68,8 @@ def test_docs_explain_windows_docker_and_deferred_scope() -> None:
     assert "window focus management" not in implemented_doc
     assert "Docker" in index
     assert "v1-gaps.md" in index
+    assert "v1-implementation-directive.md" in index
+    assert "memory-based-play-directive.md" in index
     assert "semantic movie" in index
     assert "PYTHONPATH=src" in index
     assert "tas-verify --runs 5" in architecture_doc
@@ -81,8 +85,15 @@ def test_docs_explain_windows_docker_and_deferred_scope() -> None:
     assert "--tessdata-dir" in docker_doc
     assert "kor.traineddata" in docker_doc
     assert "scripts/run-windows-live-loop.ps1" in docker_doc
+    assert "logged-in local interactive session" in docker_doc
     assert "--policy first-legal" in docker_doc
     assert "--stop-file" in docker_doc
+    assert "acceptance_source=static_movie" in v1_directive
+    assert "acceptance_source=live_windows_replay" in v1_directive
+    assert "local interactive session" in v1_directive
+    assert "read-only" in memory_directive
+    assert "game memory write 또는 mutation" in memory_directive
+    assert "local interactive session" in memory_directive
 
 
 def test_windows_live_loop_script_runs_hidden_interactive_task_until_stop_file() -> None:
