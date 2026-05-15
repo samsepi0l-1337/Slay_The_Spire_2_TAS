@@ -2,7 +2,7 @@
 
 ## Data Flow
 
-1. `sts2-tas parse-screen` reads a screenshot and OCR tokens, optionally filters them through a calibrated region map, then writes catalog-matched options plus live state evidence when the OCR text carries player/hand/monster/map fields.
+1. `sts2-tas parse-screen` reads a screenshot and OCR tokens, optionally filters them through a calibrated region map, then writes catalog-matched options plus live state evidence when the OCR text carries player/hand/monster/map fields. With `--ocr-report`, it also writes a separate token report for discarded and fuzzy OCR candidates.
 2. `sts2-tas capture` or `capture-live` stores an unlabeled `GameStep` row.
 3. `sts2-tas label` updates one `GameStep` JSONL row with an `ActionCandidate.identity`, for example `pick_card|option=card_1` or `skip_reward|option=skip`. CLI choices still accept short aliases such as `pick:card_1`, `pick_card:card_1`, and `skip` when they resolve to one legal action.
 4. `sts2-tas train` trains a PyTorch entity-centric actor-critic ranker over legal `ActionCandidate` tokens.
@@ -62,7 +62,7 @@ It currently recognizes:
 
 Card rewards require all three card options plus the skip button before the parser returns a `card_reward`; partial OCR fails closed instead of producing an incomplete decision surface. Duplicate catalog ids are made slot-specific for option ids, for example `strike_1`, `strike_2`, and `strike_3`, so repeated card names remain selectable while reward `CardInstance.card_id` stays canonical as `strike`.
 
-Unknown layouts fail instead of creating empty-option training rows. OCR providers are pluggable: tests use a JSON/fake provider and live use can route through `--ocr-provider tesseract --ocr-language eng+kor`. `--region-calibration regions.json` accepts `reference_resolution` and named `regions` so the same configured regions scale to the current screenshot resolution. Catalog-matched OCR tokens below confidence `0.60` are ignored, so partial or low-confidence reward layouts fail closed. Terminal detection uses the same confidence floor and rebuilds adjacent OCR words such as `Game`/`Over`; Korean `승리` and `게임 오버` are accepted when paired with a restart button.
+Unknown layouts fail instead of creating empty-option training rows. OCR providers are pluggable: tests use a JSON/fake provider and live use can route through `--ocr-provider tesseract --ocr-language eng+kor`. `--region-calibration regions.json` accepts `reference_resolution` and named `regions` so the same configured regions scale to the current screenshot resolution. Catalog-matched OCR tokens below confidence `0.60` are ignored, so partial or low-confidence reward layouts fail closed. Terminal detection uses the same confidence floor and rebuilds adjacent OCR words such as `Game`/`Over`; Korean `승리` and `게임 오버` are accepted when paired with a restart button. The optional OCR token report records unknown tokens, catalog matches discarded by confidence, catalog matches rejected by layout region, and simple fuzzy catalog hints without changing the parsed screen output.
 
 ## Automation And Evaluation
 

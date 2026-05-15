@@ -51,6 +51,7 @@ Window capture
 - `live-learn-loop --execute`는 gameplay label/model action에서 transition ack `changed`일 때만 `GameStep`/`TrajectoryStep`을 append하고, ack 없음/no-op/timeout/controller error/perception failure/preflight failure는 failure log만 기록한다.
 - `evaluate-model`은 `--eval-dataset`과 value-head sigmoid score 기반 `value_correlation`을 사용한다.
 - `evaluate-play`는 safety metric이 빠진 row를 기본 실패 지표로 계산하고, `--allow-missing-metrics`에서만 missing row count를 리포트한다. 이 허용 모드에서는 missing candidate recall을 평균에서 제외한다.
+- `parse-screen --ocr-report`를 추가해 unknown token, confidence threshold로 버린 catalog 후보, layout region 밖 catalog 후보, fuzzy 후보를 parsed screen JSON과 별도로 저장한다.
 
 ## P0 Gaps
 
@@ -62,7 +63,7 @@ Window capture
 ## P1 Gaps
 
 - Versioned catalog: catalog를 외부 JSON으로 분리하고 Early Access patch drift를 기록해야 한다.
-- Unknown OCR logging: unknown token, fuzzy match 후보, confidence threshold 통계를 field-level report로 남겨야 한다.
+- Unknown OCR logging: `parse-screen --ocr-report`의 token-level report는 구현됐다. state field별 confidence 집계와 장기 drift 통계는 남아 있다.
 - Search/TAS loop: save-state restore 기반 branch-and-bound, outcome scorer, MCTS 함수는 생겼다. CLI orchestration, real save-state rollout driver, richer reward/map scorer는 남아 있다.
 - Numeric encoding: HP/gold/floor 등 numeric scale normalization과 observed/missing mask 결합이 필요하다.
 - Windows DPI/hit-test: DPI scaling, clickable region margin, screenshot id, pre/post state hash, latency/error logging을 더해야 한다.

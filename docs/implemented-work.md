@@ -5,7 +5,7 @@
 ## CLI Commands
 
 - `capture`: 색상 기반 화면 fixture를 감지해 unlabeled `GameStep` JSONL을 기록한다.
-- `parse-screen`: screenshot과 OCR provider 결과를 catalog-matched option JSON으로 변환한다. `--region-calibration`으로 calibrated OCR region filtering을 적용할 수 있다.
+- `parse-screen`: screenshot과 OCR provider 결과를 catalog-matched option JSON으로 변환한다. `--region-calibration`으로 calibrated OCR region filtering을 적용할 수 있고, `--ocr-report`로 별도 OCR token report를 저장할 수 있다.
 - `capture-live`: OCR 결과를 `GameStep` JSONL로 저장한다. `--region-calibration`을 같은 parse path에 전달한다.
 - `label`: dataset의 특정 `GameStep` row에 고유 action identity 라벨을 붙인다. `pick:card_1`, `pick_card:card_1`, `skip` 같은 짧은 별칭은 한 legal action으로 해석될 때만 허용한다.
 - `train`: 라벨된 `GameStep`으로 PyTorch ranker를 학습한다.
@@ -54,6 +54,7 @@
 - calibrated region JSON은 `reference_resolution`과 `card`/`relic`/`skip`/`menu` region boxes를 받아 현재 screenshot resolution으로 scale한다. `parse-screen`, `capture-live`, `live-step`, `live-learn-loop`의 OCR option filtering과 `detect_screen()`의 color component filtering에 적용된다.
 - catalog-matched OCR token confidence가 `0.60` 미만이면 option으로 쓰지 않고 fail-closed 경로에 남긴다.
 - combat/map/shop/event/rest required field가 missing이거나 `field_confidence < 0.60`이면 `PerceptionQualityError`로 fail-closed한다.
+- OCR token report는 unknown token, 낮은 confidence 때문에 버린 catalog 후보, layout region 밖이라 버린 catalog 후보, edit distance/prefix 기반 fuzzy 후보를 JSON 직렬화 가능한 구조로 기록한다.
 - 알 수 없는 layout이나 catalog에 없는 텍스트는 빈 학습 row로 저장하지 않고 실패하거나 무시한다.
 
 ## Machine Learning

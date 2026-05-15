@@ -179,6 +179,78 @@ def test_parse_ocr_screen_ignores_unknown_catalog_text(tmp_path: Path) -> None:
         recognition.parse_ocr_screen(_blank_screen(tmp_path / "screen.png"), ocr_provider=provider)
 
 
+def test_ocr_token_report_records_discarded_and_fuzzy_candidates(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider(
+        [
+            recognition.OcrToken("Strike", (250, 260, 430, 330), 0.59),
+            recognition.OcrToken("Defend", (760, 900, 940, 970), 0.99),
+            recognition.OcrToken("Striek", (1270, 260, 1450, 330), 0.99),
+            recognition.OcrToken("Mystery", (880, 930, 1040, 990), 0.99),
+            recognition.OcrToken("Striking", (300, 600, 430, 660), 0.99),
+            recognition.OcrToken("   ", (450, 600, 520, 660), 0.99),
+        ]
+    )
+
+    report = recognition.build_ocr_token_report(
+        _blank_screen(tmp_path / "screen.png"),
+        ocr_provider=provider,
+    ).to_dict()
+
+    assert report["unknown_tokens"] == [
+        {"text": "Striek", "box": [1270, 260, 1450, 330], "confidence": 0.99},
+        {"text": "Mystery", "box": [880, 930, 1040, 990], "confidence": 0.99},
+        {"text": "Striking", "box": [300, 600, 430, 660], "confidence": 0.99},
+        {"text": "   ", "box": [450, 600, 520, 660], "confidence": 0.99},
+    ]
+    assert report["low_confidence_catalog_candidates"] == [
+        {
+            "token": {"text": "Strike", "box": [250, 260, 430, 330], "confidence": 0.59},
+            "entry_id": "strike",
+            "entry_name": "Strike",
+            "entry_kind": "card",
+            "matched_alias": "strike",
+        }
+    ]
+    assert report["layout_rejected_catalog_candidates"] == [
+        {
+            "token": {"text": "Defend", "box": [760, 900, 940, 970], "confidence": 0.99},
+            "entry_id": "defend",
+            "entry_name": "Defend",
+            "entry_kind": "card",
+            "matched_alias": "defend",
+        }
+    ]
+    assert report["fuzzy_candidates"] == [
+        {
+            "token": {"text": "Striek", "box": [1270, 260, 1450, 330], "confidence": 0.99},
+            "entry_id": "strike",
+            "entry_name": "Strike",
+            "entry_kind": "card",
+            "alias": "strike",
+            "reason": "edit_distance",
+            "distance": 2,
+        },
+        {
+            "token": {"text": "Striking", "box": [300, 600, 430, 660], "confidence": 0.99},
+            "entry_id": "strike",
+            "entry_name": "Strike",
+            "entry_kind": "card",
+            "alias": "strike",
+            "reason": "prefix",
+        },
+    ]
+
+
+def test_ocr_fuzzy_candidates_handles_empty_and_prefix_only_text() -> None:
+    assert recognition._fuzzy_candidates(recognition.OcrToken("", (0, 0, 1, 1), 0.99)) == []
+
+    candidates = recognition._fuzzy_candidates(recognition.OcrToken("strike plus", (0, 0, 1, 1), 0.99))
+
+    assert [(candidate.entry.id, candidate.reason, candidate.distance) for candidate in candidates] == [
+        ("strike", "prefix", None)
+    ]
+
+
 def test_tesseract_provider_parses_cli_tsv(monkeypatch, tmp_path: Path) -> None:
     calls = []
 

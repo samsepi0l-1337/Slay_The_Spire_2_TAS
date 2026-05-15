@@ -41,6 +41,64 @@ class CatalogEntry:
     tags: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class OcrTokenReportCandidate:
+    token: OcrToken
+    entry: CatalogEntry
+    matched_alias: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "token": _token_dict(self.token),
+            "entry_id": self.entry.id,
+            "entry_name": self.entry.name,
+            "entry_kind": self.entry.kind,
+            "matched_alias": self.matched_alias,
+        }
+
+
+@dataclass(frozen=True)
+class OcrFuzzyCandidate:
+    token: OcrToken
+    entry: CatalogEntry
+    alias: str
+    reason: str
+    distance: int | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "token": _token_dict(self.token),
+            "entry_id": self.entry.id,
+            "entry_name": self.entry.name,
+            "entry_kind": self.entry.kind,
+            "alias": self.alias,
+            "reason": self.reason,
+        }
+        if self.distance is not None:
+            payload["distance"] = self.distance
+        return payload
+
+
+@dataclass(frozen=True)
+class OcrTokenReport:
+    unknown_tokens: list[OcrToken]
+    low_confidence_catalog_candidates: list[OcrTokenReportCandidate]
+    layout_rejected_catalog_candidates: list[OcrTokenReportCandidate]
+    fuzzy_candidates: list[OcrFuzzyCandidate]
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "unknown_tokens": [_token_dict(token) for token in self.unknown_tokens],
+            "low_confidence_catalog_candidates": [
+                candidate.to_dict() for candidate in self.low_confidence_catalog_candidates
+            ],
+            "layout_rejected_catalog_candidates": [
+                candidate.to_dict() for candidate in self.layout_rejected_catalog_candidates
+            ],
+            "fuzzy_candidates": [candidate.to_dict() for candidate in self.fuzzy_candidates],
+        }
+
+
 CATALOG = (
     CatalogEntry("strike", "Strike", "card", ("strike", "\ud0c0\uaca9"), ("attack",)),
     CatalogEntry("defend", "Defend", "card", ("defend", "\uc218\ube44"), ("skill",)),
@@ -123,8 +181,18 @@ def parse_ocr_screen(
     calibration: RegionCalibration | None = None,
 ) -> ParsedScreen:
     image = Image.open(image_path)
-    width, height = image.size
     tokens = ocr_provider.recognize(image_path)
+    return parse_ocr_tokens(image_path, tokens, image.size, calibration=calibration)
+
+
+def parse_ocr_tokens(
+    image_path: Path,
+    tokens: list[OcrToken],
+    resolution: tuple[int, int],
+    *,
+    calibration: RegionCalibration | None = None,
+) -> ParsedScreen:
+    width, height = resolution
     extraction = extract_live_state(tokens)
     options = [
         option
@@ -162,11 +230,53 @@ def parse_ocr_screen(
         return _parsed("event", [], image_path, (width, height), extraction)
     if extraction.state_payload.get("rest_options"):
         return _parsed("rest", [], image_path, (width, height), extraction)
+    image = Image.open(image_path)
     if neow_boxes := _neow_choice_boxes(image):
         return _parsed("event", [], image_path, (width, height), _with_neow_options(extraction, neow_boxes))
     if extraction.state_payload.get("cards") or extraction.state_payload.get("monsters"):
         return _parsed("combat", [], image_path, (width, height), extraction)
     raise ValueError(f"unknown OCR screen layout for {image_path}")
+
+
+def build_ocr_token_report(
+    image_path: Path,
+    ocr_provider: OcrProvider,
+    *,
+    calibration: RegionCalibration | None = None,
+) -> OcrTokenReport:
+    image = Image.open(image_path)
+    tokens = ocr_provider.recognize(image_path)
+    return build_ocr_token_report_from_tokens(tokens, image.size, calibration=calibration)
+
+
+def build_ocr_token_report_from_tokens(
+    tokens: list[OcrToken],
+    resolution: tuple[int, int],
+    *,
+    calibration: RegionCalibration | None = None,
+) -> OcrTokenReport:
+    unknown_tokens: list[OcrToken] = []
+    low_confidence: list[OcrTokenReportCandidate] = []
+    layout_rejected: list[OcrTokenReportCandidate] = []
+    fuzzy: list[OcrFuzzyCandidate] = []
+    for token in tokens:
+        match = _catalog_match_with_alias(token.text)
+        if match is None:
+            unknown_tokens.append(token)
+            fuzzy.extend(_fuzzy_candidates(token))
+            continue
+        entry, alias = match
+        candidate = OcrTokenReportCandidate(token, entry, alias)
+        if token.confidence < MIN_OCR_OPTION_CONFIDENCE:
+            low_confidence.append(candidate)
+        elif not _in_layout_region(token, entry.kind, resolution, calibration):
+            layout_rejected.append(candidate)
+    return OcrTokenReport(
+        unknown_tokens=unknown_tokens,
+        low_confidence_catalog_candidates=low_confidence,
+        layout_rejected_catalog_candidates=layout_rejected,
+        fuzzy_candidates=fuzzy,
+    )
 
 
 def _parsed(
@@ -356,11 +466,64 @@ def _slot_ids(options: list[RecognizedOption]) -> list[RecognizedOption]:
 
 
 def _catalog_match(text: str) -> CatalogEntry | None:
+    match = _catalog_match_with_alias(text)
+    if match is None:
+        return None
+    return match[0]
+
+
+def _catalog_match_with_alias(text: str) -> tuple[CatalogEntry, str] | None:
     normalized = _normalize_text(text)
     for entry in CATALOG:
-        if normalized in {_normalize_text(alias) for alias in entry.aliases}:
-            return entry
+        for alias in entry.aliases:
+            if normalized == _normalize_text(alias):
+                return entry, _normalize_text(alias)
     return None
+
+
+def _fuzzy_candidates(token: OcrToken) -> list[OcrFuzzyCandidate]:
+    normalized = _normalize_text(token.text)
+    if not normalized:
+        return []
+    candidates: list[OcrFuzzyCandidate] = []
+    for entry in CATALOG:
+        for alias in entry.aliases:
+            normalized_alias = _normalize_text(alias)
+            distance = _edit_distance(normalized, normalized_alias, limit=2)
+            if distance is not None:
+                candidates.append(OcrFuzzyCandidate(token, entry, normalized_alias, "edit_distance", distance))
+            elif _prefix_similar(normalized, normalized_alias):
+                candidates.append(OcrFuzzyCandidate(token, entry, normalized_alias, "prefix"))
+    return candidates
+
+
+def _edit_distance(left: str, right: str, *, limit: int) -> int | None:
+    if abs(len(left) - len(right)) > limit:
+        return None
+    previous = list(range(len(right) + 1))
+    for index, left_char in enumerate(left, start=1):
+        current = [index]
+        row_min = index
+        for offset, right_char in enumerate(right, start=1):
+            cost = 0 if left_char == right_char else 1
+            value = min(previous[offset] + 1, current[offset - 1] + 1, previous[offset - 1] + cost)
+            current.append(value)
+            row_min = min(row_min, value)
+        if row_min > limit:
+            return None
+        previous = current
+    distance = previous[-1]
+    return distance if 0 < distance <= limit else None
+
+
+def _prefix_similar(left: str, right: str) -> bool:
+    if min(len(left), len(right)) < 4:
+        return False
+    return left.startswith(right[:4]) or right.startswith(left[:4])
+
+
+def _token_dict(token: OcrToken) -> dict[str, object]:
+    return {"text": token.text, "box": list(token.box), "confidence": token.confidence}
 
 
 def _terminal_kind(tokens: list[OcrToken]) -> DetectionKind | None:
