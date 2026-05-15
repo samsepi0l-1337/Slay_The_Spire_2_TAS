@@ -22,6 +22,27 @@ def _neow_choice_screen(path: Path) -> Path:
     return path
 
 
+def _neow_proceed_screen(path: Path) -> Path:
+    image = Image.new("RGB", (1920, 1080), (10, 35, 55))
+    pixels = image.load()
+    for x in range(470, 1450):
+        for y in range(950, 1035):
+            pixels[x, y] = (18, 105, 140)
+    image.save(path)
+    return path
+
+
+def _visual_map_screen(path: Path) -> Path:
+    image = Image.new("RGB", (1920, 1080), (170, 165, 178))
+    pixels = image.load()
+    for box in ((450, 540, 520, 610), (900, 500, 970, 570), (1040, 540, 1110, 610)):
+        for x in range(box[0], box[2]):
+            for y in range(box[1], box[3]):
+                pixels[x, y] = (105, 80, 65)
+    image.save(path)
+    return path
+
+
 def _token(text: str, box: tuple[int, int, int, int]) -> object:
     return recognition.OcrToken(text=text, box=box, confidence=0.99)
 
@@ -85,6 +106,25 @@ def test_parse_ocr_screen_matches_korean_map_legend(tmp_path: Path) -> None:
     assert parsed.kind == "map"
 
 
+def test_parse_ocr_screen_builds_visual_map_candidates_from_legend_screen(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("Legend", (1630, 340, 1770, 390))])
+
+    parsed = recognition.parse_ocr_screen(_visual_map_screen(tmp_path / "visual-map.png"), ocr_provider=provider)
+
+    assert parsed.kind == "map"
+    assert [path["node_id"] for path in parsed.state_payload["path_candidates"]] == [
+        "visual-node-1",
+        "visual-node-2",
+        "visual-node-3",
+    ]
+    assert parsed.state_boxes == {
+        "path:visual-node-1": (450, 540, 520, 610),
+        "path:visual-node-2": (1040, 540, 1110, 610),
+        "path:visual-node-3": (900, 500, 970, 570),
+    }
+    assert parsed.field_confidence == {"path_candidates": 0.8}
+
+
 def test_parse_ocr_screen_detects_neow_choice_panels_without_readable_option_text(tmp_path: Path) -> None:
     provider = recognition.FakeOcrProvider([_token("턴 종료", (1711, 850, 1775, 928))])
 
@@ -105,6 +145,17 @@ def test_parse_ocr_screen_detects_neow_choice_panels_without_readable_option_tex
     }
     assert parsed.field_confidence == {"event_options": 0.99}
     assert "event_options" not in parsed.missing_fields
+
+
+def test_parse_ocr_screen_detects_single_neow_proceed_panel(tmp_path: Path) -> None:
+    provider = recognition.FakeOcrProvider([_token("Proceed", (490, 980, 580, 1018))])
+
+    parsed = recognition.parse_ocr_screen(_neow_proceed_screen(tmp_path / "neow-proceed.png"), ocr_provider=provider)
+
+    assert parsed.kind == "event"
+    assert parsed.state_payload == {"event_options": [{"option_id": "neow_option_1", "label": "Neow option 1"}]}
+    assert parsed.state_boxes == {"event_option:neow_option_1": (470, 950, 650, 1035)}
+    assert parsed.field_confidence == {"event_options": 0.99}
 
 
 def test_parse_ocr_screen_scales_reward_layout_from_reference_resolution(tmp_path: Path) -> None:

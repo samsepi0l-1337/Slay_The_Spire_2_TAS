@@ -31,6 +31,7 @@ from .recognition import (
 from .runtime import backup_save, capture_screen, restore_save, run_seed_loop
 from .schema import CoordinateSpace, GameStep, TargetWindow
 from .step_factory import PerceptionQualityError, game_step_from_detection, game_step_from_parsed_screen
+from .tas_cli import add_tas_parsers
 from .torch_dataset import append_game_step, load_game_steps, write_game_steps
 from .transition import acknowledge_transition
 from .windowing import WindowDetector
@@ -66,6 +67,7 @@ def _parser() -> argparse.ArgumentParser:
 
     add_ml_parsers(subparsers)
     add_evaluation_parsers(subparsers)
+    add_tas_parsers(subparsers)
 
     parse_screen = subparsers.add_parser("parse-screen")
     parse_screen.add_argument("--screenshot", type=Path, required=True)

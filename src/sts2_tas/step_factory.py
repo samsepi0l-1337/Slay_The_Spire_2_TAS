@@ -290,6 +290,17 @@ def _actions_from_detection(detection: ScreenDetection) -> list[ActionCandidate]
 
 
 def _actions_from_parsed_screen(parsed: ParsedScreen, state: StructuredGameState) -> list[ActionCandidate]:
+    if parsed.kind == DetectionKind.CHARACTER_SELECT.value:
+        return [
+            ActionCandidate(
+                action_type=_action_type(option.kind),
+                option_id=option.id,
+                screen_box=_character_confirm_box(parsed.resolution),
+                legal=True,
+            )
+            for option in parsed.options
+            if option.kind == "select_character"
+        ]
     fallback = [
         ActionCandidate(
             action_type=_action_type(option.kind),
@@ -303,6 +314,16 @@ def _actions_from_parsed_screen(parsed: ParsedScreen, state: StructuredGameState
     if not generated:
         return fallback
     return [_with_screen_binding(action, parsed, fallback) for action in generated]
+
+
+def _character_confirm_box(resolution: tuple[int, int]) -> tuple[int, int, int, int]:
+    width, height = resolution
+    return (
+        int(width * 0.91),
+        int(height * 0.67),
+        int(width * 0.995),
+        int(height * 0.79),
+    )
 
 
 def _with_screen_binding(

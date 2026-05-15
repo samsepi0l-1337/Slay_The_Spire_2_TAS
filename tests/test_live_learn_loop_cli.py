@@ -226,7 +226,7 @@ def test_live_learn_loop_treats_combat_choice_as_gameplay_label(tmp_path: Path, 
     assert event["input_plan"] == {
         "kind": "sequence",
         "steps": [
-            {"kind": "click", "x": 340, "y": 915},
+            {"kind": "keypress", "key": "1"},
             {"kind": "click", "x": 1415, "y": 415},
         ],
     }

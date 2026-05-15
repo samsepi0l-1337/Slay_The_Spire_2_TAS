@@ -28,6 +28,32 @@ def _captured(*, gold: int = 0):
     )
 
 
+def test_character_select_actions_click_confirm_button_not_ocr_title() -> None:
+    parsed = ParsedScreen(
+        "character_select",
+        [
+            RecognizedOption("burning_blood", "Burning Blood", "relic", (73, 590, 230, 618), 0.96, "Burning Blood", []),
+            RecognizedOption("ironclad", "Ironclad", "select_character", (3, 352, 501, 447), 0.96, "The Ironclad", []),
+        ],
+        Path("character.png"),
+        (1920, 1080),
+    )
+
+    step = game_step_from_parsed_screen(
+        parsed=parsed,
+        game_version="0.105.1",
+        branch="beta",
+        character="ironclad",
+        ascension=0,
+        floor=1,
+        captured_state=_captured(),
+        source_type="tesseract",
+    )
+
+    assert [(action.action_type, action.option_id) for action in step.actions] == [("select_character", "ironclad")]
+    assert step.actions[0].screen_box == (1747, 723, 1910, 853)
+
+
 def test_step_factory_uses_live_combat_state_for_legal_actions_and_screen_boxes() -> None:
     parsed = ParsedScreen(
         "combat",

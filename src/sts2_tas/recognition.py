@@ -20,11 +20,13 @@ MIN_OCR_OPTION_CONFIDENCE = 0.60
 VICTORY_TERMS = {"victory", "victory!", "clear", "run clear", "승리", "승리!", "클리어"}
 GAME_OVER_TERMS = {"game over", "defeat", "defeated", "게임 오버", "게임오버", "패배"}
 MAP_MARKER_TERMS = {"legend", "범례"}
+LOOT_MARKER_TERMS = {"loot", "loot!"}
 NEOW_CHOICE_REFERENCE_BOXES: tuple[Box, ...] = (
     (470, 740, 1450, 835),
     (470, 835, 1450, 930),
     (470, 930, 1450, 1030),
 )
+NEOW_PROCEED_REFERENCE_BOX: Box = (470, 950, 650, 1035)
 
 
 class OcrProvider(Protocol):
@@ -112,6 +114,7 @@ CATALOG = (
         "select_single_player",
         (
             "single player",
+            "singleplayer",
             "\uc2f1\uae00 \ud50c\ub808\uc774",
             "\uc2f1\uae00\ud50c\ub808\uc774",
             "\uc2f1\uae00 \uae00 \ud50c\ub808\uc774",
@@ -120,7 +123,12 @@ CATALOG = (
     ),
     CatalogEntry("continue", "Continue", "continue_run", ("continue", "resume", "\uacc4\uc18d")),
     CatalogEntry("standard", "Standard", "select_mode", ("standard", "\ud45c\uc900", "\uc77c\ubc18", "\uae30\ubcf8")),
-    CatalogEntry("ironclad", "Ironclad", "select_character", ("ironclad", "\uc544\uc774\uc5b8\ud074\ub798\ub4dc")),
+    CatalogEntry(
+        "ironclad",
+        "Ironclad",
+        "select_character",
+        ("ironclad", "the ironclad", "\uc544\uc774\uc5b8\ud074\ub798\ub4dc"),
+    ),
     CatalogEntry("new_run", "New Run", "restart_run", ("new run", "play again", "retry", "\uc0c8 \ub7f0", "\ub2e4\uc2dc \uc2dc\uc791")),
 )
 
@@ -210,6 +218,14 @@ def parse_ocr_tokens(
     menu_kind = _menu_kind(non_skip)
     if menu_kind is not None:
         return _parsed(menu_kind.value, _slot_ids(non_skip), image_path, (width, height), extraction)
+    if skip and _has_loot_marker(tokens):
+        return _parsed(
+            DetectionKind.CARD_REWARD.value,
+            [skip[0]],
+            image_path,
+            (width, height),
+            extraction,
+        )
     if len(cards) == 3 and len(cards) == len(non_skip) and skip:
         return _parsed(
             DetectionKind.CARD_REWARD.value,
@@ -223,7 +239,8 @@ def parse_ocr_tokens(
     if extraction.state_payload.get("path_candidates"):
         return _parsed("map", [], image_path, (width, height), extraction)
     if _has_map_marker(tokens):
-        return _parsed("map", [], image_path, (width, height), extraction)
+        image = Image.open(image_path)
+        return _parsed("map", [], image_path, (width, height), _with_visual_map_candidates(extraction, image))
     if extraction.state_payload.get("shop_items"):
         return _parsed("shop", [], image_path, (width, height), extraction)
     if extraction.state_payload.get("event_options"):
@@ -231,10 +248,30 @@ def parse_ocr_tokens(
     if extraction.state_payload.get("rest_options"):
         return _parsed("rest", [], image_path, (width, height), extraction)
     image = Image.open(image_path)
+    if _has_proceed_marker(tokens) and (proceed_box := _neow_proceed_box(image)):
+        return _parsed("event", [], image_path, (width, height), _with_neow_options(extraction, [proceed_box]))
     if neow_boxes := _neow_choice_boxes(image):
         return _parsed("event", [], image_path, (width, height), _with_neow_options(extraction, neow_boxes))
     if extraction.state_payload.get("cards") or extraction.state_payload.get("monsters"):
         return _parsed("combat", [], image_path, (width, height), extraction)
+    if visual_skip := _right_side_skip_box(image):
+        return _parsed(
+            DetectionKind.CARD_REWARD.value,
+            [
+                RecognizedOption(
+                    id="skip",
+                    name="Skip",
+                    kind="skip",
+                    box=visual_skip,
+                    confidence=1.0,
+                    source_text="visual-skip",
+                    tags=[],
+                )
+            ],
+            image_path,
+            (width, height),
+            extraction,
+        )
     raise ValueError(f"unknown OCR screen layout for {image_path}")
 
 
@@ -372,9 +409,31 @@ def _is_skip_gray(pixel: tuple[int, int, int]) -> bool:
     return 70 <= red <= 105 and 70 <= green <= 105 and 70 <= blue <= 105
 
 
+def _is_skip_red(pixel: tuple[int, int, int]) -> bool:
+    red, green, blue = pixel
+    return red >= 110 and green <= 85 and blue <= 85 and red >= green + 45
+
+
+def _right_side_skip_box(image: Image.Image) -> Box | None:
+    width, height = image.size
+    candidates = [
+        box
+        for box in _components(image, _is_skip_red)
+        if (box[0] + box[2]) / 2 >= width * 0.70 and (box[1] + box[3]) / 2 >= height * 0.60
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=_area)
+
+
 def _neow_choice_boxes(image: Image.Image) -> list[Box]:
     boxes = [_scale_reference_box(box, image.size) for box in NEOW_CHOICE_REFERENCE_BOXES]
     return boxes if sum(1 for box in boxes if _blue_panel_ratio(image, box) >= 0.20) >= 3 else []
+
+
+def _neow_proceed_box(image: Image.Image) -> Box | None:
+    box = _scale_reference_box(NEOW_PROCEED_REFERENCE_BOX, image.size)
+    return box if _blue_panel_ratio(image, box) >= 0.20 else None
 
 
 def _scale_reference_box(box: Box, resolution: tuple[int, int]) -> Box:
@@ -406,6 +465,61 @@ def _blue_panel_ratio(image: Image.Image, box: Box) -> float:
 def _is_neow_panel_pixel(pixel: tuple[int, int, int]) -> bool:
     red, green, blue = pixel
     return red <= 80 and green >= 65 and blue >= 85 and blue >= red + 30
+
+
+def _with_visual_map_candidates(extraction: LiveStateExtraction, image: Image.Image) -> LiveStateExtraction:
+    boxes = _visual_map_node_boxes(image)
+    if not boxes:
+        return extraction
+    payload = dict(extraction.state_payload)
+    state_boxes = dict(extraction.state_boxes)
+    paths = []
+    for index, box in enumerate(boxes, start=1):
+        node_id = f"visual-node-{index}"
+        paths.append(
+            {
+                "node_id": node_id,
+                "node_type": "unknown",
+                "depth": 1,
+                "elite_count_ahead": 0,
+                "rest_count_ahead": 0,
+                "shop_count_ahead": 0,
+                "event_count_ahead": 0,
+                "boss_distance": 5,
+                "forced_elite": False,
+            }
+        )
+        state_boxes[f"path:{node_id}"] = box
+    payload["path_candidates"] = paths
+    field_confidence = dict(extraction.field_confidence)
+    field_confidence["path_candidates"] = 0.80
+    return LiveStateExtraction(
+        state_payload=payload,
+        state_boxes=state_boxes,
+        floor=extraction.floor,
+        missing_fields=[field for field in extraction.missing_fields if field != "path_candidates"],
+        unknown_tokens=extraction.unknown_tokens,
+        field_confidence=field_confidence,
+    )
+
+
+def _visual_map_node_boxes(image: Image.Image) -> list[Box]:
+    width, height = image.size
+    boxes = []
+    for box in _components(image, _is_map_node_pixel):
+        center_x = (box[0] + box[2]) / 2
+        center_y = (box[1] + box[3]) / 2
+        if not (width * 0.15 <= center_x <= width * 0.82 and height * 0.45 <= center_y <= height * 0.65):
+            continue
+        if not (1_000 <= _area(box) <= 10_000):
+            continue
+        boxes.append(box)
+    return sorted(boxes, key=lambda box: (-(box[1] + box[3]), box[0]))[:4]
+
+
+def _is_map_node_pixel(pixel: tuple[int, int, int]) -> bool:
+    red, green, blue = pixel
+    return 45 <= red <= 130 and 35 <= green <= 120 and 30 <= blue <= 115
 
 
 def _with_neow_options(extraction: LiveStateExtraction, boxes: list[Box]) -> LiveStateExtraction:
@@ -543,6 +657,22 @@ def _has_map_marker(tokens: list[OcrToken]) -> bool:
     )
 
 
+def _has_loot_marker(tokens: list[OcrToken]) -> bool:
+    return any(
+        _normalize_text(token.text) in LOOT_MARKER_TERMS
+        for token in tokens
+        if token.confidence >= MIN_OCR_OPTION_CONFIDENCE
+    )
+
+
+def _has_proceed_marker(tokens: list[OcrToken]) -> bool:
+    return any(
+        _normalize_text(token.text) == "proceed"
+        for token in tokens
+        if token.confidence >= MIN_OCR_OPTION_CONFIDENCE
+    )
+
+
 def _terminal_candidates(tokens: list[OcrToken]) -> set[str]:
     ordered = sorted(
         (token for token in tokens if token.confidence >= MIN_OCR_OPTION_CONFIDENCE),
@@ -586,7 +716,7 @@ def _in_layout_region(
     center_x = (token.box[0] + token.box[2]) / 2 / width
     center_y = (token.box[1] + token.box[3]) / 2 / height
     if kind == "skip":
-        return 0.35 <= center_x <= 0.65 and center_y >= 0.75
+        return 0.35 <= center_x <= 0.95 and center_y >= 0.70
     if kind == "card":
         return 0.05 <= center_x <= 0.95 and 0.10 <= center_y <= 0.55
     if kind in {"continue_run", "select_single_player", "select_mode", "select_character", "restart_run"}:
