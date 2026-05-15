@@ -1,7 +1,7 @@
 [project]
 name = "sts2-tas"
 version = "0.1.0"
-description = "Screen-recognition learning MVP for Slay the Spire 2 TAS decisions."
+description = "Telemetry-driven Slay the Spire 2 automation and learning research stack."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
