@@ -1,5 +1,9 @@
 # Architecture
 
+## Status
+
+This is the target architecture for the rewrite and the current fixture-based Python implementation. The current checkout contains `src/`, `tests/`, `bridge/`, `config/`, and telemetry fixtures, but it does not yet contain live Godot/Harmony attach or production named-pipe transport.
+
 ## Goal
 
 The target architecture is a telemetry-driven ML automation research stack for Slay the Spire 2. The canonical runtime flow is:
@@ -8,7 +12,7 @@ The target architecture is a telemetry-driven ML automation research stack for S
 Game -> C# telemetry bridge -> Python Gymnasium env/ML -> macro-action executor
 ```
 
-The old TAS movie/replay/checkpoint and native canary direction is retired. Remove those public surfaces as the rewrite proceeds. Historical artifacts may stay in git history, but new docs, tests, and CLI contracts should describe telemetry snapshots, valid action masks, Gymnasium steps, and macro actions.
+The old TAS movie/replay/checkpoint and OCR-first direction is retired. New docs, tests, and CLI contracts should describe telemetry snapshots, valid action masks, Gymnasium steps, and macro actions.
 
 ## Runtime Flow
 
@@ -31,17 +35,36 @@ flowchart LR
     Env --> Logs
 ```
 
-The bridge is the authority for structured game state. OCR-first runtime paths are retired public surfaces and should be removed as the rewrite proceeds.
+The bridge is the target authority for structured game state. OCR-first runtime paths should not be expanded.
+
+## Current Gap
+
+The following surfaces are present as fixture/local implementations:
+
+- `bridge/Sts2TelemetryBridge`
+- `config/patch-points.0.1-test.json`
+- `src/sts2_tas/telemetry_schema.py`
+- `src/sts2_tas/telemetry_client.py`
+- `src/sts2_tas/env.py`
+- `src/sts2_tas/action_space.py`
+- `src/sts2_tas/executor.py`
+- `src/sts2_tas/heuristic.py`
+- `src/sts2_tas/bc.py`
+- `src/sts2_tas/rl.py`
+- `src/sts2_tas/dataset.py`
+- telemetry fixtures under `data/fixtures/`
+
+Remaining live-game gaps are Harmony patch bootstrap, production named-pipe/WebSocket transport, actual game frame emission, and Windows `--execute` acknowledgement against the target process.
 
 ## Bridge Project
 
-`bridge/Sts2TelemetryBridge` is a Godot 4 C#/.NET project. The `.sln` and `.csproj` files are version-controlled so the bridge build shape is explicit. Harmony patch bootstrap reads `config/patch-points.<game_version>.json`; if inspected symbols do not match the running game version, the bridge emits fail-closed diagnostics instead of guessing.
+The target bridge is `bridge/Sts2TelemetryBridge`, a Godot 4 C#/.NET project. Its `.sln` and `.csproj` files should be version-controlled so the bridge build shape is explicit. Harmony patch bootstrap should read `config/patch-points.<game_version>.json`; if inspected symbols do not match the running game version, the bridge must emit fail-closed diagnostics instead of guessing.
 
-The default transport is a Windows named pipe. WebSocket is an optional transport for tooling. The bridge emits `TelemetrySnapshot` frames and accepts `MacroActionCommand` envelopes from Python only after schema and target validation.
+The default transport is a Windows named pipe. WebSocket is optional for tooling. The bridge should emit `TelemetrySnapshot` frames and accept `MacroActionCommand` envelopes from Python only after schema and target validation.
 
 ## TelemetrySnapshot
 
-A `TelemetrySnapshot` is the Python bridge input. It must include:
+A `TelemetrySnapshot` is the target Python bridge input. It must include:
 
 - `game_version`, `mod_version`, `schema_version`, `seed`, `timestamp`
 - `phase`: `combat`, `card_reward`, `map`, `shop`, `event`, `rest`, `terminal`, or `menu`
@@ -52,18 +75,18 @@ A `TelemetrySnapshot` is the Python bridge input. It must include:
 - `relics`, `potions`, map choices, reward choices, shop choices, event/rest choices
 - `valid_actions`: canonical macro actions available in the current phase
 
-Unknown or patch-sensitive fields belong in `extras` with the source `game_version`. Required fields must fail validation instead of being silently guessed.
+Unknown or patch-sensitive fields belong in `extras` with the source `game_version`. Required fields must fail validation instead of being silently guessed. The current parser accepts only schema version `1`, rejects boolean integer fields, rejects stale non-empty actions on `terminal` and `menu` snapshots, and validates advertised action slots against the snapshot's hand, enemies, and available choice lists before building an action mask.
 
 ## Valid Action Mask
 
-The Python action space owns deterministic flattening. Every `ValidAction` gets a stable id derived from action type and arguments. `action_space.py` maps between:
+The target Python action space owns deterministic flattening. Every `ValidAction` gets a stable id derived from action type and arguments. `action_space.py` maps between:
 
 - structured `MacroAction`
 - flattened `Discrete(N)` index
 - boolean valid action mask
 - executor command payload
 
-The model may only select legal actions. All-false masks, duplicate action identities, malformed arguments, and stale masks are hard failures.
+The model may only select legal actions. All-false masks, duplicate action identities, malformed arguments, stale masks, unsupported schema versions, and out-of-range action slots are hard failures.
 
 ## MacroAction
 
@@ -83,7 +106,7 @@ The executor converts macro actions to guarded input sequences using current tar
 
 ## Logging
 
-Every environment transition writes audit-ready records:
+Every target environment transition writes audit-ready records:
 
 - `run_id`, `game_version`, `mod_version`, `seed`, `timestamp`
 - `floor`, `phase`, `state_json`
@@ -91,7 +114,7 @@ Every environment transition writes audit-ready records:
 - `reward`, `terminal`, `result`
 - optional `screenshot_path`, `policy_id`, `latency_ms`, `failure_reason`
 
-JSONL is the default append-only format. SQLite and Parquet are planned once schemas stabilize.
+JSONL is the default append-only format. Records keep the audit fields and also expose `state`, `valid_actions`, and `chosen_action` aliases so collected demonstrations can be fed directly into behavioral cloning. SQLite and Parquet are planned once schemas stabilize.
 
 ## Safety Boundary
 

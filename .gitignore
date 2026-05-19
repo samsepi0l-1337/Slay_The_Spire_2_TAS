@@ -6,7 +6,9 @@
 __pycache__/
 .coverage
 .coverage.*
-data/
+data/*
+!data/fixtures/
+!data/fixtures/**
 models/
 build/
 dist/

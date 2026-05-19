@@ -1,0 +1,2 @@
+{"state":{"phase":"combat","floor":1,"player_hp":70,"energy":3,"enemy_hp_total":6,"hand_count":2},"valid_actions":[{"action_type":"play_card","args":{"hand_slot":0,"target_slot":0}},{"action_type":"end_turn","args":{}}],"chosen_action":{"action_type":"play_card","args":{"hand_slot":0,"target_slot":0}},"reward":6.0,"terminal":false}
+{"state":{"phase":"combat","floor":1,"player_hp":70,"energy":0,"enemy_hp_total":6,"hand_count":2},"valid_actions":[{"action_type":"end_turn","args":{}}],"chosen_action":{"action_type":"end_turn","args":{}},"reward":0.0,"terminal":false}

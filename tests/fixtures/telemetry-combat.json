@@ -1,0 +1,42 @@
+{
+  "game_version": "0.1-test",
+  "mod_version": "0.1.0",
+  "schema_version": 1,
+  "seed": "seed-1",
+  "timestamp": 1.0,
+  "phase": "combat",
+  "floor": 1,
+  "act": 1,
+  "screen_id": "combat-1",
+  "player": {
+    "hp": 70,
+    "max_hp": 80,
+    "energy": 3,
+    "block": 0,
+    "gold": 99,
+    "powers": [],
+    "resources": {}
+  },
+  "hand": [
+    {"id": "strike", "name": "Strike", "cost": 1, "type": "attack", "damage": 6},
+    {"id": "defend", "name": "Defend", "cost": 1, "type": "skill", "block": 5}
+  ],
+  "draw_pile": [],
+  "discard_pile": [],
+  "exhaust_pile": [],
+  "enemies": [
+    {"id": "jaw-worm", "slot": 0, "hp": 6, "block": 0, "intent": "attack", "powers": []}
+  ],
+  "relics": [],
+  "potions": [],
+  "map_choices": [],
+  "reward_choices": [],
+  "shop_choices": [],
+  "event_choices": [],
+  "rest_choices": [],
+  "valid_actions": [
+    {"action_type": "play_card", "args": {"hand_slot": 0, "target_slot": 0}},
+    {"action_type": "play_card", "args": {"hand_slot": 1}},
+    {"action_type": "end_turn", "args": {}}
+  ]
+}
