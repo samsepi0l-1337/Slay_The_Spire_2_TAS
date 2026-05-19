@@ -28,10 +28,10 @@ class MacroExecutor:
     @staticmethod
     def _commands(action: MacroAction) -> list[dict[str, Any]]:
         if action.action_type == "play_card":
-            return [
-                {"kind": "click", "target": "hand", "slot": action.args["hand_slot"]},
-                {"kind": "click", "target": "enemy", "slot": action.args.get("target_slot", 0)},
-            ]
+            commands = [{"kind": "click", "target": "hand", "slot": action.args["hand_slot"]}]
+            if "target_slot" in action.args:
+                commands.append({"kind": "click", "target": "enemy", "slot": action.args["target_slot"]})
+            return commands
         if action.action_type == "end_turn":
             return [{"kind": "key", "key": "E"}]
         if action.action_type in {"choose_reward", "choose_event_option"}:

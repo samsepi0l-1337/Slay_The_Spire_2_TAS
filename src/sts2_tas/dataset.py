@@ -28,7 +28,11 @@ class TransitionRecord:
     failure_reason: str | None = None
 
     def to_json(self) -> str:
-        return json.dumps(asdict(self), sort_keys=True)
+        data = asdict(self)
+        data["state"] = self.state_json
+        data["valid_actions"] = self.valid_actions_json
+        data["chosen_action"] = self.chosen_action_json
+        return json.dumps(data, sort_keys=True)
 
 
 class JsonlTransitionWriter:

@@ -29,6 +29,13 @@ def _require_list(mapping: dict[str, Any], key: str) -> list[Any]:
     return value
 
 
+def _require_int(mapping: dict[str, Any], key: str) -> int:
+    value = _require(mapping, key)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValidationError(f"{key} must be an integer")
+    return value
+
+
 @dataclass(frozen=True)
 class MacroAction:
     action_type: str
@@ -70,7 +77,7 @@ class MacroAction:
             if key not in args:
                 raise ValidationError(f"{action_type} missing {key}")
         for key, value in args.items():
-            if not isinstance(value, int):
+            if not isinstance(value, int) or isinstance(value, bool):
                 raise ValidationError(f"{key} must be an integer")
             if value < 0:
                 raise ValidationError(f"{key} must be non-negative")
@@ -113,6 +120,8 @@ class TelemetrySnapshot:
     valid_actions: list[MacroAction]
     extras: dict[str, Any]
 
+    supported_schema_version: ClassVar[int] = 1
+
     phases: ClassVar[set[str]] = {
         "combat",
         "card_reward",
@@ -141,35 +150,48 @@ class TelemetrySnapshot:
             raise ValidationError(f"unknown phase: {phase}")
         player = _require_dict(data, "player")
         cls._validate_player(player)
+        schema_version = _require_int(data, "schema_version")
+        if schema_version != cls.supported_schema_version:
+            raise ValidationError(f"unsupported schema_version: {schema_version}")
+        hand = list(_require_list(data, "hand"))
+        enemies = list(_require_list(data, "enemies"))
+        map_choices = list(_require_list(data, "map_choices"))
+        reward_choices = list(_require_list(data, "reward_choices"))
+        shop_choices = list(_require_list(data, "shop_choices"))
+        event_choices = list(_require_list(data, "event_choices"))
+        rest_choices = list(_require_list(data, "rest_choices"))
         actions = [MacroAction.from_dict(item) for item in _require_list(data, "valid_actions")]
         identities = [action.identity for action in actions]
         if len(set(identities)) != len(identities):
             raise ValidationError("duplicate valid action identity")
         if not actions and phase not in {"terminal", "menu"}:
             raise ValidationError("valid_actions cannot be empty")
+        if actions and phase in {"terminal", "menu"}:
+            raise ValidationError(f"{phase} snapshots cannot expose valid_actions")
+        cls._validate_action_slots(actions, hand, enemies, map_choices, reward_choices, shop_choices, event_choices, rest_choices)
         return cls(
             game_version=str(_require(data, "game_version")),
             mod_version=str(_require(data, "mod_version")),
-            schema_version=int(_require(data, "schema_version")),
+            schema_version=schema_version,
             seed=str(_require(data, "seed")),
             timestamp=float(_require(data, "timestamp")),
             phase=phase,
-            floor=int(_require(data, "floor")),
-            act=int(_require(data, "act")),
+            floor=_require_int(data, "floor"),
+            act=_require_int(data, "act"),
             screen_id=str(_require(data, "screen_id")),
             player=dict(player),
-            hand=list(_require_list(data, "hand")),
+            hand=hand,
             draw_pile=list(_require_list(data, "draw_pile")),
             discard_pile=list(_require_list(data, "discard_pile")),
             exhaust_pile=list(_require_list(data, "exhaust_pile")),
-            enemies=list(_require_list(data, "enemies")),
+            enemies=enemies,
             relics=list(_require_list(data, "relics")),
             potions=list(_require_list(data, "potions")),
-            map_choices=list(_require_list(data, "map_choices")),
-            reward_choices=list(_require_list(data, "reward_choices")),
-            shop_choices=list(_require_list(data, "shop_choices")),
-            event_choices=list(_require_list(data, "event_choices")),
-            rest_choices=list(_require_list(data, "rest_choices")),
+            map_choices=map_choices,
+            reward_choices=reward_choices,
+            shop_choices=shop_choices,
+            event_choices=event_choices,
+            rest_choices=rest_choices,
             valid_actions=actions,
             extras=dict(data.get("extras", {})),
         )
@@ -179,8 +201,43 @@ class TelemetrySnapshot:
         for key in ("hp", "max_hp", "energy", "block", "gold"):
             if key not in player:
                 raise ValidationError(f"player missing {key}")
-            if not isinstance(player[key], int):
+            if not isinstance(player[key], int) or isinstance(player[key], bool):
                 raise ValidationError(f"player.{key} must be an integer")
+
+    @staticmethod
+    def _validate_action_slots(
+        actions: list[MacroAction],
+        hand: list[dict[str, Any]],
+        enemies: list[dict[str, Any]],
+        map_choices: list[dict[str, Any]],
+        reward_choices: list[dict[str, Any]],
+        shop_choices: list[dict[str, Any]],
+        event_choices: list[dict[str, Any]],
+        rest_choices: list[dict[str, Any]],
+    ) -> None:
+        del rest_choices
+        limits = {
+            "choose_reward": ("choice_slot", len(reward_choices)),
+            "choose_map_node": ("node_slot", len(map_choices)),
+            "choose_event_option": ("choice_slot", len(event_choices)),
+            "shop_buy": ("item_slot", len(shop_choices)),
+            "shop_remove": ("card_slot", len(hand)),
+        }
+        for action in actions:
+            if action.action_type == "play_card":
+                TelemetrySnapshot._validate_slot("hand_slot", action.args["hand_slot"], len(hand))
+                target_slot = action.args.get("target_slot")
+                if target_slot is not None:
+                    TelemetrySnapshot._validate_slot("target_slot", target_slot, len(enemies))
+                continue
+            if action.action_type in limits:
+                key, limit = limits[action.action_type]
+                TelemetrySnapshot._validate_slot(key, action.args[key], limit)
+
+    @staticmethod
+    def _validate_slot(key: str, value: int, limit: int) -> None:
+        if value >= limit:
+            raise ValidationError(f"{key} out of range")
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -53,6 +53,8 @@ class BehavioralCloningPolicy:
         torch.save(artifact, path)
 
     def predict(self, state: dict[str, Any], valid_actions: list[MacroAction]) -> MacroAction:
+        if not valid_actions:
+            raise ValueError("no legal actions")
         if self.model_state:
             return max(valid_actions, key=lambda action: self._score(state, action))
         encoded = self.table.get(state_key(state))
@@ -94,6 +96,8 @@ def evaluate_behavioral_cloning(dataset: Path, model: Path) -> dict[str, float |
     correct = 0
     for sample in _read_jsonl(dataset):
         valid = [MacroAction.from_dict(action) for action in sample["valid_actions"]]
+        if not valid:
+            continue
         predicted = policy.predict(sample["state"], valid)
         correct += int(predicted == MacroAction.from_dict(sample["chosen_action"]))
         total += 1

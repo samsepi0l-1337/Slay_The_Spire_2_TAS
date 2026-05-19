@@ -52,7 +52,7 @@ Not present:
 ## Target Bridge Surface
 
 - [x] `bridge/Sts2TelemetryBridge`: minimal .NET C# project skeleton.
-- [x] `.sln` and `.csproj`: checked in with the bridge project so build shape is versioned.
+- [x] `.sln` and executable `.csproj`: checked in with the bridge project so build/run shape is versioned.
 - [ ] Harmony bootstrap for real game versioned patch points.
 - [x] `patch-points.<game_version>.json`: fixture inspected symbols and source assumptions.
 - [ ] Named pipe default transport and optional WebSocket transport.
@@ -95,4 +95,9 @@ Target dependencies not yet declared:
 - [x] The model is documented as never predicting raw mouse coordinates.
 - [x] Runtime implementation enforces `--execute`.
 - [x] Invalid action masks fail closed in code.
+- [x] Terminal/menu snapshots reject stale non-empty actions.
+- [x] Telemetry schema parsing rejects unsupported schema versions, boolean integer slots, and out-of-range action slots.
+- [x] Frame ordering rejects boolean sequence values.
+- [x] Environment steps persist the next snapshot before exposing the next mask.
+- [x] Demo JSONL records include BC-compatible `state`, `valid_actions`, and `chosen_action` aliases while preserving audit fields.
 - [x] Runtime logs include enough state/action/reward context for audit and replay of decisions.

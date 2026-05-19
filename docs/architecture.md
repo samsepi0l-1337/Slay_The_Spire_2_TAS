@@ -75,7 +75,7 @@ A `TelemetrySnapshot` is the target Python bridge input. It must include:
 - `relics`, `potions`, map choices, reward choices, shop choices, event/rest choices
 - `valid_actions`: canonical macro actions available in the current phase
 
-Unknown or patch-sensitive fields belong in `extras` with the source `game_version`. Required fields must fail validation instead of being silently guessed.
+Unknown or patch-sensitive fields belong in `extras` with the source `game_version`. Required fields must fail validation instead of being silently guessed. The current parser accepts only schema version `1`, rejects boolean integer fields, rejects stale non-empty actions on `terminal` and `menu` snapshots, and validates advertised action slots against the snapshot's hand, enemies, and available choice lists before building an action mask.
 
 ## Valid Action Mask
 
@@ -86,7 +86,7 @@ The target Python action space owns deterministic flattening. Every `ValidAction
 - boolean valid action mask
 - executor command payload
 
-The model may only select legal actions. All-false masks, duplicate action identities, malformed arguments, and stale masks are hard failures.
+The model may only select legal actions. All-false masks, duplicate action identities, malformed arguments, stale masks, unsupported schema versions, and out-of-range action slots are hard failures.
 
 ## MacroAction
 
@@ -114,7 +114,7 @@ Every target environment transition writes audit-ready records:
 - `reward`, `terminal`, `result`
 - optional `screenshot_path`, `policy_id`, `latency_ms`, `failure_reason`
 
-JSONL is the default append-only format. SQLite and Parquet are planned once schemas stabilize.
+JSONL is the default append-only format. Records keep the audit fields and also expose `state`, `valid_actions`, and `chosen_action` aliases so collected demonstrations can be fed directly into behavioral cloning. SQLite and Parquet are planned once schemas stabilize.
 
 ## Safety Boundary
 

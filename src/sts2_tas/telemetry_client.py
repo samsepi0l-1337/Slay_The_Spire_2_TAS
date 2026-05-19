@@ -25,7 +25,7 @@ class TelemetryFrameReader:
         if not isinstance(frame, dict):
             raise ValidationError("frame must be an object")
         sequence = frame.get("sequence")
-        if not isinstance(sequence, int):
+        if not isinstance(sequence, int) or isinstance(sequence, bool):
             raise ValidationError("frame sequence must be an integer")
         if self.last_sequence is not None and sequence == self.last_sequence:
             raise ValidationError(f"duplicate frame sequence: {sequence}")

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import torch
 
-from sts2_tas.bc import BehavioralCloningPolicy, train_behavioral_cloning
+from sts2_tas.bc import BehavioralCloningPolicy, evaluate_behavioral_cloning, train_behavioral_cloning
 from sts2_tas.cli import main
 from sts2_tas.telemetry_schema import MacroAction
 
@@ -35,6 +35,9 @@ def test_collect_demo_writes_heuristic_transition(tmp_path: Path) -> None:
 
     line = json.loads(output.read_text())
     assert line["chosen_action_json"]["action_type"] == "play_card"
+    assert line["chosen_action"]["action_type"] == "play_card"
+    assert line["state"] == line["state_json"]
+    assert line["valid_actions"] == line["valid_actions_json"]
 
 
 def test_train_bc_and_evaluate_policy(tmp_path: Path, capsys) -> None:
@@ -95,6 +98,37 @@ def test_behavioral_cloning_policy_falls_back_to_first_legal_action(tmp_path: Pa
     assert policy.predict({"phase": "unknown"}, [MacroAction("end_turn", {})]) == MacroAction("end_turn", {})
 
 
+def test_behavioral_cloning_policy_rejects_empty_legal_actions(tmp_path: Path) -> None:
+    model = tmp_path / "bc.json"
+    train_behavioral_cloning(DATASET, model)
+    policy = BehavioralCloningPolicy.load(model)
+
+    try:
+        policy.predict({"phase": "terminal"}, [])
+    except ValueError as exc:
+        assert "no legal actions" in str(exc)
+    else:
+        raise AssertionError("empty legal actions must fail closed")
+
+
+def test_evaluate_behavioral_cloning_skips_empty_terminal_samples(tmp_path: Path) -> None:
+    model = tmp_path / "bc.json"
+    dataset = tmp_path / "with-terminal.jsonl"
+    train_behavioral_cloning(DATASET, model)
+    lines = DATASET.read_text().splitlines()
+    terminal = {
+        "state": {"phase": "terminal"},
+        "valid_actions": [],
+        "chosen_action": {"action_type": "end_turn", "args": {}},
+    }
+    dataset.write_text("\n".join([json.dumps(terminal), *lines]))
+
+    result = evaluate_behavioral_cloning(dataset, model)
+
+    assert result["samples"] == 2
+    assert result["accuracy"] == 1.0
+
+
 def test_legacy_behavioral_cloning_table_fallback_paths() -> None:
     play_card = {"action_type": "play_card", "args": {"hand_slot": 0, "target_slot": 0}}
     policy = BehavioralCloningPolicy(
@@ -124,6 +158,17 @@ def test_train_ppo_smoke_uses_maskable_bc_fallback(tmp_path: Path, capsys) -> No
     output = json.loads(capsys.readouterr().out)
     assert output["algorithm"] == "maskable-ppo-smoke"
     assert model.exists()
+
+
+def test_train_ppo_smoke_preserves_torch_artifact(tmp_path: Path) -> None:
+    model = tmp_path / "ppo.pt"
+
+    assert main(["train-ppo", "--dataset", str(DATASET), "--model", str(model), "--timesteps", "2"]) == 0
+
+    artifact = torch.load(model, weights_only=False)
+    assert artifact["algorithm"] == "maskable-ppo-smoke"
+    assert artifact["timesteps"] == 2
+    assert isinstance(artifact["model_state"]["linear.weight"], torch.Tensor)
 
 
 def test_act_cli_defaults_to_dry_run(capsys) -> None:

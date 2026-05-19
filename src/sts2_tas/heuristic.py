@@ -29,7 +29,8 @@ def _lethal_attack(snapshot: TelemetrySnapshot) -> MacroAction | None:
             continue
         damage = int(snapshot.hand[hand_slot].get("damage", 0))
         hp = int(snapshot.enemies[target_slot].get("hp", 0))
-        if damage >= hp:
+        block = int(snapshot.enemies[target_slot].get("block", 0))
+        if max(0, damage - block) >= hp:
             return action
     return None
 

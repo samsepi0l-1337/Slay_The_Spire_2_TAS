@@ -64,6 +64,9 @@ def test_env_step_applies_legal_macro_action_and_logs_transition(tmp_path: Path)
     assert terminated is True
     assert truncated is False
     assert step_info["chosen_action"]["action_type"] == "play_card"
+    assert step_info["valid_action_mask"] == []
+    with pytest.raises(ValueError, match="illegal action"):
+        env.step(0)
     assert len((tmp_path / "transitions.jsonl").read_text().splitlines()) == 1
 
 
@@ -82,6 +85,9 @@ def test_executor_dry_run_and_execute_gate() -> None:
 
     assert plan["execute"] is False
     assert plan["commands"][0]["kind"] == "click"
+    assert MacroExecutor("Slay the Spire 2").plan(MacroAction("play_card", {"hand_slot": 1}))["commands"] == [
+        {"kind": "click", "target": "hand", "slot": 1}
+    ]
     with pytest.raises(PermissionError, match="--execute"):
         executor.execute(action)
 
@@ -100,6 +106,25 @@ def test_heuristic_prefers_lethal_attack_then_end_turn_without_energy() -> None:
     assert choose_action(TelemetrySnapshot.from_dict(data)) == MacroAction("end_turn", {})
 
 
+def test_heuristic_and_env_apply_enemy_block_before_hp_damage() -> None:
+    data = json.loads(FIXTURE.read_text())
+    data["enemies"][0]["hp"] = 6
+    data["enemies"][0]["block"] = 4
+    data["hand"][1] = {"id": "heavy", "name": "Heavy", "cost": 1, "type": "attack", "damage": 10}
+    data["valid_actions"] = [
+        {"action_type": "play_card", "args": {"hand_slot": 0, "target_slot": 0}},
+        {"action_type": "play_card", "args": {"hand_slot": 1, "target_slot": 0}},
+    ]
+    snapshot = TelemetrySnapshot.from_dict(data)
+
+    assert choose_action(snapshot) == MacroAction("play_card", {"hand_slot": 1, "target_slot": 0})
+
+    observation, reward, terminated, _, _ = Sts2Env(snapshot).step(0)
+    assert observation["enemy_hp_total"] == 4
+    assert reward == 2.0
+    assert terminated is False
+
+
 def test_heuristic_phase_fallbacks_and_no_action_guard() -> None:
     data = json.loads(FIXTURE.read_text())
     data["enemies"][0]["hp"] = 20
@@ -109,6 +134,7 @@ def test_heuristic_phase_fallbacks_and_no_action_guard() -> None:
         {"action_type": "choose_reward", "args": {"choice_slot": 1}},
         {"action_type": "end_turn", "args": {}},
     ]
+    data["reward_choices"] = [{"id": "card-a"}, {"id": "card-b"}]
     assert choose_action(TelemetrySnapshot.from_dict(data)) == MacroAction("choose_reward", {"choice_slot": 1})
 
     data["player"]["energy"] = 0
@@ -143,6 +169,8 @@ def test_telemetry_frame_reader_rejects_corrupt_and_malformed_frames() -> None:
         frame_reader.accept_json("[]")
     with pytest.raises(ValidationError, match="sequence"):
         frame_reader.accept_json(json.dumps({"sequence": "1", "payload": {}}))
+    with pytest.raises(ValidationError, match="sequence"):
+        frame_reader.accept_json(json.dumps({"sequence": True, "payload": {}}))
 
 
 def test_telemetry_stream_client_reads_file_like_frames() -> None:
@@ -219,6 +247,9 @@ def test_transition_record_is_jsonl_serializable(tmp_path: Path) -> None:
     written = json.loads(path.read_text())
     assert written["run_id"] == "run-1"
     assert written["result"] == "planned"
+    assert written["state"] == written["state_json"]
+    assert written["valid_actions"] == written["valid_actions_json"]
+    assert written["chosen_action"] == written["chosen_action_json"]
     assert JsonlTransitionWriter(path).records()[0]["run_id"] == "run-1"
     assert JsonlTransitionWriter(tmp_path / "missing.jsonl").records() == []
 
@@ -251,8 +282,20 @@ def test_schema_rejects_malformed_shapes_and_arguments() -> None:
     with pytest.raises(ValidationError, match="hand_slot must be an integer"):
         TelemetrySnapshot.from_dict(data)
 
+    data["valid_actions"] = [{"action_type": "play_card", "args": {"hand_slot": True}}]
+    with pytest.raises(ValidationError, match="hand_slot must be an integer"):
+        TelemetrySnapshot.from_dict(data)
+
     data["valid_actions"] = [{"action_type": "play_card", "args": {"hand_slot": -1}}]
     with pytest.raises(ValidationError, match="hand_slot must be non-negative"):
+        TelemetrySnapshot.from_dict(data)
+
+    data["valid_actions"] = [{"action_type": "play_card", "args": {"hand_slot": 99}}]
+    with pytest.raises(ValidationError, match="hand_slot out of range"):
+        TelemetrySnapshot.from_dict(data)
+
+    data["valid_actions"] = [{"action_type": "play_card", "args": {"hand_slot": 0, "target_slot": 99}}]
+    with pytest.raises(ValidationError, match="target_slot out of range"):
         TelemetrySnapshot.from_dict(data)
 
 
@@ -268,12 +311,25 @@ def test_schema_rejects_invalid_json_phase_empty_actions_and_player_fields() -> 
         TelemetrySnapshot.from_dict(data)
 
     data = json.loads(FIXTURE.read_text())
+    data["schema_version"] = 2
+    with pytest.raises(ValidationError, match="unsupported schema_version"):
+        TelemetrySnapshot.from_dict(data)
+
+    data["schema_version"] = "1"
+    with pytest.raises(ValidationError, match="schema_version must be an integer"):
+        TelemetrySnapshot.from_dict(data)
+
+    data = json.loads(FIXTURE.read_text())
     data["valid_actions"] = []
     with pytest.raises(ValidationError, match="valid_actions cannot be empty"):
         TelemetrySnapshot.from_dict(data)
 
     terminal = data | {"phase": "terminal"}
     assert TelemetrySnapshot.from_dict(terminal).valid_actions == []
+
+    terminal["valid_actions"] = [{"action_type": "end_turn", "args": {}}]
+    with pytest.raises(ValidationError, match="terminal snapshots cannot expose valid_actions"):
+        TelemetrySnapshot.from_dict(terminal)
 
     data = json.loads(FIXTURE.read_text())
     del data["player"]["hp"]
@@ -284,6 +340,41 @@ def test_schema_rejects_invalid_json_phase_empty_actions_and_player_fields() -> 
     data["player"]["hp"] = "70"
     with pytest.raises(ValidationError, match="player.hp must be an integer"):
         TelemetrySnapshot.from_dict(data)
+
+    data["player"]["hp"] = True
+    with pytest.raises(ValidationError, match="player.hp must be an integer"):
+        TelemetrySnapshot.from_dict(data)
+
+
+def test_schema_validates_choice_action_slots_against_snapshot_choices() -> None:
+    data = json.loads(FIXTURE.read_text())
+    data["phase"] = "card_reward"
+    data["reward_choices"] = [{"id": "card-a"}, {"id": "card-b"}]
+    data["valid_actions"] = [{"action_type": "choose_reward", "args": {"choice_slot": 2}}]
+    with pytest.raises(ValidationError, match="choice_slot out of range"):
+        TelemetrySnapshot.from_dict(data)
+
+    data["valid_actions"] = [{"action_type": "choose_reward", "args": {"choice_slot": 1}}]
+    assert TelemetrySnapshot.from_dict(data).valid_actions == [MacroAction("choose_reward", {"choice_slot": 1})]
+
+
+def test_env_advances_non_combat_choice_screens_to_terminal() -> None:
+    data = json.loads(FIXTURE.read_text())
+    data["phase"] = "card_reward"
+    data["reward_choices"] = [{"id": "card-a"}, {"id": "card-b"}]
+    data["valid_actions"] = [{"action_type": "choose_reward", "args": {"choice_slot": 0}}]
+    env = Sts2Env(TelemetrySnapshot.from_dict(data))
+
+    observation, reward, terminated, truncated, info = env.step(0)
+
+    assert observation["phase"] == "terminal"
+    assert reward == 0.0
+    assert terminated is True
+    assert truncated is False
+    assert info["valid_action_mask"] == []
+
+    with pytest.raises(ValueError, match="choice_slot"):
+        env._advance_choice_screen({"reward_choices": []}, MacroAction("choose_reward", {"choice_slot": 0}))
 
 
 def test_env_end_turn_block_card_and_illegal_slots() -> None:
