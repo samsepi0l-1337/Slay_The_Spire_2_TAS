@@ -225,6 +225,7 @@ public static class RunFlow
         if (DeclineTutorials(root)) { return; }
         if (ClickFirstVisible("NDisclaimerProceedButton")) { return; }
         if (ClickFirstVisible("NFtueConfirmButton")) { return; }
+        if (ClickContinue()) { return; }
         if (ClickSingleplayer()) { return; }
         if (ClickStandard()) { return; }
         if (ClickCharacterSelect(root)) { return; }
@@ -275,6 +276,13 @@ public static class RunFlow
         if (ClickFirstVisible("NCardRewardAlternativeButton")) { return; }
         if (ClickFirstVisible("NChoiceSelectionSkipButton")) { return; }
         ClickFirstVisible("NProceedButton");
+    }
+
+    private static bool ClickContinue()
+    {
+        var menu = NGame.Instance?.MainMenu;
+        var button = menu?.GetNodeOrNull<NMainMenuContinueButton>("MainMenuTextButtons/ContinueButton");
+        return ClickControl(button) || ClickFirstVisible("NMainMenuContinueButton");
     }
 
     private static bool ClickSingleplayer()
