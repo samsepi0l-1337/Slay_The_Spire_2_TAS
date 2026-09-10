@@ -36,6 +36,7 @@
 - `src/sts2_tas/heuristic.py`: combat/reward/map/shop/event/rest baseline policy.
 - `src/sts2_tas/bc.py`: behavioral cloning training and inference.
 - `src/sts2_tas/rl.py`: MaskablePPO training and evaluation.
+- `src/sts2_tas/qstar.py`: Q* search over legal macros, online TD weight updates, and the play loop.
 - `src/sts2_tas/dataset.py`: JSONL first transition logging with SQLite/Parquet-compatible records.
 - `bridge/Sts2TelemetryBridge/`: Godot 4 C#/.NET bridge, checked-in `.sln`/`.csproj`, Harmony bootstrap, patch point config, named pipe/WebSocket transport.
 - `.github/workflows/windows-exe.yml`: Windows executable workflow for the new CLI surface and bridge smoke fixtures.

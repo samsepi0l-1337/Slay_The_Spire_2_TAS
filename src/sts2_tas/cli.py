@@ -9,6 +9,7 @@ from sts2_tas.dataset import JsonlTransitionWriter, TransitionRecord
 from sts2_tas.env import Sts2Env
 from sts2_tas.executor import MacroExecutor
 from sts2_tas.heuristic import choose_action
+from sts2_tas.qstar import run_qstar
 from sts2_tas.rl import train_maskable_ppo_smoke
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 
@@ -88,6 +89,18 @@ def _run_local(args: argparse.Namespace) -> dict[str, object]:
     return {"episodes": args.episodes, "transitions": transitions, "output": str(args.output)}
 
 
+def _run_qstar(args: argparse.Namespace) -> dict[str, object]:
+    return run_qstar(
+        _load_snapshot(args.snapshot),
+        args.model,
+        args.output,
+        episodes=args.episodes,
+        search_depth=args.search_depth,
+        max_steps=args.max_steps,
+        executor=MacroExecutor(args.window_title, execute_enabled=args.execute),
+    )
+
+
 def _load_snapshot(path: Path) -> TelemetrySnapshot:
     return TelemetrySnapshot.from_json(path.read_text())
 
@@ -120,6 +133,14 @@ def _parser() -> argparse.ArgumentParser:
     run_local = _add_path_command(subcommands, "run-local", "snapshot", _run_local)
     run_local.add_argument("--episodes", type=int, default=1)
     run_local.add_argument("--output", type=Path, required=True)
+    qstar = _add_path_command(subcommands, "run-qstar", "snapshot", _run_qstar)
+    qstar.add_argument("--model", type=Path, required=True)
+    qstar.add_argument("--output", type=Path, required=True)
+    qstar.add_argument("--episodes", type=int, default=1)
+    qstar.add_argument("--search-depth", type=int, default=2)
+    qstar.add_argument("--max-steps", type=int, default=32)
+    qstar.add_argument("--window-title", default="Slay the Spire 2")
+    qstar.add_argument("--execute", action="store_true")
     return parser
 
 

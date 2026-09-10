@@ -36,6 +36,7 @@ Not present:
 - [x] `evaluate-policy`: evaluate a BC policy against recorded fixture transitions.
 - [x] `act`: convert a macro action into a dry-run or `--execute` input plan.
 - [x] `run-local`: run a fixture snapshot, policy choice, environment step, dataset logging, and dry-run executor boundary.
+- [x] `run-qstar`: play a snapshot to terminal with Q* search, online TD weight updates, and optional `--execute`.
 
 ## Target Python Modules
 
@@ -47,6 +48,7 @@ Not present:
 - [x] `heuristic.py`: baseline combat/reward/map/shop/event/rest policy.
 - [x] `bc.py`: torch-backed behavioral cloning training and valid-action scoring, with legacy JSON table compatibility.
 - [x] `rl.py`: MaskablePPO-shaped smoke training path backed by the legal-action BC artifact.
+- [x] `qstar.py`: Q* limited-depth search over legal macros, online TD weight updates during play, and `run-qstar`.
 - [x] `dataset.py`: JSONL first, SQLite/Parquet compatible transition records.
 
 ## Target Bridge Surface

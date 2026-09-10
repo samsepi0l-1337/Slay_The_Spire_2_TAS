@@ -22,7 +22,7 @@ flowchart LR
     Bridge["C# Godot/Harmony telemetry bridge"]
     Client["Python telemetry client"]
     Env["Gymnasium Env"]
-    Policy["BC / MaskablePPO policy"]
+    Policy["BC / MaskablePPO / Q* policy"]
     Executor["Macro-action executor"]
     Logs["JSONL / SQLite / Parquet logs"]
 
@@ -51,6 +51,7 @@ The following surfaces are present as fixture/local implementations:
 - `src/sts2_tas/heuristic.py`
 - `src/sts2_tas/bc.py`
 - `src/sts2_tas/rl.py`
+- `src/sts2_tas/qstar.py`
 - `src/sts2_tas/dataset.py`
 - telemetry fixtures under `data/fixtures/`
 
@@ -103,6 +104,17 @@ Supported initial action types:
 - `shop_remove(card_slot)`
 
 The executor converts macro actions to guarded input sequences using current target window metadata. Coordinates are window-relative. Native input requires `--execute`; dry-run writes the planned input to logs.
+
+## Q* Play Loop
+
+`run-qstar` plays a snapshot until the environment is terminal or `max_steps` is hit. Each step:
+
+1. Expand legal macros with limited-depth search. Immediate env reward is `g`; the learned linear Q-function is the heuristic `h`.
+2. Convert the chosen macro to an executor plan, or native input when `--execute` is set.
+3. Apply the action, write a JSONL transition, and take a TD update `Q(s,a) <- r + γ max_a' Q(s',a')`.
+4. Persist weights after every episode so later runs continue from the updated model.
+
+This is fixture/env play, not live Godot/Harmony attach. The combat env now discards played cards, rebuilds energy-gated valid actions, and redraws on `end_turn`.
 
 ## Logging
 

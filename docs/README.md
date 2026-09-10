@@ -41,7 +41,7 @@ The repository is moving away from the previous screen/OCR and replay-first dire
 
 ## Ownership
 
-The module ownership anchors are `telemetry_schema.py`, `telemetry_client.py`, `env.py`, `action_space.py`, `executor.py`, `heuristic.py`, `bc.py`, `rl.py`, `dataset.py`, and `bridge/Sts2TelemetryBridge`. `AGENTS.md` remains the path guidance source for future implementation work.
+The module ownership anchors are `telemetry_schema.py`, `telemetry_client.py`, `env.py`, `action_space.py`, `executor.py`, `heuristic.py`, `bc.py`, `rl.py`, `qstar.py`, `dataset.py`, and `bridge/Sts2TelemetryBridge`. `AGENTS.md` remains the path guidance source for future implementation work.
 
 ## Verification
 

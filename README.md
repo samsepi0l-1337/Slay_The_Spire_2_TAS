@@ -8,7 +8,7 @@ The current checkout has the first runnable fixture-based automation and learnin
 
 Present files:
 
-- `src/sts2_tas/`: telemetry schema/client, Gymnasium-style env adapter, action masks, dry-run executor, heuristic policy, torch BC/PPO-smoke training, dataset logging, and CLI.
+- `src/sts2_tas/`: telemetry schema/client, Gymnasium-style env adapter, action masks, dry-run executor, heuristic policy, torch BC/PPO-smoke training, Q* play with online weight updates, dataset logging, and CLI.
 - `tests/`: regression tests for schema, action space, env, executor, heuristic, dataset, ML, and CLI.
 - `data/fixtures/`: fixture telemetry and ML smoke records.
 - `bridge/Sts2TelemetryBridge/`: minimal .NET bridge project skeleton for fixture smoke.
@@ -49,6 +49,7 @@ Implemented commands:
 - `evaluate-policy --dataset data/fixtures/ml-train-smoke.jsonl --model /tmp/bc.json`
 - `act --action-json '{"action_type":"end_turn","args":{}}'`
 - `run-local --snapshot data/fixtures/telemetry-combat.json --episodes 1 --output /tmp/run.jsonl`
+- `run-qstar --snapshot data/fixtures/telemetry-combat.json --model /tmp/qstar.json --output /tmp/qstar.jsonl --episodes 2`
 
 Retired command families are historical compatibility names. If old source or tests are restored, treat these as debt to remove or replace: `tas-probe`, `tas-record`, `tas-replay`, `tas-verify`, `tas-search`, OCR-first `live-step`, and OCR-first `live-learn-loop`.
 
