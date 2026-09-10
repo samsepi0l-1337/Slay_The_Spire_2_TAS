@@ -9,6 +9,7 @@ from sts2_tas.dataset import JsonlTransitionWriter, TransitionRecord
 from sts2_tas.env import Sts2Env
 from sts2_tas.executor import MacroExecutor
 from sts2_tas.heuristic import choose_action
+from sts2_tas.live import command_sender, connect_transport, frame_stream, run_live
 from sts2_tas.qstar import run_qstar
 from sts2_tas.rl import train_maskable_ppo_smoke
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
@@ -101,6 +102,23 @@ def _run_qstar(args: argparse.Namespace) -> dict[str, object]:
     )
 
 
+def _run_live(args: argparse.Namespace) -> dict[str, object]:
+    reader, writer = connect_transport(args.transport)
+    try:
+        return run_live(
+            frame_stream(reader),
+            args.model,
+            args.output,
+            send_command=command_sender(writer, args.execute),
+            search_depth=args.search_depth,
+            max_steps=args.max_steps,
+        )
+    finally:
+        reader.close()
+        if writer is not reader:
+            writer.close()
+
+
 def _load_snapshot(path: Path) -> TelemetrySnapshot:
     return TelemetrySnapshot.from_json(path.read_text())
 
@@ -141,6 +159,14 @@ def _parser() -> argparse.ArgumentParser:
     qstar.add_argument("--max-steps", type=int, default=32)
     qstar.add_argument("--window-title", default="Slay the Spire 2")
     qstar.add_argument("--execute", action="store_true")
+    live = subcommands.add_parser("run-live")
+    live.add_argument("--transport", default="pipe:sts2-tas")
+    live.add_argument("--model", type=Path, required=True)
+    live.add_argument("--output", type=Path, required=True)
+    live.add_argument("--search-depth", type=int, default=2)
+    live.add_argument("--max-steps", type=int, default=32)
+    live.add_argument("--execute", action="store_true")
+    live.set_defaults(func=_run_live)
     return parser
 
 

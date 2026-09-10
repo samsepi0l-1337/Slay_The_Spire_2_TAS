@@ -50,6 +50,7 @@ Implemented commands:
 - `act --action-json '{"action_type":"end_turn","args":{}}'`
 - `run-local --snapshot data/fixtures/telemetry-combat.json --episodes 1 --output /tmp/run.jsonl`
 - `run-qstar --snapshot data/fixtures/telemetry-combat.json --model /tmp/qstar.json --output /tmp/qstar.jsonl --episodes 2`
+- `run-live --transport tcp:127.0.0.1:28771 --model /tmp/qstar.json --output /tmp/live.jsonl --execute`
 
 Retired command families are historical compatibility names. If old source or tests are restored, treat these as debt to remove or replace: `tas-probe`, `tas-record`, `tas-replay`, `tas-verify`, `tas-search`, OCR-first `live-step`, and OCR-first `live-learn-loop`.
 

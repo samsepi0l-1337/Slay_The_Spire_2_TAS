@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Sts2TasMod</AssemblyName>
+    <RootNamespace>Sts2TasMod</RootNamespace>
+    <STS2GameDir Condition="'$(STS2GameDir)' == ''">$(STS2_GAME_DIR)</STS2GameDir>
+    <STS2GameDir Condition="'$(STS2GameDir)' == '' AND '$(OS)' == 'Windows_NT'">C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2</STS2GameDir>
+    <STS2DataDir Condition="'$(STS2DataDir)' == ''">data_sts2_windows_x86_64</STS2DataDir>
+    <GameAssemblyDir>$(STS2GameDir)/$(STS2DataDir)</GameAssemblyDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="sts2">
+      <HintPath>$(GameAssemblyDir)/sts2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GodotSharp">
+      <HintPath>$(GameAssemblyDir)/GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(GameAssemblyDir)/0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Sts2TasMod.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Target Name="DeployMod" AfterTargets="Build" Condition="Exists('$(STS2GameDir)')">
+    <MakeDir Directories="$(STS2GameDir)/mods/Sts2TasMod" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(STS2GameDir)/mods/Sts2TasMod" />
+    <Copy SourceFiles="$(ProjectDir)Sts2TasMod.json" DestinationFolder="$(STS2GameDir)/mods/Sts2TasMod" />
+  </Target>
+</Project>

@@ -31,8 +31,8 @@ Present:
 
 Absent:
 
-- live Godot/Harmony patch attach against a real Slay the Spire 2 process
-- production named-pipe transport
+- live Godot/Harmony attach is present as `bridge/Sts2TasMod` for STS2 `v0.107.1`; it fail-closes on symbol mismatch
+- production named-pipe `sts2-tas` plus TCP fixture `pipe-serve`
 - real-game Windows `--execute` acknowledgement
 
 ## Current Direction

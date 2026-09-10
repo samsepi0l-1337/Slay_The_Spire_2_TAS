@@ -18,6 +18,8 @@ class TelemetryFrameReader:
         self.last_sequence: int | None = None
 
     def accept_json(self, text: str) -> TelemetryFrame:
+        if text.startswith("\ufeff"):
+            text = text[1:]
         try:
             frame = json.loads(text)
         except json.JSONDecodeError as exc:

@@ -2,7 +2,7 @@
 
 ## Status
 
-This is the target architecture for the rewrite and the current fixture-based Python implementation. The current checkout contains `src/`, `tests/`, `bridge/`, `config/`, and telemetry fixtures, but it does not yet contain live Godot/Harmony attach or production named-pipe transport.
+This is the target architecture for the rewrite. The checkout now includes a Harmony telemetry mod, named-pipe/TCP transport, and a Q* live play loop. Live attach still fail-closes when the running game version or patch-point symbols do not match `config/patch-points.<game_version>.json`.
 
 ## Goal
 
@@ -55,7 +55,7 @@ The following surfaces are present as fixture/local implementations:
 - `src/sts2_tas/dataset.py`
 - telemetry fixtures under `data/fixtures/`
 
-Remaining live-game gaps are Harmony patch bootstrap, production named-pipe/WebSocket transport, actual game frame emission, and Windows `--execute` acknowledgement against the target process.
+The Harmony mod `bridge/Sts2TasMod` loads through the official `[ModInitializer]`, patches `CombatStateTracker.NotifyCombatStateChanged`, emits `TelemetrySnapshot` frames on pipe `sts2-tas`, and applies `play_card` / `end_turn` through `PlayCardAction` and `PlayerCmd.EndTurn`. `run-live` consumes those frames, chooses with Q*, and updates weights from real HP deltas. Fixture TCP `pipe-serve` is the Windows smoke path when the game window is not in combat.
 
 ## Bridge Project
 
@@ -114,7 +114,7 @@ The executor converts macro actions to guarded input sequences using current tar
 3. Apply the action, write a JSONL transition, and take a TD update `Q(s,a) <- r + γ max_a' Q(s',a')`.
 4. Persist weights after every episode so later runs continue from the updated model.
 
-This is fixture/env play, not live Godot/Harmony attach. The combat env now discards played cards, rebuilds energy-gated valid actions, and redraws on `end_turn`.
+`run-qstar` remains the fixture/env trainer. `run-live` is the Harmony/pipe loop. Combat env still discards played cards, rebuilds energy-gated valid actions, and redraws on `end_turn` so Q* search has a local model.
 
 ## Logging
 

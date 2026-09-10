@@ -43,6 +43,7 @@ These commands are implemented for fixture/local workflows:
 - `act`: convert one macro action into a dry-run or native input plan.
 - `run-local`: run fixture environment, policy, dataset logging, and executor boundary together.
 - `run-qstar`: play a snapshot with Q* search, update Q weights after every transition, and persist the model.
+- `run-live`: consume Harmony/TCP telemetry, send macros, and update Q* from live HP deltas.
 
 Retired public commands: `tas-probe`, `tas-record`, `tas-replay`, `tas-verify`, `tas-search`, and OCR-first `live-step`/`live-learn-loop`.
 
