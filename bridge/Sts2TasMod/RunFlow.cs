@@ -283,7 +283,8 @@ public static class RunFlow
             return;
         }
         if (ClickFirstVisible("NRewardButton")) { return; }
-        ClickFirstVisible("NProceedButton");
+        if (ClickFirstVisible("NProceedButton")) { return; }
+        ClickNamed((Engine.GetMainLoop() as SceneTree)?.Root, "ProceedButton");
     }
 
     private static bool PickFirstRewardCard(Node screen)
@@ -402,12 +403,19 @@ public static class RunFlow
 
     private static bool ClickFirstVisible(string typeName)
     {
-        return ClickControl(FindType((Engine.GetMainLoop() as SceneTree)?.Root, typeName));
+        foreach (var node in FindAll((Engine.GetMainLoop() as SceneTree)?.Root, typeName))
+        {
+            if (ClickControl(node))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool ClickControl(Node? node)
     {
-        if (node is null || !IsShown(node))
+        if (node is null || !IsShown(node) || !Enabled(node))
         {
             return false;
         }
@@ -438,6 +446,25 @@ public static class RunFlow
             return true;
         }
         return false;
+    }
+
+    private static IEnumerable<Node> FindAll(Node? node, string typeName)
+    {
+        if (node is null)
+        {
+            yield break;
+        }
+        if (node.GetType().Name == typeName)
+        {
+            yield return node;
+        }
+        foreach (var child in node.GetChildren())
+        {
+            foreach (var match in FindAll(child, typeName))
+            {
+                yield return match;
+            }
+        }
     }
 
     private static Node? FindType(Node? node, string typeName)
