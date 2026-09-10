@@ -11,10 +11,16 @@ from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 class Sts2Env:
     metadata = {"render_modes": []}
 
-    def __init__(self, snapshot: TelemetrySnapshot, writer: JsonlTransitionWriter | None = None) -> None:
+    def __init__(
+        self,
+        snapshot: TelemetrySnapshot,
+        writer: JsonlTransitionWriter | None = None,
+        policy_id: str | None = None,
+    ) -> None:
         self.snapshot = snapshot
         self.action_space = ActionSpace.from_snapshot(snapshot)
         self.writer = writer
+        self.policy_id = policy_id
         self.last_seed: int | None = None
 
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -47,6 +53,7 @@ class Sts2Env:
                     reward=reward,
                     terminal=terminated,
                     result="applied",
+                    policy_id=self.policy_id,
                 )
             )
         return self._observe(next_state), reward, terminated, False, info
@@ -56,22 +63,18 @@ class Sts2Env:
 
     def _apply(self, action: MacroAction) -> tuple[TelemetrySnapshot, float, bool]:
         data = self.snapshot.to_dict()
-        reward = 0.0
-        terminated = self.snapshot.phase == "terminal"
         if action.action_type == "play_card":
             reward = self._apply_card(data, action)
-            terminated = self._enemy_hp_total(data) == 0
-            if terminated:
-                data["phase"] = "terminal"
-                data["valid_actions"] = []
+            if self._enemy_hp_total(data) == 0:
+                return self._terminal_snapshot(data), reward, True
+            self._rebuild_combat_actions(data)
+            return TelemetrySnapshot.from_dict(data), reward, False
         if action.action_type == "end_turn":
-            data["player"]["energy"] = 3
-        if action.action_type in {"choose_reward", "choose_map_node", "choose_event_option", "shop_buy", "shop_remove"}:
-            self._advance_choice_screen(data, action)
-            terminated = True
-            data["phase"] = "terminal"
-            data["valid_actions"] = []
-        return TelemetrySnapshot.from_dict(data), reward, terminated
+            self._end_turn(data)
+            self._rebuild_combat_actions(data)
+            return TelemetrySnapshot.from_dict(data), 0.0, False
+        self._advance_choice_screen(data, action)
+        return self._terminal_snapshot(data), 0.0, True
 
     def _apply_card(self, data: dict[str, Any], action: MacroAction) -> float:
         hand_slot = action.args["hand_slot"]
@@ -82,7 +85,8 @@ class Sts2Env:
             raise ValueError("illegal action: hand_slot")
         if target_slot >= len(enemies):
             raise ValueError("illegal action: target_slot")
-        card = hand[hand_slot]
+        card = hand.pop(hand_slot)
+        data["discard_pile"].append(card)
         damage = int(card.get("damage", 0))
         block = int(card.get("block", 0))
         data["player"]["energy"] = max(0, int(data["player"]["energy"]) - int(card.get("cost", 0)))
@@ -115,6 +119,49 @@ class Sts2Env:
     @staticmethod
     def _enemy_hp_total(data: dict[str, Any]) -> int:
         return sum(int(enemy.get("hp", 0)) for enemy in data["enemies"])
+
+    @staticmethod
+    def _terminal_snapshot(data: dict[str, Any]) -> TelemetrySnapshot:
+        data["phase"] = "terminal"
+        data["valid_actions"] = []
+        return TelemetrySnapshot.from_dict(data)
+
+    @staticmethod
+    def _end_turn(data: dict[str, Any]) -> None:
+        data["player"]["energy"] = 3
+        data["discard_pile"].extend(data["hand"])
+        data["hand"] = []
+        Sts2Env._draw(data, 5)
+
+    @staticmethod
+    def _draw(data: dict[str, Any], count: int) -> None:
+        for _ in range(count):
+            if not data["draw_pile"]:
+                data["draw_pile"] = list(data["discard_pile"])
+                data["discard_pile"] = []
+            if not data["draw_pile"]:
+                return
+            data["hand"].append(data["draw_pile"].pop(0))
+
+    @staticmethod
+    def _rebuild_combat_actions(data: dict[str, Any]) -> None:
+        energy = int(data["player"]["energy"])
+        living = [index for index, enemy in enumerate(data["enemies"]) if int(enemy.get("hp", 0)) > 0]
+        actions: list[dict[str, Any]] = []
+        for hand_slot, card in enumerate(data["hand"]):
+            if int(card.get("cost", 0)) > energy:
+                continue
+            if Sts2Env._is_targeted(card):
+                for target_slot in living:
+                    actions.append({"action_type": "play_card", "args": {"hand_slot": hand_slot, "target_slot": target_slot}})
+                continue
+            actions.append({"action_type": "play_card", "args": {"hand_slot": hand_slot}})
+        actions.append({"action_type": "end_turn", "args": {}})
+        data["valid_actions"] = actions
+
+    @staticmethod
+    def _is_targeted(card: dict[str, Any]) -> bool:
+        return card.get("type") == "attack" or "damage" in card
 
     @staticmethod
     def _observe(snapshot: TelemetrySnapshot) -> dict[str, Any]:

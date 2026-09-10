@@ -389,7 +389,7 @@ def test_env_end_turn_block_card_and_illegal_slots() -> None:
     assert terminated is False
     assert truncated is False
 
-    end_turn_state, *_ = env.step(2)
+    end_turn_state, *_ = env.step(env.action_space.index_of(MacroAction("end_turn", {})))
     assert end_turn_state["energy"] == 3
 
     with pytest.raises(ValueError, match="hand_slot"):

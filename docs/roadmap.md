@@ -31,6 +31,8 @@
 - [x] Add torch-backed behavioral cloning training with demonstration JSONL.
 - [x] Add MaskablePPO-shaped smoke training backed by the legal-action BC artifact.
 - [x] Add policy evaluation summaries with fixture accuracy metrics.
+- [x] Add Q* play loop that searches legal macros, executes the chosen action, and updates Q weights online.
+- [x] Add Harmony `[ModInitializer]` telemetry mod, named-pipe/TCP transport, and `run-live`.
 - Add richer entity encoders for cards, enemies, relics, and map choices.
 - Add parallel env collection once one local bridge loop is stable.
 - Add transformer policy experiments for larger card/relic/action spaces.

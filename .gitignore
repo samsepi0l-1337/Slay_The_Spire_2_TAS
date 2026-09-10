@@ -11,5 +11,7 @@ data/*
 !data/fixtures/**
 models/
 build/
+bin/
+obj/
 dist/
 *.spec

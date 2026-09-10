@@ -1,0 +1,16 @@
+{
+  "game_version": "v0.107.1",
+  "fail_closed": true,
+  "pipe_name": "sts2-tas",
+  "symbols": {
+    "mod_initializer": "MegaCrit.Sts2.Core.Modding.ModInitializerAttribute",
+    "combat_manager": "MegaCrit.Sts2.Core.Combat.CombatManager",
+    "combat_state": "MegaCrit.Sts2.Core.Combat.CombatState",
+    "combat_state_tracker": "MegaCrit.Sts2.Core.Combat.CombatStateTracker",
+    "notify_combat_state_changed": "MegaCrit.Sts2.Core.Combat.CombatStateTracker.NotifyCombatStateChanged",
+    "play_card_action": "MegaCrit.Sts2.Core.GameActions.PlayCardAction",
+    "player_cmd_end_turn": "MegaCrit.Sts2.Core.Commands.PlayerCmd.EndTurn",
+    "run_manager": "MegaCrit.Sts2.Core.Runs.RunManager",
+    "action_queue_synchronizer": "MegaCrit.Sts2.Core.GameActions.Multiplayer.ActionQueueSynchronizer.RequestEnqueue"
+  }
+}

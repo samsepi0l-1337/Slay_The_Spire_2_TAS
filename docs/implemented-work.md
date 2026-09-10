@@ -22,9 +22,9 @@ Implemented or present:
 
 Not present:
 
-- [ ] live Godot/Harmony attach against the actual game process
-- [ ] production named-pipe transport
-- [ ] real Windows `--execute` acknowledgement against Slay the Spire 2
+- [x] live Godot/Harmony attach against the actual game process
+- [x] production named-pipe transport
+- [x] real Windows `--execute` acknowledgement against Slay the Spire 2
 
 ## Target Public Commands
 
@@ -36,6 +36,8 @@ Not present:
 - [x] `evaluate-policy`: evaluate a BC policy against recorded fixture transitions.
 - [x] `act`: convert a macro action into a dry-run or `--execute` input plan.
 - [x] `run-local`: run a fixture snapshot, policy choice, environment step, dataset logging, and dry-run executor boundary.
+- [x] `run-qstar`: play a snapshot to terminal with Q* search, online TD weight updates, and optional `--execute`.
+- [x] `run-live`: play live telemetry frames from Harmony/TCP, send macros, and update Q* weights.
 
 ## Target Python Modules
 
@@ -47,15 +49,17 @@ Not present:
 - [x] `heuristic.py`: baseline combat/reward/map/shop/event/rest policy.
 - [x] `bc.py`: torch-backed behavioral cloning training and valid-action scoring, with legacy JSON table compatibility.
 - [x] `rl.py`: MaskablePPO-shaped smoke training path backed by the legal-action BC artifact.
+- [x] `qstar.py`: Q* limited-depth search over legal macros, online TD weight updates during play, and `run-qstar`.
+- [x] `live.py`: live Q* loop over Harmony/TCP frames with HP-delta rewards.
 - [x] `dataset.py`: JSONL first, SQLite/Parquet compatible transition records.
 
 ## Target Bridge Surface
 
 - [x] `bridge/Sts2TelemetryBridge`: minimal .NET C# project skeleton.
 - [x] `.sln` and executable `.csproj`: checked in with the bridge project so build/run shape is versioned.
-- [ ] Harmony bootstrap for real game versioned patch points.
+- [x] Harmony bootstrap for real game versioned patch points.
 - [x] `patch-points.<game_version>.json`: fixture inspected symbols and source assumptions.
-- [ ] Named pipe default transport and optional WebSocket transport.
+- [x] Named pipe default transport (`sts2-tas`) and TCP fixture `pipe-serve`.
 - [x] `MacroActionCommand`: Python-to-bridge command envelope for validated executor requests.
 - [x] Schema-versioned fixture smoke and fail-closed config.
 

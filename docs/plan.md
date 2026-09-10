@@ -42,6 +42,8 @@ These commands are implemented for fixture/local workflows:
 - `evaluate-policy`: evaluate BC policies.
 - `act`: convert one macro action into a dry-run or native input plan.
 - `run-local`: run fixture environment, policy, dataset logging, and executor boundary together.
+- `run-qstar`: play a snapshot with Q* search, update Q weights after every transition, and persist the model.
+- `run-live`: consume Harmony/TCP telemetry, send macros, and update Q* from live HP deltas.
 
 Retired public commands: `tas-probe`, `tas-record`, `tas-replay`, `tas-verify`, `tas-search`, and OCR-first `live-step`/`live-learn-loop`.
 
@@ -55,6 +57,7 @@ Retired public commands: `tas-probe`, `tas-record`, `tas-replay`, `tas-verify`, 
 - `heuristic.py`: combat/reward/map/shop/event/rest baseline policy.
 - `bc.py`: torch-backed behavioral cloning training and inference.
 - `rl.py`: MaskablePPO-shaped smoke training and evaluation.
+- `qstar.py`: Q* search using the env as a transition model, with a learned Q-function heuristic and online TD updates.
 - `dataset.py`: JSONL-first logging compatible with SQLite and Parquet export.
 
 ## Target Bridge

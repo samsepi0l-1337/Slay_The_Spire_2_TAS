@@ -59,6 +59,19 @@ jobs:
         run: |
           ./dist/sts2-tas.exe act --action-json '{"action_type":"end_turn","args":{}}'
 
+      - name: Smoke Q-star play loop in frozen exe
+        shell: pwsh
+        run: |
+          $model = Join-Path $env:RUNNER_TEMP "qstar.json"
+          $output = Join-Path $env:RUNNER_TEMP "qstar.jsonl"
+          ./dist/sts2-tas.exe run-qstar `
+            --snapshot data/fixtures/telemetry-combat.json `
+            --model $model `
+            --output $output `
+            --episodes 1 `
+            --search-depth 1
+          if (-not (Test-Path $model)) { throw "run-qstar did not write model: $model" }
+
       - name: Upload executable
         uses: actions/upload-artifact@v5
         with:

@@ -1,0 +1,11 @@
+{
+  "id": "Sts2TasMod",
+  "name": "STS2 TAS Telemetry Bridge",
+  "author": "sts2-tas",
+  "description": "Single-player local research bridge. Emits TelemetrySnapshot frames and accepts MacroActionCommand over a named pipe.",
+  "version": "0.1.0",
+  "has_pck": false,
+  "has_dll": true,
+  "dependencies": [],
+  "affects_gameplay": false
+}
