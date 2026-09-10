@@ -47,7 +47,7 @@ public static class RunFlow
         }
         if (actionType == "choose_reward")
         {
-            ClickFirstVisible("NCardRewardSelectionScreen");
+            ClaimRewards();
             return;
         }
         ClickMenu(slot ?? 0);
@@ -258,7 +258,23 @@ public static class RunFlow
         {
             return false;
         }
+        if (FindType(root, "NRewardsScreen") is Node rewards && IsShown(rewards))
+        {
+            return false;
+        }
+        if (FindType(root, "NCardRewardSelectionScreen") is Node cards && IsShown(cards))
+        {
+            return false;
+        }
         return true;
+    }
+
+    private static void ClaimRewards()
+    {
+        if (ClickFirstVisible("NRewardButton")) { return; }
+        if (ClickFirstVisible("NCardRewardAlternativeButton")) { return; }
+        if (ClickFirstVisible("NChoiceSelectionSkipButton")) { return; }
+        ClickFirstVisible("NProceedButton");
     }
 
     private static bool ClickSingleplayer()
