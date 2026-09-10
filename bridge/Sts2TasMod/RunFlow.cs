@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Reflection;
 using Godot;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
@@ -18,6 +19,10 @@ public static class RunFlow
         var act = (SnapshotFactory.ReadIntPublic(run, "CurrentActIndex") ?? 0) + 1;
         var floor = SnapshotFactory.ReadIntPublic(run, "ActFloor", "TotalFloor") ?? 0;
         var architect = IsArchitect(run);
+        if (IsLoading())
+        {
+            return Overlay("menu", act, floor, false, Array.Empty<object>(), Array.Empty<object>(), [], loading: true);
+        }
         var map = MapActions();
         if (map.Count > 0)
         {
@@ -72,9 +77,15 @@ public static class RunFlow
         bool architect,
         object mapChoices,
         object rewardChoices,
-        List<Dictionary<string, object?>> actions
+        List<Dictionary<string, object?>> actions,
+        bool loading = false
     )
     {
+        if (loading)
+        {
+            actions = [];
+            phase = "menu";
+        }
         return new Dictionary<string, object?>
         {
             ["game_version"] = "v0.107.1",
@@ -85,7 +96,7 @@ public static class RunFlow
             ["phase"] = architect ? "terminal" : phase,
             ["floor"] = floor,
             ["act"] = act,
-            ["screen_id"] = architect ? "architect" : phase,
+            ["screen_id"] = architect ? "architect" : loading ? "loading" : phase,
             ["player"] = new Dictionary<string, object?>
             {
                 ["hp"] = 1, ["max_hp"] = 1, ["energy"] = 0, ["block"] = 0, ["gold"] = 0,
@@ -108,7 +119,8 @@ public static class RunFlow
             {
                 ["game_version"] = "v0.107.1",
                 ["architect"] = architect,
-                ["reached_act3"] = act >= 3
+                ["reached_act3"] = act >= 3,
+                ["loading"] = loading
             }
         };
     }
@@ -190,23 +202,63 @@ public static class RunFlow
         return result;
     }
 
+    private static bool _embarked;
+    private static string _lastClickId = "";
+    private static long _lastClickMs;
+
     private static void ClickMenu(int slot)
     {
         _ = slot;
+        if (_embarked)
+        {
+            if (NMapScreen.Instance is { IsOpen: true })
+            {
+                _embarked = false;
+            }
+            else
+            {
+                GD.Print("Sts2TasMod waiting after embark");
+                return;
+            }
+        }
         var root = (Engine.GetMainLoop() as SceneTree)?.Root;
         if (DeclineTutorials(root)) { return; }
         if (ClickFirstVisible("NDisclaimerProceedButton")) { return; }
         if (ClickFirstVisible("NFtueConfirmButton")) { return; }
-        if (ClickContinue()) { return; }
         if (ClickSingleplayer()) { return; }
         if (ClickStandard()) { return; }
         if (ClickCharacterSelect(root)) { return; }
         ClickNamed(root, "NoButton");
     }
 
-    private static bool ClickContinue()
+    private static bool IsLoading()
     {
-        return ClickFirstVisible("NMainMenuContinueButton");
+        var root = (Engine.GetMainLoop() as SceneTree)?.Root;
+        if (CombatManager.Instance.IsInProgress)
+        {
+            return false;
+        }
+        if (NMapScreen.Instance is { IsOpen: true })
+        {
+            return false;
+        }
+        if (FindType(root, "NCharacterSelectScreen") is Node character && IsShown(character))
+        {
+            return false;
+        }
+        if (NGame.Instance?.MainMenu is CanvasItem menu && menu.IsVisibleInTree())
+        {
+            return false;
+        }
+        if (FindType(root, "NSingleplayerSubmenu") is Node submenu && IsShown(submenu))
+        {
+            return false;
+        }
+        if (FindType(root, "NAcceptTutorialsFtue") is not null)
+        {
+            return false;
+        }
+        return true;
     }
 
     private static bool ClickSingleplayer()
@@ -246,9 +298,10 @@ public static class RunFlow
             }
         }
         var embark = screen.GetNodeOrNull<Node>("ConfirmButton");
-        if (embark is not null && Enabled(embark))
+        if (embark is not null && Enabled(embark) && ClickControl(embark))
         {
-            return ClickControl(embark);
+            _embarked = true;
+            return true;
         }
         _characterSelectClicks = 0;
         return ClickFirstVisible("NCharacterSelectButton");
@@ -292,10 +345,18 @@ public static class RunFlow
         {
             return false;
         }
+        var id = $"{node.GetType().Name}:{node.Name}";
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (id == _lastClickId && now - _lastClickMs < 2000)
+        {
+            return false;
+        }
         if (node is NClickableControl clickable)
         {
             clickable.ForceClick();
-            GD.Print($"Sts2TasMod clicked {node.GetType().Name}:{node.Name}");
+            _lastClickId = id;
+            _lastClickMs = now;
+            GD.Print($"Sts2TasMod clicked {id}");
             return true;
         }
         var force = node.GetType().GetMethod("ForceClick");

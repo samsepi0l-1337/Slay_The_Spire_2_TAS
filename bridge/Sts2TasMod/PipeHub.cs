@@ -29,7 +29,7 @@ public static class PipeHub
         tree.ProcessFrame += () =>
         {
             ticks += 1;
-            if (ticks % 20 == 0)
+            if (ticks % 60 == 0)
             {
                 Publish();
             }

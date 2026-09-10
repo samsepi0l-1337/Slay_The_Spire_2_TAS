@@ -16,6 +16,7 @@ from sts2_tas.live import (
     is_cleared,
     reward_between,
     run_live,
+    should_command,
 )
 from sts2_tas.telemetry_client import TelemetryFrameReader
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
@@ -66,6 +67,31 @@ def test_run_live_updates_qstar_weights_from_real_transitions(tmp_path: Path) ->
     assert record["policy_id"] == "qstar"
     assert record["result"] == "live"
     assert record["terminal"] is True
+
+
+def test_loading_snapshot_is_accepted_as_menu() -> None:
+    data = json.loads(json.dumps(load_snapshot().to_dict()))
+    data["phase"] = "event"
+    data["screen_id"] = "loading"
+    data["valid_actions"] = []
+    data["extras"] = {"loading": True}
+    snapshot = TelemetrySnapshot.from_dict(data)
+    assert snapshot.phase == "menu"
+    assert snapshot.valid_actions == []
+
+
+def test_should_command_skips_loading_and_cooldown() -> None:
+    snapshot = load_snapshot()
+    assert should_command(snapshot) is True
+    loading = json.loads(json.dumps(snapshot.to_dict()))
+    loading["phase"] = "menu"
+    loading["screen_id"] = "loading"
+    loading["valid_actions"] = []
+    loading["extras"] = {"loading": True}
+    assert should_command(TelemetrySnapshot.from_dict(loading)) is False
+    key = (snapshot.screen_id, snapshot.phase, snapshot.act, snapshot.floor)
+    assert should_command(snapshot, last_key=key, last_time=100.0, now=100.5, cooldown_s=2.0) is False
+    assert should_command(snapshot, last_key=key, last_time=100.0, now=103.0, cooldown_s=2.0) is True
 
 
 def test_is_cleared_detects_architect_and_act3_terminal() -> None:
@@ -159,6 +185,15 @@ def test_telemetry_frame_reader_accepts_utf8_bom() -> None:
     snapshot = load_snapshot()
     payload = "\ufeff" + json.dumps({"sequence": 1, "payload": snapshot.to_dict()})
     assert TelemetryFrameReader().accept_json(payload).sequence == 1
+
+
+def test_frame_stream_skips_invalid_snapshots() -> None:
+    snapshot = load_snapshot()
+    bad = json.dumps({"sequence": 1, "payload": {**snapshot.to_dict(), "valid_actions": [], "phase": "combat"}})
+    good = json.dumps({"sequence": 2, "payload": snapshot.to_dict()})
+    frames = list(frame_stream(StringIO(bad + "\n" + good + "\n")))
+    assert len(frames) == 1
+    assert frames[0].phase == "combat"
 
 
 def test_frame_stream_and_command_sender_round_trip() -> None:
@@ -268,6 +303,8 @@ def test_run_live_cli_over_tcp(tmp_path: Path, capsys) -> None:
                 "2",
                 "--until-clear",
                 "--command-delay",
+                "0",
+                "--command-cooldown",
                 "0",
                 "--execute",
             ]

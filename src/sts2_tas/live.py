@@ -10,9 +10,27 @@ from typing import Any, Callable, Iterator, TextIO
 from sts2_tas.dataset import JsonlTransitionWriter, TransitionRecord
 from sts2_tas.qstar import DEFAULT_MAX_STEPS, DEFAULT_SEARCH_DEPTH, QStarPolicy
 from sts2_tas.telemetry_client import TelemetryFrameReader
-from sts2_tas.telemetry_schema import MacroAction, MacroActionCommand, TelemetrySnapshot
+from sts2_tas.telemetry_schema import MacroAction, MacroActionCommand, TelemetrySnapshot, ValidationError
 
 DEFAULT_PIPE = "sts2-tas"
+
+
+def should_command(
+    snapshot: TelemetrySnapshot,
+    last_key: tuple[str, str, int, int] | None = None,
+    last_time: float = 0.0,
+    now: float | None = None,
+    cooldown_s: float = 0.0,
+) -> bool:
+    if snapshot.extras.get("loading") or snapshot.screen_id == "loading":
+        return False
+    if not snapshot.valid_actions:
+        return False
+    key = (snapshot.screen_id, snapshot.phase, snapshot.act, snapshot.floor)
+    clock = time.time() if now is None else now
+    if cooldown_s > 0 and last_key == key and clock - last_time < cooldown_s:
+        return False
+    return True
 
 
 def is_cleared(snapshot: TelemetrySnapshot) -> bool:
@@ -43,6 +61,7 @@ def run_live(
     max_steps: int = DEFAULT_MAX_STEPS,
     until_clear: bool = False,
     command_delay_s: float = 0.0,
+    command_cooldown_s: float = 0.0,
 ) -> dict[str, Any]:
     policy = QStarPolicy.load_or_create(model)
     writer = JsonlTransitionWriter(output)
@@ -51,6 +70,8 @@ def run_live(
     transitions = 0
     commands = 0
     cleared = False
+    last_key: tuple[str, str, int, int] | None = None
+    last_cmd = 0.0
     for snapshot in frames:
         if previous is not None and chosen is not None:
             reward, terminated = reward_between(previous, snapshot)
@@ -82,11 +103,14 @@ def run_live(
             if (terminated and not until_clear) or transitions >= max_steps:
                 policy.save(model)
                 break
-        if not snapshot.valid_actions:
-            previous = snapshot
-            chosen = None
+        if not should_command(snapshot, last_key, last_cmd, cooldown_s=command_cooldown_s):
+            if not snapshot.valid_actions:
+                previous = snapshot
+                chosen = None
             continue
         chosen = policy.select(snapshot, search_depth)
+        last_key = (snapshot.screen_id, snapshot.phase, snapshot.act, snapshot.floor)
+        last_cmd = time.time()
         if send_command is not None:
             send_command(chosen)
             commands += 1
@@ -124,7 +148,10 @@ def frame_stream(reader_stream: TextIO) -> Iterator[TelemetrySnapshot]:
             return
         if line.strip() == "":
             continue
-        yield reader.accept_json(line).payload
+        try:
+            yield reader.accept_json(line).payload
+        except ValidationError:
+            continue
 
 
 def command_sender(writer: TextIO, execute: bool) -> Callable[[MacroAction], None] | None:

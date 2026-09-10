@@ -78,6 +78,25 @@ public static class SnapshotFactory
         return ReadInt(target, names);
     }
 
+    private static int? ParseNumeric(object? value)
+    {
+        if (value is int number)
+        {
+            return number;
+        }
+        if (value is null)
+        {
+            return null;
+        }
+        var parsed = ReadInt(value, "Amount", "Value", "Base", "Current");
+        if (parsed is not null)
+        {
+            return parsed;
+        }
+        var digits = new string((value.ToString() ?? "").Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out var fromText) ? fromText : null;
+    }
+
     private static Dictionary<string, object?> MenuSnapshot(string phase)
     {
         return new Dictionary<string, object?>
@@ -129,16 +148,27 @@ public static class SnapshotFactory
 
     private static Dictionary<string, object?> Card(CardModel card)
     {
+        var id = card.Id.Entry;
         var targeted = card.TargetType.ToString() == "AnyEnemy";
-        var cost = ReadInt(card, "CanonicalEnergyCost") ?? 0;
+        var cost = ReadInt(card, "CanonicalEnergyCost") ?? ParseNumeric(card.EnergyCost) ?? 1;
+        var damage = targeted ? 6 : 0;
+        var block = card.GainsBlock ? 5 : 0;
+        if (id.Contains("BASH", StringComparison.OrdinalIgnoreCase))
+        {
+            damage = 8;
+        }
+        if (id.Contains("STRIKE", StringComparison.OrdinalIgnoreCase))
+        {
+            damage = 6;
+        }
         return new Dictionary<string, object?>
         {
-            ["id"] = card.Id.Entry,
-            ["name"] = card.Id.Entry,
+            ["id"] = id,
+            ["name"] = id,
             ["cost"] = cost,
             ["type"] = targeted ? "attack" : "skill",
-            ["damage"] = targeted ? cost : 0,
-            ["block"] = card.GainsBlock ? 1 : 0
+            ["damage"] = damage,
+            ["block"] = block
         };
     }
 

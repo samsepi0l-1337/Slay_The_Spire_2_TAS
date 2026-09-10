@@ -160,6 +160,9 @@ class TelemetrySnapshot:
         shop_choices = list(_require_list(data, "shop_choices"))
         event_choices = list(_require_list(data, "event_choices"))
         rest_choices = list(_require_list(data, "rest_choices"))
+        extras = dict(data.get("extras", {}))
+        if extras.get("loading") or str(data.get("screen_id", "")) == "loading":
+            phase = "menu"
         actions = [MacroAction.from_dict(item) for item in _require_list(data, "valid_actions")]
         identities = [action.identity for action in actions]
         if len(set(identities)) != len(identities):

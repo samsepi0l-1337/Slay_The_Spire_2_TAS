@@ -10,5 +10,6 @@ uv run --extra dev python -m sts2_tas.cli run-live `
     --search-depth 1 `
     --max-steps 1000000 `
     --until-clear `
-    --command-delay 0.25 `
+    --command-delay 0.5 `
+    --command-cooldown 2.0 `
     --execute
