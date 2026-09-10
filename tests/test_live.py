@@ -8,7 +8,15 @@ from pathlib import Path
 import pytest
 
 from sts2_tas.cli import main
-from sts2_tas.live import _connect_pipe, command_sender, connect_transport, frame_stream, reward_between, run_live
+from sts2_tas.live import (
+    _connect_pipe,
+    command_sender,
+    connect_transport,
+    frame_stream,
+    is_cleared,
+    reward_between,
+    run_live,
+)
 from sts2_tas.telemetry_client import TelemetryFrameReader
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 
@@ -58,6 +66,61 @@ def test_run_live_updates_qstar_weights_from_real_transitions(tmp_path: Path) ->
     assert record["policy_id"] == "qstar"
     assert record["result"] == "live"
     assert record["terminal"] is True
+
+
+def test_is_cleared_detects_architect_and_act3_terminal() -> None:
+    combat = load_snapshot()
+    assert is_cleared(combat) is False
+    architect = json.loads(json.dumps(combat.to_dict()))
+    architect["screen_id"] = "architect"
+    architect["valid_actions"] = []
+    architect["phase"] = "terminal"
+    assert is_cleared(TelemetrySnapshot.from_dict(architect)) is True
+    extras = json.loads(json.dumps(combat.to_dict()))
+    extras["extras"] = {"architect": True}
+    extras["valid_actions"] = []
+    extras["phase"] = "terminal"
+    extras["screen_id"] = "menu"
+    assert is_cleared(TelemetrySnapshot.from_dict(extras)) is True
+    act3 = json.loads(json.dumps(combat.to_dict()))
+    act3["act"] = 3
+    act3["phase"] = "terminal"
+    act3["valid_actions"] = []
+    act3["extras"] = {"reached_act3": True}
+    assert is_cleared(TelemetrySnapshot.from_dict(act3)) is True
+
+
+def test_run_live_until_clear_skips_early_terminal(tmp_path: Path) -> None:
+    first = load_snapshot()
+    early = json.loads(json.dumps(first.to_dict()))
+    early["phase"] = "terminal"
+    early["valid_actions"] = []
+    menu = json.loads(json.dumps(first.to_dict()))
+    menu["phase"] = "event"
+    menu["event_choices"] = [{"id": "new_run"}]
+    menu["valid_actions"] = [{"action_type": "choose_event_option", "args": {"choice_slot": 0}}]
+    done = json.loads(json.dumps(first.to_dict()))
+    done["phase"] = "terminal"
+    done["screen_id"] = "architect"
+    done["valid_actions"] = []
+    result = run_live(
+        iter(
+            [
+                first,
+                TelemetrySnapshot.from_dict(early),
+                TelemetrySnapshot.from_dict(menu),
+                TelemetrySnapshot.from_dict(done),
+            ]
+        ),
+        tmp_path / "qstar.json",
+        tmp_path / "live.jsonl",
+        search_depth=0,
+        max_steps=20,
+        until_clear=True,
+    )
+    assert result["cleared"] is True
+    assert result["until_clear"] is True
+    assert result["transitions"] >= 2
 
 
 def test_run_live_stops_at_max_steps(tmp_path: Path) -> None:
@@ -201,6 +264,7 @@ def test_run_live_cli_over_tcp(tmp_path: Path, capsys) -> None:
                 "1",
                 "--max-steps",
                 "2",
+                "--until-clear",
                 "--execute",
             ]
         )

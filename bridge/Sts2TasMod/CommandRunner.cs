@@ -30,6 +30,10 @@ public static class CommandRunner
             {
                 PlayCard(ReadInt(args, "hand_slot"), ReadInt(args, "target_slot"));
             }
+            else if (actionType is "choose_map_node" or "choose_reward" or "choose_event_option" or "shop_buy" or "shop_remove")
+            {
+                RunFlow.Apply(actionType, ReadInt(args, "node_slot") ?? ReadInt(args, "choice_slot") ?? ReadInt(args, "item_slot") ?? ReadInt(args, "card_slot"));
+            }
             PipeHub.WriteSnapshot();
         }
         catch (Exception ex)

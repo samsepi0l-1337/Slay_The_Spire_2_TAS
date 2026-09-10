@@ -19,6 +19,23 @@ public static class PipeHub
         thread.Start();
     }
 
+    public static void StartHeartbeat()
+    {
+        if (Engine.GetMainLoop() is not SceneTree tree)
+        {
+            return;
+        }
+        var ticks = 0;
+        tree.ProcessFrame += () =>
+        {
+            ticks += 1;
+            if (ticks % 20 == 0)
+            {
+                Publish();
+            }
+        };
+    }
+
     public static void Publish()
     {
         MainThread.Run(() =>

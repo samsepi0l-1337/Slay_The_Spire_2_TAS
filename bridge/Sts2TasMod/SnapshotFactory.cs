@@ -2,6 +2,7 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Runs;
 
 namespace Sts2TasMod;
 
@@ -12,7 +13,7 @@ public static class SnapshotFactory
         var combat = CombatManager.Instance;
         if (!combat.IsInProgress)
         {
-            return MenuSnapshot("menu");
+            return RunFlow.OutOfCombat();
         }
         var state = combat.DebugOnlyGetState();
         var player = state?.Players.Count > 0 ? state.Players[0] : null;
@@ -25,6 +26,10 @@ public static class SnapshotFactory
         var enemies = Enemies(state);
         var playPhase = ReadBool(combat, "IsPlayPhase") ?? pcs.Phase.ToString().Contains("Play", StringComparison.OrdinalIgnoreCase);
         var actions = LegalActions(pcs.Hand, enemies, playPhase);
+        var run = RunManager.Instance.DebugOnlyGetState();
+        var act = (ReadInt(run, "CurrentActIndex") ?? 0) + 1;
+        var floor = ReadInt(run, "ActFloor", "TotalFloor") ?? 1;
+        var architect = RunFlow.IsArchitect(run) || enemies.Any(enemy => (enemy["id"]?.ToString() ?? "").Contains("architect", StringComparison.OrdinalIgnoreCase));
         return new Dictionary<string, object?>
         {
             ["game_version"] = "v0.107.1",
@@ -32,10 +37,10 @@ public static class SnapshotFactory
             ["schema_version"] = 1,
             ["seed"] = "live",
             ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            ["phase"] = combat.IsOverOrEnding || !player.Creature.IsAlive ? "terminal" : "combat",
-            ["floor"] = 1,
-            ["act"] = 1,
-            ["screen_id"] = playPhase ? "combat-play" : "combat",
+            ["phase"] = architect || combat.IsOverOrEnding || !player.Creature.IsAlive ? "terminal" : "combat",
+            ["floor"] = floor,
+            ["act"] = act,
+            ["screen_id"] = architect ? "architect" : playPhase ? "combat-play" : "combat",
             ["player"] = new Dictionary<string, object?>
             {
                 ["hp"] = ReadInt(player.Creature, "CurrentHp", "Hp") ?? 0,
@@ -59,8 +64,18 @@ public static class SnapshotFactory
             ["event_choices"] = Array.Empty<object>(),
             ["rest_choices"] = Array.Empty<object>(),
             ["valid_actions"] = actions,
-            ["extras"] = new Dictionary<string, object?> { ["game_version"] = "v0.107.1" }
+            ["extras"] = new Dictionary<string, object?>
+            {
+                ["game_version"] = "v0.107.1",
+                ["architect"] = architect,
+                ["reached_act3"] = act >= 3
+            }
         };
+    }
+
+    public static int? ReadIntPublic(object? target, params string[] names)
+    {
+        return ReadInt(target, names);
     }
 
     private static Dictionary<string, object?> MenuSnapshot(string phase)

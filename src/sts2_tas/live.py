@@ -15,6 +15,15 @@ from sts2_tas.telemetry_schema import MacroAction, MacroActionCommand, Telemetry
 DEFAULT_PIPE = "sts2-tas"
 
 
+def is_cleared(snapshot: TelemetrySnapshot) -> bool:
+    extras = snapshot.extras
+    if extras.get("architect") in {True, 1, "1", "true"}:
+        return True
+    if "architect" in snapshot.screen_id.lower():
+        return True
+    return bool(extras.get("reached_act3")) and snapshot.phase in {"terminal", "menu"} and snapshot.act >= 3
+
+
 def reward_between(previous: TelemetrySnapshot, current: TelemetrySnapshot) -> tuple[float, bool]:
     previous_hp = _enemy_hp(previous)
     current_hp = _enemy_hp(current)
@@ -32,6 +41,7 @@ def run_live(
     send_command: Callable[[MacroAction], None] | None = None,
     search_depth: int = DEFAULT_SEARCH_DEPTH,
     max_steps: int = DEFAULT_MAX_STEPS,
+    until_clear: bool = False,
 ) -> dict[str, Any]:
     policy = QStarPolicy.load_or_create(model)
     writer = JsonlTransitionWriter(output)
@@ -39,6 +49,7 @@ def run_live(
     chosen: MacroAction | None = None
     transitions = 0
     commands = 0
+    cleared = False
     for snapshot in frames:
         if previous is not None and chosen is not None:
             reward, terminated = reward_between(previous, snapshot)
@@ -62,7 +73,10 @@ def run_live(
             )
             transitions += 1
             policy.save(model)
-            if terminated or transitions >= max_steps:
+            if is_cleared(snapshot):
+                cleared = True
+                break
+            if (terminated and not until_clear) or transitions >= max_steps:
                 break
         if not snapshot.valid_actions:
             previous = snapshot
@@ -83,6 +97,8 @@ def run_live(
         "model": str(model),
         "output": str(output),
         "search_depth": search_depth,
+        "cleared": cleared,
+        "until_clear": until_clear,
     }
 
 
