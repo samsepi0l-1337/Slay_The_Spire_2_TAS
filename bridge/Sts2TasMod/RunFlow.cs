@@ -3,6 +3,8 @@ using System.Reflection;
 using Godot;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -40,7 +42,7 @@ public static class RunFlow
         }
         if (actionType == "choose_reward")
         {
-            ClickFirst("NCardRewardSelectionScreen");
+            ClickFirstVisible("NCardRewardSelectionScreen");
             return;
         }
         ClickMenu(slot ?? 0);
@@ -193,15 +195,69 @@ public static class RunFlow
         _ = slot;
         var root = (Engine.GetMainLoop() as SceneTree)?.Root;
         if (DeclineTutorials(root)) { return; }
-        if (ClickFirst("NFtueConfirmButton")) { return; }
-        if (ClickNamed(root, "NoButton")) { return; }
-        if (ClickNamed(root, "DeclineButton")) { return; }
-        if (ClickNamed(root, "ConfirmButton")) { return; }
-        if (ClickNamed(root, "SingleplayerButton")) { return; }
-        if (ClickNamed(root, "StandardButton")) { return; }
-        if (ClickFirst("NCharacterSelectButton")) { return; }
-        if (ClickFirst("NReturnToMainMenuButton")) { return; }
-        ClickFirst("NDisclaimerProceedButton");
+        if (ClickFirstVisible("NDisclaimerProceedButton")) { return; }
+        if (ClickFirstVisible("NFtueConfirmButton")) { return; }
+        if (ClickContinue()) { return; }
+        if (ClickSingleplayer()) { return; }
+        if (ClickStandard()) { return; }
+        if (ClickCharacterSelect(root)) { return; }
+        ClickNamed(root, "NoButton");
+    }
+
+    private static bool ClickContinue()
+    {
+        return ClickFirstVisible("NMainMenuContinueButton");
+    }
+
+    private static bool ClickSingleplayer()
+    {
+        var button = NGame.Instance?.MainMenu?.GetNodeOrNull<NMainMenuTextButton>("MainMenuTextButtons/SingleplayerButton");
+        return ClickControl(button);
+    }
+
+    private static bool ClickStandard()
+    {
+        var submenu = FindType((Engine.GetMainLoop() as SceneTree)?.Root, "NSingleplayerSubmenu");
+        if (submenu is null || !IsShown(submenu))
+        {
+            return false;
+        }
+        return ClickControl(submenu.GetNodeOrNull<Node>("StandardButton"))
+            || ClickNamed(submenu, "StandardButton")
+            || ClickNamed(submenu, "Standard");
+    }
+
+    private static int _characterSelectClicks;
+
+    private static bool ClickCharacterSelect(Node? root)
+    {
+        var screen = FindType(root, "NCharacterSelectScreen");
+        if (screen is null || !IsShown(screen))
+        {
+            _characterSelectClicks = 0;
+            return false;
+        }
+        if (_characterSelectClicks == 0)
+        {
+            if (ClickFirstVisible("NCharacterSelectButton"))
+            {
+                _characterSelectClicks = 1;
+                return true;
+            }
+        }
+        var embark = screen.GetNodeOrNull<Node>("ConfirmButton");
+        if (embark is not null && Enabled(embark))
+        {
+            return ClickControl(embark);
+        }
+        _characterSelectClicks = 0;
+        return ClickFirstVisible("NCharacterSelectButton");
+    }
+
+    private static bool Enabled(Node node)
+    {
+        var property = node.GetType().GetProperty("IsEnabled");
+        return property?.GetValue(node) is not false;
     }
 
     private static bool DeclineTutorials(Node? root)
@@ -215,29 +271,43 @@ public static class RunFlow
         return true;
     }
 
+    private static bool IsShown(Node? node)
+    {
+        return node is CanvasItem canvas && canvas.IsVisibleInTree();
+    }
+
     private static bool ClickNamed(Node? root, string name)
     {
-        var node = FindName(root, name);
-        return node is not null && Click(node);
+        return ClickControl(FindName(root, name));
     }
 
-    private static bool ClickFirst(string typeName)
+    private static bool ClickFirstVisible(string typeName)
     {
-        var node = FindType((Engine.GetMainLoop() as SceneTree)?.Root, typeName);
-        return node is not null && Click(node);
+        return ClickControl(FindType((Engine.GetMainLoop() as SceneTree)?.Root, typeName));
     }
 
-    private static bool Click(Node node)
+    private static bool ClickControl(Node? node)
     {
+        if (node is null || !IsShown(node))
+        {
+            return false;
+        }
+        if (node is NClickableControl clickable)
+        {
+            clickable.ForceClick();
+            GD.Print($"Sts2TasMod clicked {node.GetType().Name}:{node.Name}");
+            return true;
+        }
         var force = node.GetType().GetMethod("ForceClick");
         if (force is not null)
         {
             force.Invoke(node, null);
+            GD.Print($"Sts2TasMod ForceClick {node.Name}");
             return true;
         }
         if (node.HasSignal("Released"))
         {
-            node.EmitSignal("Released", node);
+            node.EmitSignal(NClickableControl.SignalName.Released, node);
             return true;
         }
         return false;
