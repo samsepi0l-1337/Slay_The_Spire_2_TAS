@@ -192,12 +192,27 @@ public static class RunFlow
     {
         _ = slot;
         var root = (Engine.GetMainLoop() as SceneTree)?.Root;
+        if (DeclineTutorials(root)) { return; }
+        if (ClickFirst("NFtueConfirmButton")) { return; }
+        if (ClickNamed(root, "NoButton")) { return; }
+        if (ClickNamed(root, "DeclineButton")) { return; }
         if (ClickNamed(root, "ConfirmButton")) { return; }
         if (ClickNamed(root, "SingleplayerButton")) { return; }
         if (ClickNamed(root, "StandardButton")) { return; }
         if (ClickFirst("NCharacterSelectButton")) { return; }
         if (ClickFirst("NReturnToMainMenuButton")) { return; }
         ClickFirst("NDisclaimerProceedButton");
+    }
+
+    private static bool DeclineTutorials(Node? root)
+    {
+        var node = FindType(root, "NAcceptTutorialsFtue");
+        if (node is null)
+        {
+            return false;
+        }
+        node.Call("NoTutorials");
+        return true;
     }
 
     private static bool ClickNamed(Node? root, string name)

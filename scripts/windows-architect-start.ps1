@@ -5,6 +5,16 @@ $Repo = "C:\Users\steep\sts2-tas-qstar"
 Set-Location $Repo
 $env:PYTHONPATH = "src"
 
+Write-Output "=== stop previous TAS and STS2 ==="
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+    Where-Object { $_.CommandLine -match 'run-live' } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+cmd /c "taskkill /F /IM SlayTheSpire2.exe >nul 2>&1"
+Start-Sleep -Seconds 5
+if (Get-Process -Name "SlayTheSpire2" -ErrorAction SilentlyContinue) {
+    throw "SlayTheSpire2.exe still running after taskkill"
+}
+
 Write-Output "=== build and deploy Harmony mod ==="
 dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release
 if ($LASTEXITCODE -ne 0) { throw "mod build failed" }
@@ -36,8 +46,9 @@ $pipeDeadline = (Get-Date).AddMinutes(3)
 $opened = $false
 while ((Get-Date) -lt $pipeDeadline) {
     try {
-        $handle = [System.IO.File]::Open("\\.\pipe\sts2-tas", [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
-        $handle.Dispose()
+        $client = New-Object System.IO.Pipes.NamedPipeClientStream(".", "sts2-tas", [System.IO.Pipes.PipeDirection]::InOut)
+        $client.Connect(1000)
+        $client.Dispose()
         $opened = $true
         break
     } catch {
