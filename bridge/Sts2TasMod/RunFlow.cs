@@ -5,6 +5,8 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Runs;
@@ -272,10 +274,50 @@ public static class RunFlow
 
     private static void ClaimRewards()
     {
+        var root = (Engine.GetMainLoop() as SceneTree)?.Root;
+        var cardScreen = FindType(root, "NCardRewardSelectionScreen");
+        if (cardScreen is not null && IsShown(cardScreen))
+        {
+            if (PickFirstRewardCard(cardScreen)) { return; }
+            if (SkipRewardCards(cardScreen)) { return; }
+            return;
+        }
         if (ClickFirstVisible("NRewardButton")) { return; }
-        if (ClickFirstVisible("NCardRewardAlternativeButton")) { return; }
-        if (ClickFirstVisible("NChoiceSelectionSkipButton")) { return; }
         ClickFirstVisible("NProceedButton");
+    }
+
+    private static bool PickFirstRewardCard(Node screen)
+    {
+        var row = screen.GetNodeOrNull<Control>("UI/CardRow");
+        if (row is not null)
+        {
+            foreach (var child in row.GetChildren())
+            {
+                if (child is NCardHolder holder && holder.CardModel is not null && IsShown(holder))
+                {
+                    holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
+                    GD.Print($"Sts2TasMod selected reward {holder.CardModel.Id.Entry}");
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static bool SkipRewardCards(Node screen)
+    {
+        var alts = screen.GetNodeOrNull<Control>("UI/RewardAlternatives");
+        if (alts is not null)
+        {
+            foreach (var child in alts.GetChildren())
+            {
+                if (ClickControl(child))
+                {
+                    return true;
+                }
+            }
+        }
+        return ClickFirstVisible("NChoiceSelectionSkipButton");
     }
 
     private static bool ClickContinue()
