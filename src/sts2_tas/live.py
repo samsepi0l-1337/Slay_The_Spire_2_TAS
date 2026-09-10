@@ -42,6 +42,7 @@ def run_live(
     search_depth: int = DEFAULT_SEARCH_DEPTH,
     max_steps: int = DEFAULT_MAX_STEPS,
     until_clear: bool = False,
+    command_delay_s: float = 0.0,
 ) -> dict[str, Any]:
     policy = QStarPolicy.load_or_create(model)
     writer = JsonlTransitionWriter(output)
@@ -72,11 +73,14 @@ def run_live(
                 )
             )
             transitions += 1
-            policy.save(model)
+            if not until_clear or transitions % 25 == 0:
+                policy.save(model)
             if is_cleared(snapshot):
                 cleared = True
+                policy.save(model)
                 break
             if (terminated and not until_clear) or transitions >= max_steps:
+                policy.save(model)
                 break
         if not snapshot.valid_actions:
             previous = snapshot
@@ -86,6 +90,8 @@ def run_live(
         if send_command is not None:
             send_command(chosen)
             commands += 1
+            if command_delay_s > 0:
+                time.sleep(command_delay_s)
         previous = snapshot
     if previous is not None and chosen is not None and transitions == 0:
         policy.save(model)

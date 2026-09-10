@@ -117,6 +117,8 @@ def test_run_live_until_clear_skips_early_terminal(tmp_path: Path) -> None:
         search_depth=0,
         max_steps=20,
         until_clear=True,
+        command_delay_s=0.001,
+        send_command=lambda _action: None,
     )
     assert result["cleared"] is True
     assert result["until_clear"] is True
@@ -265,6 +267,8 @@ def test_run_live_cli_over_tcp(tmp_path: Path, capsys) -> None:
                 "--max-steps",
                 "2",
                 "--until-clear",
+                "--command-delay",
+                "0",
                 "--execute",
             ]
         )

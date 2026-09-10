@@ -113,6 +113,7 @@ def _run_live(args: argparse.Namespace) -> dict[str, object]:
             search_depth=args.search_depth,
             max_steps=args.max_steps,
             until_clear=args.until_clear,
+            command_delay_s=args.command_delay,
         )
     finally:
         reader.close()
@@ -167,6 +168,7 @@ def _parser() -> argparse.ArgumentParser:
     live.add_argument("--search-depth", type=int, default=2)
     live.add_argument("--max-steps", type=int, default=32)
     live.add_argument("--until-clear", action="store_true")
+    live.add_argument("--command-delay", type=float, default=0.0)
     live.add_argument("--execute", action="store_true")
     live.set_defaults(func=_run_live)
     return parser

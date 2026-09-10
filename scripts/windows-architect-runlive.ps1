@@ -8,6 +8,7 @@ uv run --extra dev python -m sts2_tas.cli run-live `
     --model models\qstar-live.json `
     --output models\qstar-live.jsonl `
     --search-depth 1 `
-    --max-steps 100000 `
+    --max-steps 1000000 `
     --until-clear `
+    --command-delay 0.25 `
     --execute
