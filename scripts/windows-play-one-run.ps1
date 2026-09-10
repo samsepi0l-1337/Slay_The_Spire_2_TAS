@@ -28,9 +28,9 @@ $dll = Join-Path $PWD "bridge\Sts2TasMod\bin\Release\net9.0\Sts2TasMod.dll"
 $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq "CN=Sts2TasMod" } | Select-Object -First 1
 if (-not $cert) {
     $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Sts2TasMod" -CertStoreLocation Cert:\CurrentUser\My
-    Export-Certificate -Cert $cert -FilePath (Join-Path $env:TEMP "Sts2TasMod.cer") | Out-Null
-    Import-Certificate -FilePath (Join-Path $env:TEMP "Sts2TasMod.cer") -CertStoreLocation Cert:\CurrentUser\TrustedPublisher | Out-Null
-    Import-Certificate -FilePath (Join-Path $env:TEMP "Sts2TasMod.cer") -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
+    $cer = Join-Path $env:TEMP "Sts2TasMod.cer"
+    Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+    certutil -user -addstore TrustedPublisher $cer | Out-Null
 }
 Set-AuthenticodeSignature -FilePath $dll -Certificate $cert | Out-Null
 Copy-Item $dll $gameMods -Force
