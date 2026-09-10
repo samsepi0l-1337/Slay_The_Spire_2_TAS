@@ -24,8 +24,18 @@ dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release
 if ($LASTEXITCODE -ne 0) { throw "mod build failed" }
 $gameMods = "C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2\mods\Sts2TasMod"
 New-Item -ItemType Directory -Force -Path $gameMods | Out-Null
-Copy-Item "bridge\Sts2TasMod\bin\Release\net9.0\Sts2TasMod.dll" $gameMods -Force
+$dll = Join-Path $PWD "bridge\Sts2TasMod\bin\Release\net9.0\Sts2TasMod.dll"
+$cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq "CN=Sts2TasMod" } | Select-Object -First 1
+if (-not $cert) {
+    $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Sts2TasMod" -CertStoreLocation Cert:\CurrentUser\My
+    Export-Certificate -Cert $cert -FilePath (Join-Path $env:TEMP "Sts2TasMod.cer") | Out-Null
+    Import-Certificate -FilePath (Join-Path $env:TEMP "Sts2TasMod.cer") -CertStoreLocation Cert:\CurrentUser\TrustedPublisher | Out-Null
+    Import-Certificate -FilePath (Join-Path $env:TEMP "Sts2TasMod.cer") -CertStoreLocation Cert:\CurrentUser\Root | Out-Null
+}
+Set-AuthenticodeSignature -FilePath $dll -Certificate $cert | Out-Null
+Copy-Item $dll $gameMods -Force
 Copy-Item "bridge\Sts2TasMod\Sts2TasMod.json" $gameMods -Force
+Unblock-File (Join-Path $gameMods "Sts2TasMod.dll") -ErrorAction SilentlyContinue
 
 $taskGame = "STS2TasLaunch"
 $trGame = "cmd.exe /c start steam://rungameid/2868840"
