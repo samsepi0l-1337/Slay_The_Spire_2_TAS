@@ -71,8 +71,13 @@ public static class CommandRunner
         }
         var card = cards[handSlot.Value];
         var target = targetSlot is null ? null : state.HittableEnemies.ElementAtOrDefault(targetSlot.Value);
+        if (!card.CanPlay(out var reason, out _))
+        {
+            throw new InvalidOperationException($"cannot play {card.Id.Entry}: {reason}");
+        }
         var action = new PlayCardAction(card, target);
         RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(action);
+        GD.Print($"Sts2TasMod play_card slot={handSlot.Value} target={targetSlot} id={card.Id.Entry}");
     }
 
     private static MegaCrit.Sts2.Core.Entities.Players.Player? LocalPlayer()

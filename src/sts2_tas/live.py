@@ -33,6 +33,20 @@ def should_command(
     return True
 
 
+def pick_action(snapshot: TelemetrySnapshot, policy: QStarPolicy, search_depth: int) -> MacroAction:
+    if snapshot.phase == "combat":
+        plays = [action for action in snapshot.valid_actions if action.action_type == "play_card"]
+        if plays:
+            return max(plays, key=lambda action: _card_score(snapshot, action))
+    return policy.select(snapshot, search_depth)
+
+
+def _card_score(snapshot: TelemetrySnapshot, action: MacroAction) -> tuple[int, int]:
+    slot = int(action.args.get("hand_slot", 0))
+    card = snapshot.hand[slot] if 0 <= slot < len(snapshot.hand) else {}
+    return int(card.get("damage", 0)), int(card.get("block", 0))
+
+
 def is_cleared(snapshot: TelemetrySnapshot) -> bool:
     extras = snapshot.extras
     if extras.get("architect") in {True, 1, "1", "true"}:
@@ -64,7 +78,10 @@ def run_live(
     command_cooldown_s: float = 0.0,
 ) -> dict[str, Any]:
     policy = QStarPolicy.load_or_create(model)
+    if until_clear and output.exists():
+        output.unlink()
     writer = JsonlTransitionWriter(output)
+    status_path = output.with_suffix(".status.json")
     previous: TelemetrySnapshot | None = None
     chosen: MacroAction | None = None
     transitions = 0
@@ -76,23 +93,24 @@ def run_live(
         if previous is not None and chosen is not None:
             reward, terminated = reward_between(previous, snapshot)
             policy.update(previous, chosen, reward, snapshot, terminated)
-            writer.append(
-                TransitionRecord(
-                    game_version=previous.game_version,
-                    mod_version=previous.mod_version,
-                    seed=previous.seed,
-                    timestamp=previous.timestamp,
-                    floor=previous.floor,
-                    phase=previous.phase,
-                    state_json=previous.to_dict(),
-                    valid_actions_json=[action.to_dict() for action in previous.valid_actions],
-                    chosen_action_json=chosen.to_dict(),
-                    reward=reward,
-                    terminal=terminated,
-                    result="live",
-                    policy_id="qstar",
+            if not until_clear or transitions % 25 == 0:
+                writer.append(
+                    TransitionRecord(
+                        game_version=previous.game_version,
+                        mod_version=previous.mod_version,
+                        seed=previous.seed,
+                        timestamp=previous.timestamp,
+                        floor=previous.floor,
+                        phase=previous.phase,
+                        state_json=previous.to_dict(),
+                        valid_actions_json=[action.to_dict() for action in previous.valid_actions],
+                        chosen_action_json=chosen.to_dict(),
+                        reward=reward,
+                        terminal=terminated,
+                        result="live",
+                        policy_id="qstar",
+                    )
                 )
-            )
             transitions += 1
             if not until_clear or transitions % 25 == 0:
                 policy.save(model)
@@ -108,12 +126,27 @@ def run_live(
                 previous = snapshot
                 chosen = None
             continue
-        chosen = policy.select(snapshot, search_depth)
+        chosen = pick_action(snapshot, policy, search_depth)
         last_key = (snapshot.screen_id, snapshot.phase, snapshot.act, snapshot.floor)
         last_cmd = time.time()
         if send_command is not None:
             send_command(chosen)
             commands += 1
+            status_path.write_text(
+                json.dumps(
+                    {
+                        "commands": commands,
+                        "phase": snapshot.phase,
+                        "screen_id": snapshot.screen_id,
+                        "floor": snapshot.floor,
+                        "act": snapshot.act,
+                        "hp": snapshot.player["hp"],
+                        "enemies": snapshot.enemies,
+                        "action": chosen.to_dict(),
+                    },
+                    sort_keys=True,
+                )
+            )
             if command_delay_s > 0:
                 time.sleep(command_delay_s)
         previous = snapshot

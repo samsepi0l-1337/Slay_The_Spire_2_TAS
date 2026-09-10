@@ -156,10 +156,17 @@ public static class SnapshotFactory
         if (id.Contains("BASH", StringComparison.OrdinalIgnoreCase))
         {
             damage = 8;
+            cost = 2;
         }
         if (id.Contains("STRIKE", StringComparison.OrdinalIgnoreCase))
         {
             damage = 6;
+            cost = 1;
+        }
+        if (id.Contains("DEFEND", StringComparison.OrdinalIgnoreCase))
+        {
+            block = 5;
+            cost = 1;
         }
         return new Dictionary<string, object?>
         {

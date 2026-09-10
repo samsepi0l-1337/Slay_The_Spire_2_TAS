@@ -14,10 +14,12 @@ from sts2_tas.live import (
     connect_transport,
     frame_stream,
     is_cleared,
+    pick_action,
     reward_between,
     run_live,
     should_command,
 )
+from sts2_tas.qstar import QStarPolicy
 from sts2_tas.telemetry_client import TelemetryFrameReader
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 
@@ -80,6 +82,13 @@ def test_loading_snapshot_is_accepted_as_menu() -> None:
     assert snapshot.valid_actions == []
 
 
+def test_pick_action_plays_highest_damage_card_in_combat() -> None:
+    snapshot = load_snapshot()
+    action = pick_action(snapshot, QStarPolicy(), search_depth=0)
+    assert action.action_type == "play_card"
+    assert action.args["hand_slot"] == 0
+
+
 def test_should_command_skips_loading_and_cooldown() -> None:
     snapshot = load_snapshot()
     assert should_command(snapshot) is True
@@ -129,6 +138,8 @@ def test_run_live_until_clear_skips_early_terminal(tmp_path: Path) -> None:
     done["phase"] = "terminal"
     done["screen_id"] = "architect"
     done["valid_actions"] = []
+    stale = tmp_path / "live.jsonl"
+    stale.write_text("{}\n")
     result = run_live(
         iter(
             [
@@ -139,7 +150,7 @@ def test_run_live_until_clear_skips_early_terminal(tmp_path: Path) -> None:
             ]
         ),
         tmp_path / "qstar.json",
-        tmp_path / "live.jsonl",
+        stale,
         search_depth=0,
         max_steps=20,
         until_clear=True,
