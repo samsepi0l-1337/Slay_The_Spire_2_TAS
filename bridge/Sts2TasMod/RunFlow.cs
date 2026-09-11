@@ -69,7 +69,15 @@ public static class RunFlow
         }
         if (actionType == "choose_event_option")
         {
+            if (ScreenAdvance.TryWorld())
+            {
+                return;
+            }
             ChooseEvent(slot ?? 0);
+            return;
+        }
+        if (ScreenAdvance.TryWorld())
+        {
             return;
         }
         ClickMenu(slot ?? 0);
@@ -321,6 +329,10 @@ public static class RunFlow
         {
             return false;
         }
+        if (ScreenAdvance.InWorldRoom())
+        {
+            return false;
+        }
         return true;
     }
 
@@ -361,6 +373,15 @@ public static class RunFlow
         {
             GD.Print("Sts2TasMod event dialogue");
             return;
+        }
+        if (NEventRoom.Instance is { } dialogueRoom)
+        {
+            var hitbox = dialogueRoom.GetNodeOrNull<Node>("%DialogueHitbox") ?? dialogueRoom.FindChild("DialogueHitbox", true, false);
+            if (ClickControl(hitbox))
+            {
+                GD.Print("Sts2TasMod DialogueHitbox");
+                return;
+            }
         }
         if (ClickFirstVisible("NEventOptionButton"))
         {
