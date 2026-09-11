@@ -219,7 +219,16 @@ public static class RunFlow
     private static List<MapCoord> TravelableCoords()
     {
         var result = new List<MapCoord>();
-        if (NMapScreen.Instance is not { IsOpen: true } map)
+        NMapScreen? map;
+        try
+        {
+            map = NMapScreen.Instance is { IsOpen: true } open ? open : null;
+        }
+        catch (Exception)
+        {
+            return result;
+        }
+        if (map is null)
         {
             return result;
         }
@@ -555,6 +564,17 @@ public static class RunFlow
         if (node.HasSignal("Released"))
         {
             node.EmitSignal(NClickableControl.SignalName.Released, node);
+            _lastClickId = id;
+            _lastClickMs = now;
+            GD.Print($"Sts2TasMod released {id}");
+            return true;
+        }
+        if (node.HasSignal("Pressed"))
+        {
+            node.EmitSignal("Pressed", node);
+            _lastClickId = id;
+            _lastClickMs = now;
+            GD.Print($"Sts2TasMod pressed {id}");
             return true;
         }
         return false;
