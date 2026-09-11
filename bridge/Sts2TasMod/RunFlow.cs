@@ -8,6 +8,8 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using MegaCrit.Sts2.Core.Nodes.Events;
+using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -35,6 +37,11 @@ public static class RunFlow
         {
             return Overlay("card_reward", act, floor, architect, Array.Empty<object>(), rewards, rewards);
         }
+        var eventActions = EventActions();
+        if (eventActions.Count > 0)
+        {
+            return Overlay("event", act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), eventActions);
+        }
         var events = architect ? [] : MenuActions();
         var phase = architect ? "terminal" : "event";
         return Overlay(phase, act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), events);
@@ -50,6 +57,11 @@ public static class RunFlow
         if (actionType == "choose_reward")
         {
             ClaimRewards();
+            return;
+        }
+        if (actionType == "choose_event_option")
+        {
+            ChooseEvent(slot ?? 0);
             return;
         }
         ClickMenu(slot ?? 0);
@@ -288,7 +300,78 @@ public static class RunFlow
         {
             return false;
         }
+        if (NEventRoom.Instance is { } eventRoom && eventRoom.IsInsideTree())
+        {
+            return false;
+        }
         return true;
+    }
+
+    private static List<Dictionary<string, object?>> EventActions()
+    {
+        var actions = new List<Dictionary<string, object?>>();
+        if (NEventRoom.Instance is not { } room || !room.IsInsideTree())
+        {
+            return actions;
+        }
+        var count = 1;
+        try
+        {
+            var buttons = room.Layout?.OptionButtons;
+            if (buttons is not null)
+            {
+                count = Math.Max(buttons.Count(), 1);
+            }
+        }
+        catch (Exception)
+        {
+            count = 1;
+        }
+        for (var slot = 0; slot < count; slot++)
+        {
+            actions.Add(new Dictionary<string, object?>
+            {
+                ["action_type"] = "choose_event_option",
+                ["args"] = new Dictionary<string, int> { ["choice_slot"] = slot }
+            });
+        }
+        return actions;
+    }
+
+    private static void ChooseEvent(int slot)
+    {
+        if (ClickFirstVisible("NAncientDialogueHitbox"))
+        {
+            return;
+        }
+        if (NEventRoom.Instance is { } room && room.IsInsideTree())
+        {
+            try
+            {
+                var buttons = room.Layout?.OptionButtons?.ToList();
+                if (buttons is { Count: > 0 })
+                {
+                    var index = Math.Clamp(slot, 0, buttons.Count - 1);
+                    if (ClickControl(buttons[index]) || ClickControl(buttons[0]))
+                    {
+                        GD.Print($"Sts2TasMod event option {index}");
+                        return;
+                    }
+                }
+                _ = NEventRoom.Proceed();
+                GD.Print("Sts2TasMod event proceed");
+                return;
+            }
+            catch (Exception ex)
+            {
+                GD.PrintErr($"Sts2TasMod event click failed: {ex.Message}");
+            }
+        }
+        if (ClickFirstVisible("NEventOptionButton"))
+        {
+            return;
+        }
+        ClickFirstVisible("NProceedButton");
     }
 
     private static void ClaimRewards()
