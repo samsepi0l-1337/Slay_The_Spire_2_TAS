@@ -46,7 +46,7 @@ public static class PipeHub
             }
             catch (Exception ex)
             {
-                GD.PrintErr($"Sts2TasMod publish failed: {ex.Message}");
+                GD.PrintErr($"Sts2TasMod publish failed: {ex}");
             }
         });
     }

@@ -19,6 +19,8 @@ public static class RunFlow
 {
     public static Dictionary<string, object?> OutOfCombat()
     {
+        try
+        {
         var run = RunManager.Instance?.DebugOnlyGetState();
         var act = (SnapshotFactory.ReadIntPublic(run, "CurrentActIndex") ?? 0) + 1;
         var floor = SnapshotFactory.ReadIntPublic(run, "ActFloor", "TotalFloor") ?? 0;
@@ -45,6 +47,12 @@ public static class RunFlow
         var events = architect ? [] : MenuActions();
         var phase = architect ? "terminal" : "event";
         return Overlay(phase, act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), events);
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Sts2TasMod OutOfCombat failed: {ex}");
+            return Overlay("event", 1, 0, false, Array.Empty<object>(), Array.Empty<object>(), MenuActions());
+        }
     }
 
     public static void Apply(string actionType, int? slot)
