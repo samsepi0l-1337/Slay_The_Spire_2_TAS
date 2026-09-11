@@ -35,7 +35,9 @@ if (-not $cert) {
 Set-AuthenticodeSignature -FilePath $dll -Certificate $cert | Out-Null
 Copy-Item $dll $gameMods -Force
 Copy-Item "bridge\Sts2TasMod\Sts2TasMod.json" $gameMods -Force
-Unblock-File (Join-Path $gameMods "Sts2TasMod.dll") -ErrorAction SilentlyContinue
+$destDll = Join-Path $gameMods "Sts2TasMod.dll"
+Set-AuthenticodeSignature -FilePath $destDll -Certificate $cert | Out-Null
+Unblock-File $destDll -ErrorAction SilentlyContinue
 
 $taskGame = "STS2TasLaunch"
 $trGame = "cmd.exe /c start steam://rungameid/2868840"

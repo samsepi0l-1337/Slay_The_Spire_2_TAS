@@ -279,6 +279,7 @@ public static class RunFlow
         if (DeclineTutorials(root)) { return; }
         if (ClickFirstVisible("NDisclaimerProceedButton")) { return; }
         if (ClickFirstVisible("NFtueConfirmButton")) { return; }
+        if (ClickAbandonIfContinueVisible()) { return; }
         if (ClickContinue()) { return; }
         if (ClickSingleplayer()) { return; }
         if (ClickStandard()) { return; }
@@ -461,6 +462,27 @@ public static class RunFlow
             }
         }
         return ClickFirstVisible("NChoiceSelectionSkipButton");
+    }
+
+    private static bool ClickAbandonIfContinueVisible()
+    {
+        var menu = NGame.Instance?.MainMenu;
+        var cont = menu?.GetNodeOrNull<NMainMenuContinueButton>("MainMenuTextButtons/ContinueButton");
+        if (cont is null || !IsShown(cont))
+        {
+            return false;
+        }
+        try
+        {
+            menu!.AbandonRun();
+            GD.Print("Sts2TasMod abandon run for Ironclad");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Sts2TasMod abandon failed: {ex.Message}");
+            return false;
+        }
     }
 
     private static bool ClickContinue()
