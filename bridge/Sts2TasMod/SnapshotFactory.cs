@@ -11,7 +11,7 @@ public static class SnapshotFactory
     public static Dictionary<string, object?> Capture()
     {
         var combat = CombatManager.Instance;
-        if (!combat.IsInProgress)
+        if (combat is null || !combat.IsInProgress)
         {
             return RunFlow.OutOfCombat();
         }

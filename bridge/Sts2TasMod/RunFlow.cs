@@ -19,7 +19,7 @@ public static class RunFlow
 {
     public static Dictionary<string, object?> OutOfCombat()
     {
-        var run = RunManager.Instance.DebugOnlyGetState();
+        var run = RunManager.Instance?.DebugOnlyGetState();
         var act = (SnapshotFactory.ReadIntPublic(run, "CurrentActIndex") ?? 0) + 1;
         var floor = SnapshotFactory.ReadIntPublic(run, "ActFloor", "TotalFloor") ?? 0;
         var architect = IsArchitect(run);
@@ -264,7 +264,7 @@ public static class RunFlow
     private static bool IsLoading()
     {
         var root = (Engine.GetMainLoop() as SceneTree)?.Root;
-        if (CombatManager.Instance.IsInProgress)
+        if (CombatManager.Instance is { IsInProgress: true })
         {
             return false;
         }
@@ -342,6 +342,12 @@ public static class RunFlow
     {
         if (ClickFirstVisible("NAncientDialogueHitbox"))
         {
+            GD.Print("Sts2TasMod event dialogue");
+            return;
+        }
+        if (ClickFirstVisible("NEventOptionButton"))
+        {
+            GD.Print("Sts2TasMod event option button");
             return;
         }
         if (NEventRoom.Instance is { } room && room.IsInsideTree())
@@ -366,10 +372,6 @@ public static class RunFlow
             {
                 GD.PrintErr($"Sts2TasMod event click failed: {ex.Message}");
             }
-        }
-        if (ClickFirstVisible("NEventOptionButton"))
-        {
-            return;
         }
         ClickFirstVisible("NProceedButton");
     }
