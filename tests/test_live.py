@@ -103,20 +103,21 @@ def test_should_command_skips_loading_and_cooldown() -> None:
     assert should_command(snapshot, last_key=key, last_time=100.0, now=103.0, cooldown_s=2.0) is True
 
 
-def test_is_cleared_detects_architect_and_act3_terminal() -> None:
+def test_is_cleared_detects_act3_boss_victory() -> None:
     combat = load_snapshot()
     assert is_cleared(combat) is False
-    architect = json.loads(json.dumps(combat.to_dict()))
-    architect["screen_id"] = "architect"
-    architect["valid_actions"] = []
-    architect["phase"] = "terminal"
-    assert is_cleared(TelemetrySnapshot.from_dict(architect)) is True
-    extras = json.loads(json.dumps(combat.to_dict()))
-    extras["extras"] = {"architect": True}
-    extras["valid_actions"] = []
-    extras["phase"] = "terminal"
-    extras["screen_id"] = "menu"
-    assert is_cleared(TelemetrySnapshot.from_dict(extras)) is True
+    victory = json.loads(json.dumps(combat.to_dict()))
+    victory["phase"] = "terminal"
+    victory["valid_actions"] = []
+    victory["act"] = 3
+    victory["extras"] = {"victory": True, "reached_act3": True}
+    assert is_cleared(TelemetrySnapshot.from_dict(victory)) is True
+    boss = json.loads(json.dumps(combat.to_dict()))
+    boss["phase"] = "terminal"
+    boss["valid_actions"] = []
+    boss["act"] = 3
+    boss["extras"] = {"act3_boss_cleared": True}
+    assert is_cleared(TelemetrySnapshot.from_dict(boss)) is True
     act3 = json.loads(json.dumps(combat.to_dict()))
     act3["act"] = 3
     act3["phase"] = "terminal"
@@ -136,8 +137,9 @@ def test_run_live_until_clear_skips_early_terminal(tmp_path: Path) -> None:
     menu["valid_actions"] = [{"action_type": "choose_event_option", "args": {"choice_slot": 0}}]
     done = json.loads(json.dumps(first.to_dict()))
     done["phase"] = "terminal"
-    done["screen_id"] = "architect"
+    done["act"] = 3
     done["valid_actions"] = []
+    done["extras"] = {"act3_boss_cleared": True, "victory": True}
     stale = tmp_path / "live.jsonl"
     stale.write_text("{}\n")
     result = run_live(

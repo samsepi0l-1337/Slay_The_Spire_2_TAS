@@ -129,7 +129,7 @@ class QStarPolicy:
         legal = snapshot.valid_actions
         if not legal:
             raise ValueError("no legal actions")
-        return max(legal, key=lambda action: self._qstar(snapshot, action, search_depth))
+        return max(legal, key=lambda action: self.qstar(snapshot, action, search_depth))
 
     def update(
         self,
@@ -152,13 +152,13 @@ class QStarPolicy:
         self.updates += 1
         return float(loss.item())
 
-    def _qstar(self, snapshot: TelemetrySnapshot, action: MacroAction, depth: int) -> float:
+    def qstar(self, snapshot: TelemetrySnapshot, action: MacroAction, depth: int) -> float:
         if depth <= 0:
             return self.q_value(snapshot, action)
         nxt, reward, terminated = simulate(snapshot, action)
         if terminated or not nxt.valid_actions:
             return reward
-        future = max(self._qstar(nxt, nxt_action, depth - 1) for nxt_action in nxt.valid_actions)
+        future = max(self.qstar(nxt, nxt_action, depth - 1) for nxt_action in nxt.valid_actions)
         return reward + self.gamma * future
 
 

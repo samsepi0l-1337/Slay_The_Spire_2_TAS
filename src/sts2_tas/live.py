@@ -37,7 +37,7 @@ def pick_action(snapshot: TelemetrySnapshot, policy: QStarPolicy, search_depth: 
     if snapshot.phase == "combat":
         plays = [action for action in snapshot.valid_actions if action.action_type == "play_card"]
         if plays:
-            return max(plays, key=lambda action: _card_score(snapshot, action))
+            return max(plays, key=lambda action: (policy.qstar(snapshot, action, search_depth), _card_score(snapshot, action)))
     return policy.select(snapshot, search_depth)
 
 
@@ -49,11 +49,11 @@ def _card_score(snapshot: TelemetrySnapshot, action: MacroAction) -> tuple[int, 
 
 def is_cleared(snapshot: TelemetrySnapshot) -> bool:
     extras = snapshot.extras
-    if extras.get("architect") in {True, 1, "1", "true"}:
+    if extras.get("act3_boss_cleared") in {True, 1, "1", "true"}:
         return True
-    if "architect" in snapshot.screen_id.lower():
+    if extras.get("victory") in {True, 1, "1", "true"}:
         return True
-    return bool(extras.get("reached_act3")) and snapshot.phase in {"terminal", "menu"} and snapshot.act >= 3
+    return snapshot.act >= 3 and snapshot.phase == "terminal" and bool(extras.get("reached_act3"))
 
 
 def reward_between(previous: TelemetrySnapshot, current: TelemetrySnapshot) -> tuple[float, bool]:

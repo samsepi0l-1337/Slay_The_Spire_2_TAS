@@ -55,6 +55,19 @@ public static class RunFlow
         ClickMenu(slot ?? 0);
     }
 
+    internal static bool IsVictory()
+    {
+        var root = (Engine.GetMainLoop() as SceneTree)?.Root;
+        foreach (var name in new[] { "NVictoryScreen", "NVictoryOverlay", "NRunCompleteScreen", "NGameWinOverlay", "NCreditsScreen" })
+        {
+            if (FindType(root, name) is Node node && IsShown(node))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     internal static bool IsArchitect(object? run)
     {
         if (run is null)
@@ -122,6 +135,8 @@ public static class RunFlow
                 ["game_version"] = "v0.107.1",
                 ["architect"] = architect,
                 ["reached_act3"] = act >= 3,
+                ["act3_boss_cleared"] = architect || IsVictory(),
+                ["victory"] = IsVictory(),
                 ["loading"] = loading
             }
         };
@@ -266,6 +281,10 @@ public static class RunFlow
             return false;
         }
         if (FindType(root, "NCardRewardSelectionScreen") is Node cards && IsShown(cards))
+        {
+            return false;
+        }
+        if (IsVictory())
         {
             return false;
         }

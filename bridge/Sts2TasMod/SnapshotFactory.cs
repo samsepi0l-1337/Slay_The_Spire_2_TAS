@@ -68,7 +68,9 @@ public static class SnapshotFactory
             {
                 ["game_version"] = "v0.107.1",
                 ["architect"] = architect,
-                ["reached_act3"] = act >= 3
+                ["reached_act3"] = act >= 3,
+                ["act3_boss_cleared"] = act >= 3 && (combat.IsOverOrEnding || enemies.All(enemy => Convert.ToInt32(enemy["hp"]) <= 0)),
+                ["victory"] = RunFlow.IsVictory()
             }
         };
     }
