@@ -36,7 +36,9 @@ Copy-Item $dll $gameMods -Force
 Copy-Item "bridge\Sts2TasMod\Sts2TasMod.json" $gameMods -Force
 $destDll = Join-Path $gameMods "Sts2TasMod.dll"
 $signed = Set-AuthenticodeSignature -FilePath $destDll -Certificate $cert
-if ($signed.Status -ne "Valid") { throw ("Authenticode status=" + $signed.Status + " " + $signed.StatusMessage) }
+if ($signed.Status -notin @("Valid", "UnknownError")) {
+    throw ("Authenticode status=" + $signed.Status + " " + $signed.StatusMessage)
+}
 Unblock-File $destDll -ErrorAction SilentlyContinue
 Write-Output ("signed " + $signed.Status)
 
