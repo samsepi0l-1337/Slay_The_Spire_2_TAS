@@ -9,7 +9,7 @@ Verified against MegaCrit AutoSlay handlers and the public STS2 CLI mod (ForceCl
 | Character | New run | `NCharacterSelectButton` IRONCLAD then enabled `ConfirmButton` | No (always Ironclad) |
 | Neow / event | After embark or event node | Dialogue `NAncientDialogueHitbox`, then `NEventOptionButton` ForceClick, then `NEventRoom.Proceed()` when finished | Yes: option index vs gold/HP |
 | Map | Between rooms | `NMapScreen.TravelToMapCoord` first travelable | Yes: node type (combat/elite/rest/shop/treasure) |
-| Combat | Fight | Q* among `play_card`; `end_turn` only if no cards | Yes: Q* |
+| Combat | Fight | Q* among `play_card`; skip Hemokinesis/Bloodletting/Offering when HP≤20; `end_turn` only if no cards | Yes: Q* |
 | Rewards | After combat | Enabled `NRewardButton`, `NCardHolder` Pressed, then enabled `NProceedButton` | Yes: card id vs skip |
 | Rest | Campfire | `ChooseLocalOption(0)` HEAL, then `ProceedButton` | Yes: HEAL vs SMITH by HP |
 | Treasure | Chest | `ProceedButton` (skip or take) | Yes: relic vs skip |

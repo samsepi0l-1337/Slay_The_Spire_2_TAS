@@ -140,6 +140,23 @@ def test_pick_action_plays_highest_damage_card_in_combat() -> None:
     assert action.args["hand_slot"] == 0
 
 
+def test_pick_action_skips_self_hp_cards_when_low_hp() -> None:
+    data = json.loads(json.dumps(load_snapshot().to_dict()))
+    data["player"]["hp"] = 11
+    data["hand"] = [
+        {"id": "HEMOKINESIS", "name": "Hemokinesis", "cost": 1, "type": "attack", "damage": 15},
+        {"id": "STRIKE_IRONCLAD", "name": "Strike", "cost": 1, "type": "attack", "damage": 6},
+    ]
+    data["valid_actions"] = [
+        {"action_type": "play_card", "args": {"hand_slot": 0, "target_slot": 0}},
+        {"action_type": "play_card", "args": {"hand_slot": 1, "target_slot": 0}},
+        {"action_type": "end_turn", "args": {}},
+    ]
+    action = pick_action(TelemetrySnapshot.from_dict(data), QStarPolicy(), search_depth=0)
+    assert action.action_type == "play_card"
+    assert action.args["hand_slot"] == 1
+
+
 def test_should_command_skips_loading_and_cooldown() -> None:
     snapshot = load_snapshot()
     assert should_command(snapshot) is True

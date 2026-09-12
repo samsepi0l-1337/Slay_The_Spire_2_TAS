@@ -33,12 +33,25 @@ def should_command(
     return True
 
 
+_SELF_HP_CARDS = ("HEMOKINESIS", "BLOODLETTING", "OFFERING", "BRUTALITY", "COMBUST")
+
+
 def pick_action(snapshot: TelemetrySnapshot, policy: QStarPolicy, search_depth: int) -> MacroAction:
     if snapshot.phase == "combat":
         plays = [action for action in snapshot.valid_actions if action.action_type == "play_card"]
+        if int(snapshot.player.get("hp", 0)) <= 20:
+            safe = [action for action in plays if not _costs_hp(snapshot, action)]
+            if safe:
+                plays = safe
         if plays:
             return max(plays, key=lambda action: (policy.qstar(snapshot, action, search_depth), _card_score(snapshot, action)))
     return policy.select(snapshot, search_depth)
+
+
+def _costs_hp(snapshot: TelemetrySnapshot, action: MacroAction) -> bool:
+    slot = int(action.args.get("hand_slot", 0))
+    card = snapshot.hand[slot] if 0 <= slot < len(snapshot.hand) else {}
+    return str(card.get("id", "")).upper() in _SELF_HP_CARDS
 
 
 def _card_score(snapshot: TelemetrySnapshot, action: MacroAction) -> tuple[int, int]:

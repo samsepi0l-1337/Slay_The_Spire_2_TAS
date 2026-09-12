@@ -132,14 +132,14 @@ public static class RunFlow
         if (MenuNav.GameOverVisible()) { return "game_over"; }
         if (MenuNav.OnMenuScreens()) { return "menu"; }
         if (InEventRoom()) { return "event"; }
+        var root = Nodes.Root();
+        if (Nodes.FindType(root, "NRewardsScreen") is Node rewards && Nodes.IsShown(rewards)) { return "rewards"; }
+        if (Nodes.FindType(root, "NCardRewardSelectionScreen") is Node cards && Nodes.IsShown(cards)) { return "rewards"; }
         try
         {
             if (NMapScreen.Instance is { IsOpen: true }) { return "map"; }
         }
         catch (Exception) { }
-        var root = Nodes.Root();
-        if (Nodes.FindType(root, "NRewardsScreen") is Node rewards && Nodes.IsShown(rewards)) { return "rewards"; }
-        if (Nodes.FindType(root, "NCardRewardSelectionScreen") is Node cards && Nodes.IsShown(cards)) { return "rewards"; }
         if (ScreenAdvance.InWorldRoom()) { return "world"; }
         if (IsLoading()) { return "loading"; }
         return "unknown";
