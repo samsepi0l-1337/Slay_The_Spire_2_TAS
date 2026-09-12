@@ -28,16 +28,17 @@ $dll = Join-Path $PWD "bridge\Sts2TasMod\bin\Release\net9.0\Sts2TasMod.dll"
 $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq "CN=Sts2TasMod" } | Select-Object -First 1
 if (-not $cert) {
     $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Sts2TasMod" -CertStoreLocation Cert:\CurrentUser\My
-    $cer = Join-Path $env:TEMP "Sts2TasMod.cer"
-    Export-Certificate -Cert $cert -FilePath $cer | Out-Null
-    certutil -user -addstore TrustedPublisher $cer | Out-Null
 }
-Set-AuthenticodeSignature -FilePath $dll -Certificate $cert | Out-Null
+$cer = Join-Path $env:TEMP "Sts2TasMod.cer"
+Export-Certificate -Cert $cert -FilePath $cer | Out-Null
+certutil -user -addstore TrustedPublisher $cer | Out-Null
 Copy-Item $dll $gameMods -Force
 Copy-Item "bridge\Sts2TasMod\Sts2TasMod.json" $gameMods -Force
 $destDll = Join-Path $gameMods "Sts2TasMod.dll"
-Set-AuthenticodeSignature -FilePath $destDll -Certificate $cert | Out-Null
+$signed = Set-AuthenticodeSignature -FilePath $destDll -Certificate $cert
+if ($signed.Status -ne "Valid") { throw ("Authenticode status=" + $signed.Status + " " + $signed.StatusMessage) }
 Unblock-File $destDll -ErrorAction SilentlyContinue
+Write-Output ("signed " + $signed.Status)
 
 $taskGame = "STS2TasLaunch"
 $trGame = "cmd.exe /c start steam://rungameid/2868840"
