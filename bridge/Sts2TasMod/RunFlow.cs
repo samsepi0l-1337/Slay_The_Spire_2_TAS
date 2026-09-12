@@ -465,8 +465,22 @@ public static class RunFlow
         return ClickFirstVisible("NChoiceSelectionSkipButton");
     }
 
+    private static bool _abandonedThisBoot;
+
     private static bool ClickAbandonIfContinueVisible()
     {
+        if (FindType((Engine.GetMainLoop() as SceneTree)?.Root, "NAbandonRunConfirmPopup") is Node popup && IsShown(popup))
+        {
+            if (ClickFirstShown("NConfirmButton") || ClickNamed(popup, "YesButton") || ClickNamed(popup, "ConfirmButton"))
+            {
+                GD.Print("Sts2TasMod confirm abandon popup");
+                return true;
+            }
+        }
+        if (_abandonedThisBoot)
+        {
+            return false;
+        }
         var menu = NGame.Instance?.MainMenu;
         var cont = menu?.GetNodeOrNull<NMainMenuContinueButton>("MainMenuTextButtons/ContinueButton");
         if (cont is null || !IsShown(cont))
@@ -476,6 +490,7 @@ public static class RunFlow
         try
         {
             menu!.AbandonRun();
+            _abandonedThisBoot = true;
             GD.Print("Sts2TasMod abandon run for Ironclad");
             return true;
         }
