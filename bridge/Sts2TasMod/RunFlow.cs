@@ -51,7 +51,7 @@ public static class RunFlow
         catch (Exception ex)
         {
             GD.PrintErr($"Sts2TasMod OutOfCombat failed: {ex}");
-            return Overlay("event", 1, 0, false, Array.Empty<object>(), Array.Empty<object>(), MenuActions());
+            return Overlay("menu", 1, 0, false, Array.Empty<object>(), Array.Empty<object>(), [], loading: true);
         }
     }
 
@@ -370,21 +370,7 @@ public static class RunFlow
 
     private static void ChooseEvent(int slot)
     {
-        if (ClickFirstVisible("NAncientDialogueHitbox"))
-        {
-            GD.Print("Sts2TasMod event dialogue");
-            return;
-        }
-        if (NEventRoom.Instance is { } dialogueRoom)
-        {
-            var hitbox = dialogueRoom.GetNodeOrNull<Node>("%DialogueHitbox") ?? dialogueRoom.FindChild("DialogueHitbox", true, false);
-            if (ClickControl(hitbox))
-            {
-                GD.Print("Sts2TasMod DialogueHitbox");
-                return;
-            }
-        }
-        if (ClickFirstVisible("NEventOptionButton"))
+        if (ClickFirstShown("NEventOptionButton"))
         {
             GD.Print("Sts2TasMod event option button");
             return;
@@ -397,11 +383,17 @@ public static class RunFlow
                 if (buttons is { Count: > 0 })
                 {
                     var index = Math.Clamp(slot, 0, buttons.Count - 1);
-                    if (ClickControl(buttons[index]) || ClickControl(buttons[0]))
+                    if (ForceClickRaw(buttons[index]) || ForceClickRaw(buttons[0]))
                     {
                         GD.Print($"Sts2TasMod event option {index}");
                         return;
                     }
+                }
+                var hitbox = room.GetNodeOrNull<Node>("%DialogueHitbox") ?? room.FindChild("DialogueHitbox", true, false);
+                if (ForceClickRaw(hitbox) || ClickFirstShown("NAncientDialogueHitbox"))
+                {
+                    GD.Print("Sts2TasMod DialogueHitbox");
+                    return;
                 }
                 _ = NEventRoom.Proceed();
                 GD.Print("Sts2TasMod event proceed");
@@ -411,6 +403,10 @@ public static class RunFlow
             {
                 GD.PrintErr($"Sts2TasMod event click failed: {ex.Message}");
             }
+        }
+        if (ClickFirstShown("NAncientDialogueHitbox"))
+        {
+            return;
         }
         ClickFirstVisible("NProceedButton");
     }
@@ -573,6 +569,50 @@ public static class RunFlow
             {
                 return true;
             }
+        }
+        return false;
+    }
+
+    private static bool ClickFirstShown(string typeName)
+    {
+        foreach (var node in FindAll((Engine.GetMainLoop() as SceneTree)?.Root, typeName))
+        {
+            if (ForceClickRaw(node))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool ForceClickRaw(Node? node)
+    {
+        if (node is null || !IsShown(node))
+        {
+            return false;
+        }
+        var id = $"{node.GetType().Name}:{node.Name}";
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (id == _lastClickId && now - _lastClickMs < 1500)
+        {
+            return false;
+        }
+        if (node is NClickableControl clickable)
+        {
+            clickable.ForceClick();
+            _lastClickId = id;
+            _lastClickMs = now;
+            GD.Print($"Sts2TasMod raw-click {id}");
+            return true;
+        }
+        var force = node.GetType().GetMethod("ForceClick");
+        if (force is not null)
+        {
+            force.Invoke(node, null);
+            _lastClickId = id;
+            _lastClickMs = now;
+            GD.Print($"Sts2TasMod raw-ForceClick {id}");
+            return true;
         }
         return false;
     }
