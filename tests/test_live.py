@@ -128,6 +128,11 @@ def test_is_cleared_detects_act3_boss_victory() -> None:
 
 def test_run_live_until_clear_skips_early_terminal(tmp_path: Path) -> None:
     first = load_snapshot()
+    loading = json.loads(json.dumps(first.to_dict()))
+    loading["phase"] = "menu"
+    loading["screen_id"] = "loading"
+    loading["valid_actions"] = []
+    loading["extras"] = {"loading": True}
     early = json.loads(json.dumps(first.to_dict()))
     early["phase"] = "terminal"
     early["valid_actions"] = []
@@ -145,6 +150,7 @@ def test_run_live_until_clear_skips_early_terminal(tmp_path: Path) -> None:
     result = run_live(
         iter(
             [
+                TelemetrySnapshot.from_dict(loading),
                 first,
                 TelemetrySnapshot.from_dict(early),
                 TelemetrySnapshot.from_dict(menu),

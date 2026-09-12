@@ -125,6 +125,7 @@ def run_live(
             if not snapshot.valid_actions:
                 previous = snapshot
                 chosen = None
+            _write_status(status_path, snapshot, None, commands, waiting=True)
             continue
         chosen = pick_action(snapshot, policy, search_depth)
         last_key = (snapshot.screen_id, snapshot.phase, snapshot.act, snapshot.floor)
@@ -132,21 +133,7 @@ def run_live(
         if send_command is not None:
             send_command(chosen)
             commands += 1
-            status_path.write_text(
-                json.dumps(
-                    {
-                        "commands": commands,
-                        "phase": snapshot.phase,
-                        "screen_id": snapshot.screen_id,
-                        "floor": snapshot.floor,
-                        "act": snapshot.act,
-                        "hp": snapshot.player["hp"],
-                        "enemies": snapshot.enemies,
-                        "action": chosen.to_dict(),
-                    },
-                    sort_keys=True,
-                )
-            )
+            _write_status(status_path, snapshot, chosen, commands, waiting=False)
             if command_delay_s > 0:
                 time.sleep(command_delay_s)
         previous = snapshot
@@ -226,6 +213,32 @@ def _connect_pipe(
             if clock() >= deadline:
                 raise
             sleeper(0.2)
+
+
+def _write_status(
+    path: Path,
+    snapshot: TelemetrySnapshot,
+    action: MacroAction | None,
+    commands: int,
+    waiting: bool,
+) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "commands": commands,
+                "waiting": waiting,
+                "phase": snapshot.phase,
+                "screen_id": snapshot.screen_id,
+                "floor": snapshot.floor,
+                "act": snapshot.act,
+                "hp": snapshot.player["hp"],
+                "enemies": snapshot.enemies,
+                "action": None if action is None else action.to_dict(),
+                "extras": snapshot.extras,
+            },
+            sort_keys=True,
+        )
+    )
 
 
 def _enemy_hp(snapshot: TelemetrySnapshot) -> int:

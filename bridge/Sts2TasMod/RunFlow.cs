@@ -69,11 +69,16 @@ public static class RunFlow
         }
         if (actionType == "choose_event_option")
         {
+            if (NEventRoom.Instance is { } ev && ev.IsInsideTree())
+            {
+                ChooseEvent(slot ?? 0);
+                return;
+            }
             if (ScreenAdvance.TryWorld())
             {
                 return;
             }
-            ChooseEvent(slot ?? 0);
+            ClickMenu(slot ?? 0);
             return;
         }
         if (ScreenAdvance.TryWorld())
