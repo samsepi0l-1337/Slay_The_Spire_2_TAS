@@ -77,4 +77,9 @@ $trTas = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$runlive`""
 Write-Output "=== start TAS in console session ==="
 schtasks /Create /TN $taskTas /TR $trTas /SC ONCE /ST 23:59 /F /IT | Out-Null
 schtasks /Run /TN $taskTas | Out-Null
-Write-Output "TAS scheduled. status=models\one-run.status.json"
+$log = Join-Path $Repo "models\play-one-run.log"
+$err = Join-Path $Repo "models\play-one-run.err"
+$direct = Start-Process -FilePath "powershell.exe" -WorkingDirectory $Repo -ArgumentList @(
+    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runlive
+) -RedirectStandardOutput $log -RedirectStandardError $err -PassThru -WindowStyle Hidden
+Write-Output ("TAS scheduled. also pid=" + $direct.Id + " status=models\one-run.status.json")
