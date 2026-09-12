@@ -76,24 +76,27 @@ public static class PipeHub
             }
             finally
             {
-                _writer?.Dispose();
-                _reader?.Dispose();
-                _pipe?.Dispose();
-                _writer = null;
-                _reader = null;
-                _pipe = null;
+                lock (Gate)
+                {
+                    _writer?.Dispose();
+                    _reader?.Dispose();
+                    _pipe?.Dispose();
+                    _writer = null;
+                    _reader = null;
+                    _pipe = null;
+                }
             }
         }
     }
 
     internal static void WriteSnapshot()
     {
-        if (_writer is null)
-        {
-            return;
-        }
         lock (Gate)
         {
+            if (_writer is null)
+            {
+                return;
+            }
             _sequence += 1;
             var payload = SnapshotFactory.Capture();
             var frame = JsonSerializer.Serialize(new Dictionary<string, object?>

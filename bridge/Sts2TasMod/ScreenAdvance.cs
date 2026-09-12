@@ -41,11 +41,15 @@ public static class ScreenAdvance
     {
         try
         {
-            if (NRestSiteRoom.Instance is { } rest && rest.IsInsideTree())
+            if (Visible(NRestSiteRoom.Instance))
             {
                 return true;
             }
-            if (NEventRoom.Instance is { } ev && ev.IsInsideTree())
+            if (Visible(NRun.Instance?.TreasureRoom))
+            {
+                return true;
+            }
+            if (Visible(NRun.Instance?.MerchantRoom))
             {
                 return true;
             }
@@ -57,10 +61,15 @@ public static class ScreenAdvance
         return false;
     }
 
+    private static bool Visible(Node? node)
+    {
+        return node is CanvasItem canvas && canvas.IsInsideTree() && canvas.IsVisibleInTree();
+    }
+
     private static bool TryRest()
     {
         var rest = NRestSiteRoom.Instance;
-        if (rest is null || !rest.IsInsideTree())
+        if (rest is null || !Visible(rest))
         {
             return false;
         }
@@ -71,7 +80,7 @@ public static class ScreenAdvance
             GD.Print("Sts2TasMod rest proceed");
             return true;
         }
-        _ = RunManager.Instance.RestSiteSynchronizer.ChooseLocalOption(0);
+        _ = RunManager.Instance?.RestSiteSynchronizer.ChooseLocalOption(0);
         GD.Print("Sts2TasMod rest option 0 (HEAL)");
         return true;
     }
@@ -79,7 +88,7 @@ public static class ScreenAdvance
     private static bool TryTreasure()
     {
         var treasure = NRun.Instance?.TreasureRoom;
-        if (treasure is null || !treasure.IsInsideTree())
+        if (treasure is null || !Visible(treasure))
         {
             return false;
         }
@@ -91,7 +100,7 @@ public static class ScreenAdvance
     private static bool TryShop()
     {
         var shop = NRun.Instance?.MerchantRoom;
-        if (shop is null || !shop.IsInsideTree())
+        if (shop is null || !Visible(shop))
         {
             return false;
         }

@@ -22,6 +22,7 @@ public static class CommandRunner
             }
             var actionType = action.GetProperty("action_type").GetString();
             var args = action.TryGetProperty("args", out var rawArgs) ? rawArgs : default;
+            GD.Print($"Sts2TasMod command {actionType}");
             if (actionType == "end_turn")
             {
                 EndTurn();

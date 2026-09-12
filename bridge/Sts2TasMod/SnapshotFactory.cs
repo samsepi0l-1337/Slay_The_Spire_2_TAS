@@ -26,7 +26,7 @@ public static class SnapshotFactory
         var enemies = Enemies(state);
         var playPhase = ReadBool(combat, "IsPlayPhase") ?? pcs.Phase.ToString().Contains("Play", StringComparison.OrdinalIgnoreCase);
         var actions = LegalActions(pcs.Hand, enemies, playPhase);
-        var run = RunManager.Instance.DebugOnlyGetState();
+        var run = RunManager.Instance?.DebugOnlyGetState();
         var act = (ReadInt(run, "CurrentActIndex") ?? 0) + 1;
         var floor = ReadInt(run, "ActFloor", "TotalFloor") ?? 1;
         var architect = RunFlow.IsArchitect(run) || enemies.Any(enemy => (enemy["id"]?.ToString() ?? "").Contains("architect", StringComparison.OrdinalIgnoreCase));

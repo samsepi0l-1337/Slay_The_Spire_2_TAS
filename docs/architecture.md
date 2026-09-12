@@ -114,7 +114,7 @@ The executor converts macro actions to guarded input sequences using current tar
 3. Apply the action, write a JSONL transition, and take a TD update `Q(s,a) <- r + γ max_a' Q(s',a')`.
 4. Persist weights after every episode so later runs continue from the updated model.
 
-`run-qstar` remains the fixture/env trainer. `run-live` is the Harmony/pipe loop. Combat env still discards played cards, rebuilds energy-gated valid actions, and redraws on `end_turn` so Q* search has a local model.
+`run-qstar` remains the fixture/env trainer. `run-live` is the Harmony/pipe loop. Combat env still discards played cards, rebuilds energy-gated valid actions, and redraws on `end_turn` so Q* search has a local model. Live TD updates run only on combat/terminal frames so menu/Neow overlays cannot zero-out Q*. Empty-enemy UI overlays are not terminal.
 
 ## Logging
 

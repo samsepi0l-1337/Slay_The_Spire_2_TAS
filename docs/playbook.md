@@ -4,8 +4,8 @@ Verified against MegaCrit AutoSlay handlers and the public STS2 CLI mod (ForceCl
 
 | Screen | When | Click | ML? |
 | --- | --- | --- | --- |
-| Main Continue | Saved run exists | `NMainMenuContinueButton` ForceClick | No (UI) |
-| Main Singleplayer | No save | `SingleplayerButton` then `StandardButton` | No |
+| Main Continue | Saved run exists | Never Continue (Silent save). `AbandonRun` then confirm popup | No (UI) |
+| Main Singleplayer | After abandon / no save | `SingleplayerButton` ForceClick even if disabled, then `StandardButton` | No |
 | Character | New run | `NCharacterSelectButton` IRONCLAD then enabled `ConfirmButton` | No (always Ironclad) |
 | Neow / event | After embark or event node | Dialogue `NAncientDialogueHitbox`, then `NEventOptionButton` ForceClick, then `NEventRoom.Proceed()` when finished | Yes: option index vs gold/HP |
 | Map | Between rooms | `NMapScreen.TravelToMapCoord` first travelable | Yes: node type (combat/elite/rest/shop/treasure) |

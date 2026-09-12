@@ -59,10 +59,14 @@ def is_cleared(snapshot: TelemetrySnapshot) -> bool:
 def reward_between(previous: TelemetrySnapshot, current: TelemetrySnapshot) -> tuple[float, bool]:
     previous_hp = _enemy_hp(previous)
     current_hp = _enemy_hp(current)
-    reward = float(previous_hp - current_hp)
-    reward += 0.1 * float(int(current.player.get("block", 0)) - int(previous.player.get("block", 0)))
-    reward += float(int(current.player["hp"]) - int(previous.player["hp"]))
-    terminated = current.phase in {"terminal", "menu"} or current_hp == 0
+    reward = 0.0
+    if previous.phase == "combat" or current.phase == "combat":
+        reward = float(previous_hp - current_hp)
+        reward += 0.1 * float(int(current.player.get("block", 0)) - int(previous.player.get("block", 0)))
+        reward += float(int(current.player["hp"]) - int(previous.player["hp"]))
+    elif current.floor > previous.floor:
+        reward = 1.0
+    terminated = current.phase == "terminal" or is_cleared(current)
     return reward, terminated
 
 
@@ -92,7 +96,8 @@ def run_live(
     for snapshot in frames:
         if previous is not None and chosen is not None:
             reward, terminated = reward_between(previous, snapshot)
-            policy.update(previous, chosen, reward, snapshot, terminated)
+            if previous.phase == "combat" or snapshot.phase == "combat" or snapshot.phase == "terminal":
+                policy.update(previous, chosen, reward, snapshot, terminated)
             if not until_clear or transitions % 25 == 0:
                 writer.append(
                     TransitionRecord(
@@ -233,6 +238,8 @@ def _write_status(
                 "act": snapshot.act,
                 "hp": snapshot.player["hp"],
                 "enemies": snapshot.enemies,
+                "n_actions": len(snapshot.valid_actions),
+                "ts": time.time(),
                 "action": None if action is None else action.to_dict(),
                 "extras": snapshot.extras,
             },

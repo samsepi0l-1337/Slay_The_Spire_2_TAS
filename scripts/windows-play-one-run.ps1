@@ -79,7 +79,20 @@ schtasks /Create /TN $taskTas /TR $trTas /SC ONCE /ST 23:59 /F /IT | Out-Null
 schtasks /Run /TN $taskTas | Out-Null
 $log = Join-Path $Repo "models\play-one-run.log"
 $err = Join-Path $Repo "models\play-one-run.err"
-$direct = Start-Process -FilePath "powershell.exe" -WorkingDirectory $Repo -ArgumentList @(
-    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runlive
-) -RedirectStandardOutput $log -RedirectStandardError $err -PassThru -WindowStyle Hidden
-Write-Output ("TAS scheduled. also pid=" + $direct.Id + " status=models\one-run.status.json")
+$tasDeadline = (Get-Date).AddSeconds(20)
+$tasUp = $false
+while ((Get-Date) -lt $tasDeadline) {
+    $live = Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+        Where-Object { $_.CommandLine -match 'run-live' }
+    if ($live) { $tasUp = $true; break }
+    Start-Sleep -Seconds 2
+}
+if (-not $tasUp) {
+    $direct = Start-Process -FilePath "powershell.exe" -WorkingDirectory $Repo -ArgumentList @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $runlive
+    ) -RedirectStandardOutput $log -RedirectStandardError $err -PassThru -WindowStyle Hidden
+    Write-Output ("TAS direct pid=" + $direct.Id)
+} else {
+    Write-Output "TAS already running from schtasks"
+}
+Write-Output "status=models\one-run.status.json"

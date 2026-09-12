@@ -47,6 +47,57 @@ def test_reward_between_uses_hp_and_block_deltas() -> None:
     assert reward == pytest.approx(6.0 + 0.5 - 2.0)
 
 
+def test_reward_between_event_overlay_is_not_terminal() -> None:
+    data = json.loads(json.dumps(load_snapshot().to_dict()))
+    data["phase"] = "event"
+    data["screen_id"] = "event"
+    data["enemies"] = []
+    data["player"]["hp"] = 1
+    data["event_choices"] = [{"id": "new_run"}]
+    data["valid_actions"] = [{"action_type": "choose_event_option", "args": {"choice_slot": 0}}]
+    previous = TelemetrySnapshot.from_dict(data)
+    later = json.loads(json.dumps(data))
+    later["floor"] = 2
+    current = TelemetrySnapshot.from_dict(later)
+
+    reward, terminated = reward_between(previous, TelemetrySnapshot.from_dict(data))
+    progressed, still_open = reward_between(previous, current)
+
+    assert terminated is False
+    assert reward == 0.0
+    assert still_open is False
+    assert progressed == 1.0
+
+
+def test_run_live_skips_td_on_event_menu_loop(tmp_path: Path) -> None:
+    data = json.loads(json.dumps(load_snapshot().to_dict()))
+    data["phase"] = "event"
+    data["screen_id"] = "event"
+    data["enemies"] = []
+    data["player"]["hp"] = 1
+    data["event_choices"] = [{"id": "new_run"}]
+    data["valid_actions"] = [{"action_type": "choose_event_option", "args": {"choice_slot": 0}}]
+    first = TelemetrySnapshot.from_dict(data)
+    second = TelemetrySnapshot.from_dict(data)
+    model = tmp_path / "qstar.json"
+
+    result = run_live(
+        iter([first, second]),
+        model,
+        tmp_path / "live.jsonl",
+        send_command=lambda _action: None,
+        search_depth=0,
+        max_steps=8,
+        until_clear=True,
+    )
+
+    assert result["commands"] == 2
+    assert result["updates"] == 0
+    status = json.loads((tmp_path / "live.status.json").read_text())
+    assert status["n_actions"] == 1
+    assert "ts" in status
+
+
 def test_run_live_updates_qstar_weights_from_real_transitions(tmp_path: Path) -> None:
     first = load_snapshot()
     data = first.to_dict()

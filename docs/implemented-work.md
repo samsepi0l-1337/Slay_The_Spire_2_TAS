@@ -50,7 +50,7 @@ Not present:
 - [x] `bc.py`: torch-backed behavioral cloning training and valid-action scoring, with legacy JSON table compatibility.
 - [x] `rl.py`: MaskablePPO-shaped smoke training path backed by the legal-action BC artifact.
 - [x] `qstar.py`: Q* limited-depth search over legal macros, online TD weight updates during play, and `run-qstar`.
-- [x] `live.py`: live Q* loop over Harmony/TCP frames with HP-delta rewards.
+- [x] `live.py`: live Q* loop over Harmony/TCP frames with HP-delta rewards. Combat-only TD; UI overlays are not terminal.
 - [x] `dataset.py`: JSONL first, SQLite/Parquet compatible transition records.
 
 ## Target Bridge Surface
