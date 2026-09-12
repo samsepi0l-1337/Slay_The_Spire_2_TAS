@@ -129,6 +129,7 @@ public static class RunFlow
 
     internal static string DetectUi()
     {
+        if (MenuNav.GameOverVisible()) { return "game_over"; }
         if (MenuNav.OnMenuScreens()) { return "menu"; }
         if (InEventRoom()) { return "event"; }
         try

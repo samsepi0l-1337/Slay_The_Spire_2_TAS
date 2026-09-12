@@ -35,6 +35,10 @@ internal static class MenuNav
             {
                 return true;
             }
+            if (GameOverVisible())
+            {
+                return true;
+            }
             return false;
         }
         catch (Exception)
@@ -55,8 +59,25 @@ internal static class MenuNav
         }
     }
 
+    internal static bool GameOverVisible()
+    {
+        var root = Nodes.Root();
+        foreach (var name in new[] { "NGameOverScreen", "NRunSummary", "NStatsScreen" })
+        {
+            if (Nodes.FindType(root, name) is Node node && Nodes.IsShown(node))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     internal static void ClickMenu()
     {
+        if (DismissGameOver())
+        {
+            return;
+        }
         if (_embarked)
         {
             if (NMapScreenOpen())
@@ -80,6 +101,26 @@ internal static class MenuNav
         if (ClickCharacterSelect(root)) { return; }
         Nodes.ClickNamed(root, "NoButton");
         GD.Print("Sts2TasMod ClickMenu no-op");
+    }
+
+    private static bool DismissGameOver()
+    {
+        if (!GameOverVisible())
+        {
+            return false;
+        }
+        if (Nodes.ClickFirstShown("NGameOverContinueButton")
+            || Nodes.ClickFirstVisible("NGameOverContinueButton")
+            || Nodes.ClickFirstVisible("NProceedButton")
+            || Nodes.ClickNamed(Nodes.Root(), "ContinueButton")
+            || Nodes.ClickNamed(Nodes.Root(), "MainMenuButton")
+            || Nodes.ClickNamed(Nodes.Root(), "ReturnToMenuButton"))
+        {
+            GD.Print("Sts2TasMod dismiss game over");
+            return true;
+        }
+        GD.Print("Sts2TasMod game over no-op");
+        return true;
     }
 
     private static bool NMapScreenOpen()
