@@ -69,7 +69,7 @@ public static class RunFlow
         }
         if (actionType == "choose_event_option")
         {
-            if (NEventRoom.Instance is { } ev && ev.IsInsideTree())
+            if (InEventRoom())
             {
                 ChooseEvent(slot ?? 0);
                 return;
@@ -86,6 +86,23 @@ public static class RunFlow
             return;
         }
         ClickMenu(slot ?? 0);
+    }
+
+    private static bool InEventRoom()
+    {
+        try
+        {
+            var room = NEventRoom.Instance;
+            if (room is null || !room.IsInsideTree())
+            {
+                return false;
+            }
+            return room is not CanvasItem canvas || canvas.IsVisibleInTree();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     internal static bool IsVictory()
@@ -331,7 +348,7 @@ public static class RunFlow
         {
             return false;
         }
-        if (NEventRoom.Instance is { } eventRoom && eventRoom.IsInsideTree())
+        if (InEventRoom())
         {
             return false;
         }
@@ -345,10 +362,11 @@ public static class RunFlow
     private static List<Dictionary<string, object?>> EventActions()
     {
         var actions = new List<Dictionary<string, object?>>();
-        if (NEventRoom.Instance is not { } room || !room.IsInsideTree())
+        if (!InEventRoom())
         {
             return actions;
         }
+        var room = NEventRoom.Instance!;
         var count = 1;
         try
         {
