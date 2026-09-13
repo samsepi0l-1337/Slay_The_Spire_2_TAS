@@ -71,8 +71,13 @@ internal static class EventReward
         {
             return;
         }
-        if (phase != 0 && ClickOption(slot))
+        if (phase != 0 && ClickOption(slot + _eventStep / 3))
         {
+            return;
+        }
+        if (Nodes.ClickFirstShown("NProceedButton") || Nodes.ClickFirstVisible("NProceedButton"))
+        {
+            GD.Print("Sts2TasMod event proceed button");
             return;
         }
         try
@@ -83,7 +88,6 @@ internal static class EventReward
         catch (Exception ex)
         {
             GD.PrintErr($"Sts2TasMod event proceed failed: {ex.Message}");
-            Nodes.ClickFirstVisible("NProceedButton");
         }
     }
 
