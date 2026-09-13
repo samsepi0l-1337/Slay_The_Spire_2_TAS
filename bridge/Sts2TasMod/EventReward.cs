@@ -40,6 +40,10 @@ internal static class EventReward
 
     internal static List<Dictionary<string, object?>> RewardActions()
     {
+        if (RunFlow.InEventRoom())
+        {
+            return [];
+        }
         var root = Nodes.Root();
         var cards = Nodes.FindType(root, "NCardRewardSelectionScreen");
         var rewards = Nodes.FindType(root, "NRewardsScreen");
@@ -57,13 +61,53 @@ internal static class EventReward
         ];
     }
 
+    private static int _eventStep;
+
     internal static void ChooseEvent(int slot)
     {
-        if (Nodes.ClickFirstShown("NEventOptionButton"))
+        _eventStep += 1;
+        var phase = _eventStep % 3;
+        if (phase == 1 && ClickDialogue())
         {
-            GD.Print("Sts2TasMod event option button");
             return;
         }
+        if (phase != 0 && ClickOption(slot))
+        {
+            return;
+        }
+        try
+        {
+            _ = NEventRoom.Proceed();
+            GD.Print("Sts2TasMod event proceed");
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Sts2TasMod event proceed failed: {ex.Message}");
+            Nodes.ClickFirstVisible("NProceedButton");
+        }
+    }
+
+    private static bool ClickDialogue()
+    {
+        if (NEventRoom.Instance is { } room && room.IsInsideTree())
+        {
+            var hitbox = room.GetNodeOrNull<Node>("%DialogueHitbox") ?? room.FindChild("DialogueHitbox", true, false);
+            if (Nodes.ForceClickRaw(hitbox))
+            {
+                GD.Print("Sts2TasMod DialogueHitbox");
+                return true;
+            }
+        }
+        if (Nodes.ClickFirstShown("NAncientDialogueHitbox"))
+        {
+            GD.Print("Sts2TasMod DialogueHitbox");
+            return true;
+        }
+        return false;
+    }
+
+    private static bool ClickOption(int slot)
+    {
         if (NEventRoom.Instance is { } room && room.IsInsideTree())
         {
             try
@@ -75,29 +119,20 @@ internal static class EventReward
                     if (Nodes.ForceClickRaw(buttons[index]) || Nodes.ForceClickRaw(buttons[0]))
                     {
                         GD.Print($"Sts2TasMod event option {index}");
-                        return;
+                        return true;
                     }
                 }
-                var hitbox = room.GetNodeOrNull<Node>("%DialogueHitbox") ?? room.FindChild("DialogueHitbox", true, false);
-                if (Nodes.ForceClickRaw(hitbox) || Nodes.ClickFirstShown("NAncientDialogueHitbox"))
-                {
-                    GD.Print("Sts2TasMod DialogueHitbox");
-                    return;
-                }
-                _ = NEventRoom.Proceed();
-                GD.Print("Sts2TasMod event proceed");
-                return;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                GD.PrintErr($"Sts2TasMod event click failed: {ex.Message}");
             }
         }
-        if (Nodes.ClickFirstShown("NAncientDialogueHitbox"))
+        if (Nodes.ClickFirstShown("NEventOptionButton"))
         {
-            return;
+            GD.Print("Sts2TasMod event option button");
+            return true;
         }
-        Nodes.ClickFirstVisible("NProceedButton");
+        return false;
     }
 
     internal static void ClaimRewards()

@@ -58,24 +58,19 @@ public static class RunFlow
             MenuNav.ClickMenu();
             return;
         }
+        if (InEventRoom())
+        {
+            EventReward.ChooseEvent(slot ?? 0);
+            return;
+        }
         if (actionType == "choose_map_node")
         {
-            if (InEventRoom())
-            {
-                EventReward.ChooseEvent(slot ?? 0);
-                return;
-            }
             ChooseMap(slot ?? 0);
             return;
         }
         if (actionType == "choose_reward")
         {
             EventReward.ClaimRewards();
-            return;
-        }
-        if (actionType == "choose_event_option" && InEventRoom())
-        {
-            EventReward.ChooseEvent(slot ?? 0);
             return;
         }
         if (ScreenAdvance.TryWorld())
