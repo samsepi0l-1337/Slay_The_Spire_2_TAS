@@ -60,18 +60,15 @@ Write-Output ("STS2 pid=" + $proc.Id)
 $pipeDeadline = (Get-Date).AddMinutes(3)
 $opened = $false
 while ((Get-Date) -lt $pipeDeadline) {
-    try {
-        $client = New-Object System.IO.Pipes.NamedPipeClientStream(".", "sts2-tas", [System.IO.Pipes.PipeDirection]::InOut)
-        $client.Connect(1000)
-        $client.Dispose()
+    $pipes = [IO.Directory]::GetFiles("\\.\pipe\") | Where-Object { $_ -like "*sts2-tas" }
+    if ($pipes) {
         $opened = $true
         break
-    } catch {
-        Start-Sleep -Seconds 2
     }
+    Start-Sleep -Seconds 2
 }
 if (-not $opened) { throw "named pipe sts2-tas did not appear" }
-Write-Output "pipe attached"
+Write-Output "pipe listening"
 
 New-Item -ItemType Directory -Force -Path "models" | Out-Null
 $runlive = Join-Path $Repo "scripts\windows-architect-runlive.ps1"

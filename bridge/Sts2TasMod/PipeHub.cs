@@ -1,3 +1,4 @@
+using System.IO;
 using System.IO.Pipes;
 using System.Text;
 using System.Text.Json;
@@ -104,7 +105,14 @@ public static class PipeHub
                 ["sequence"] = _sequence,
                 ["payload"] = payload
             });
-            _writer.WriteLine(frame);
+            try
+            {
+                _writer.WriteLine(frame);
+            }
+            catch (IOException)
+            {
+                _writer = null;
+            }
         }
     }
 }
