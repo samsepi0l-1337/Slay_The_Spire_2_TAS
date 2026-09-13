@@ -23,11 +23,6 @@ public static class RunFlow
             {
                 return Overlay("menu", act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), [], "loading", true);
             }
-            var map = MapActions();
-            if (map.Count > 0)
-            {
-                return Overlay("map", act, floor, architect, map, Array.Empty<object>(), map, "map");
-            }
             var rewards = EventReward.RewardActions();
             if (rewards.Count > 0)
             {
@@ -37,6 +32,11 @@ public static class RunFlow
             if (eventActions.Count > 0)
             {
                 return Overlay("event", act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), eventActions, "event");
+            }
+            var map = MapActions();
+            if (map.Count > 0)
+            {
+                return Overlay("map", act, floor, architect, map, Array.Empty<object>(), map, "map");
             }
             var ui = DetectUi();
             var events = architect ? [] : MenuActions();
@@ -60,6 +60,11 @@ public static class RunFlow
         }
         if (actionType == "choose_map_node")
         {
+            if (InEventRoom())
+            {
+                EventReward.ChooseEvent(slot ?? 0);
+                return;
+            }
             ChooseMap(slot ?? 0);
             return;
         }

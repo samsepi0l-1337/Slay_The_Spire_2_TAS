@@ -1,3 +1,4 @@
+using Godot;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -15,6 +16,8 @@ public static class SnapshotFactory
         {
             return RunFlow.OutOfCombat();
         }
+        try
+        {
         var state = combat.DebugOnlyGetState();
         var player = state?.Players.Count > 0 ? state.Players[0] : null;
         if (state is null || player?.PlayerCombatState is null)
@@ -73,6 +76,12 @@ public static class SnapshotFactory
                 ["victory"] = RunFlow.IsVictory()
             }
         };
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Sts2TasMod combat snapshot skipped: {ex.Message}");
+            return RunFlow.OutOfCombat();
+        }
     }
 
     public static int? ReadIntPublic(object? target, params string[] names)
@@ -141,9 +150,16 @@ public static class SnapshotFactory
         {
             return cards;
         }
-        foreach (var card in pile.Cards)
+        try
         {
-            cards.Add(Card(card));
+            foreach (var card in pile.Cards)
+            {
+                cards.Add(Card(card));
+            }
+        }
+        catch (Exception)
+        {
+            return cards;
         }
         return cards;
     }
