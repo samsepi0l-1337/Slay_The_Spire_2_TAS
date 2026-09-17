@@ -78,8 +78,7 @@ internal static class EventReward
         var model = typeof(NEventRoom).GetField("_event", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(room) as EventModel;
         if (model is { IsFinished: true })
         {
-            _ = NEventRoom.Proceed();
-            GD.Print("Sts2TasMod NEventRoom.Proceed (finished)");
+            AwaitProceed("finished");
             return;
         }
         var buttons = room.Layout?.OptionButtons?.ToList();
@@ -99,8 +98,32 @@ internal static class EventReward
         {
             return;
         }
-        _ = NEventRoom.Proceed();
-        GD.Print("Sts2TasMod NEventRoom.Proceed (no buttons)");
+        AwaitProceed("no buttons");
+    }
+
+    private static bool _proceeding;
+
+    private static async void AwaitProceed(string reason)
+    {
+        if (_proceeding)
+        {
+            return;
+        }
+        _proceeding = true;
+        try
+        {
+            GD.Print($"Sts2TasMod await NEventRoom.Proceed ({reason})");
+            await NEventRoom.Proceed();
+            GD.Print("Sts2TasMod NEventRoom.Proceed completed");
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Sts2TasMod Proceed failed: {ex.Message}");
+        }
+        finally
+        {
+            _proceeding = false;
+        }
     }
 
     private static bool AdvanceAncientDialogue(NEventRoom room, bool force)
