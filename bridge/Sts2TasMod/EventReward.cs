@@ -1,4 +1,6 @@
+using System.Reflection;
 using Godot;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
@@ -128,56 +130,82 @@ internal static class EventReward
     {
         var room = NEventRoom.Instance;
         var option = button.GetType().GetProperty("Option")?.GetValue(button);
-        if (room is not null && InvokeMatching(room, "OptionButtonClicked", button, option))
+        if (room is not null && InvokeLoose(room, "OptionButtonClicked", button, option))
         {
             return true;
         }
-        if (room is not null && InvokeMatching(room, "ChooseOptionForEvent", button, option))
+        if (room is not null && InvokeLoose(room, "ChooseOptionForEvent", button, option))
         {
             return true;
         }
-        var chosen = option?.GetType().GetMethod("Chosen", Type.EmptyTypes);
-        if (chosen is not null)
+        if (option is not null && InvokeLoose(option, "Chosen", button, option))
         {
-            try
-            {
-                chosen.Invoke(option, null);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                GD.PrintErr($"Sts2TasMod Chosen: {ex.InnerException?.Message ?? ex.Message}");
-            }
+            return true;
+        }
+        if (button.HasSignal("Released"))
+        {
+            button.EmitSignal(NClickableControl.SignalName.Released, button);
+            GD.Print("Sts2TasMod event Released");
+            return true;
         }
         return Nodes.ClickControl(button);
     }
 
     private static bool InvokeMatching(object target, string name, params object?[] candidates)
     {
-        foreach (var method in target.GetType().GetMethods().Where(method => method.Name == name))
+        return InvokeLoose(target, name, candidates);
+    }
+
+    private static bool InvokeLoose(object target, string name, params object?[] candidates)
+    {
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+        foreach (var method in target.GetType().GetMethods(flags).Where(method => method.Name == name))
         {
             var parameters = method.GetParameters();
-            object?[]? args = parameters.Length switch
+            var args = new object?[parameters.Length];
+            var ok = true;
+            for (var i = 0; i < parameters.Length; i++)
             {
-                0 => [],
-                1 => candidates.FirstOrDefault(candidate => candidate is not null && parameters[0].ParameterType.IsInstanceOfType(candidate)) is { } match
-                    ? [match]
-                    : null,
-                _ => null
-            };
-            if (args is null)
+                var match = candidates.FirstOrDefault(candidate => candidate is not null && parameters[i].ParameterType.IsInstanceOfType(candidate));
+                if (match is not null)
+                {
+                    args[i] = match;
+                    continue;
+                }
+                if (parameters[i].ParameterType == typeof(bool))
+                {
+                    args[i] = true;
+                    continue;
+                }
+                if (parameters[i].HasDefaultValue)
+                {
+                    args[i] = parameters[i].DefaultValue;
+                    continue;
+                }
+                if (parameters[i].ParameterType.IsValueType)
+                {
+                    args[i] = Activator.CreateInstance(parameters[i].ParameterType);
+                    continue;
+                }
+                args[i] = null;
+                if (!parameters[i].ParameterType.IsClass)
+                {
+                    ok = false;
+                }
+            }
+            if (!ok)
             {
                 continue;
             }
             try
             {
-                method.Invoke(target, args);
-                GD.Print($"Sts2TasMod invoked {name}");
+                method.Invoke(method.IsStatic ? null : target, args);
+                GD.Print($"Sts2TasMod invoked {name}({parameters.Length})");
                 return true;
             }
             catch (Exception ex)
             {
-                GD.PrintErr($"Sts2TasMod {name}: {ex.InnerException?.Message ?? ex.Message}");
+                GD.PrintErr($"Sts2TasMod {name}({parameters.Length}): {ex.InnerException?.Message ?? ex.Message}");
             }
         }
         return false;
