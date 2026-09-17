@@ -1,5 +1,8 @@
 using System.Reflection;
+using System.Threading;
 using Godot;
+using MegaCrit.Sts2.Core.AutoSlay;
+using MegaCrit.Sts2.Core.AutoSlay.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
@@ -75,58 +78,163 @@ internal static class EventReward
         {
             return;
         }
-        var buttons = room.Layout?.OptionButtons?.ToList();
-        if (buttons is { Count: > 0 })
-        {
-            var index = Math.Clamp(slot, 0, buttons.Count - 1);
-            if (buttons[index] is NClickableControl clickable)
-            {
-                clickable.ForceClick();
-                GD.Print($"Sts2TasMod ForceClick option {index}/{buttons.Count}");
-                return;
-            }
-            Nodes.ClickControl(buttons[index]);
-            return;
-        }
-        foreach (var node in Nodes.FindAll(room, "NEventOptionButton"))
-        {
-            if (node is NClickableControl leftover && leftover.IsVisibleInTree())
-            {
-                leftover.ForceClick();
-                GD.Print($"Sts2TasMod ForceClick leftover {leftover.Name}");
-                return;
-            }
-        }
-        if (AdvanceAncientDialogue(room))
+        var model = EventModelOf(room);
+        var finished = model?.IsFinished == true;
+        var buttons = room.Layout?.OptionButtons?.Cast<Node>().ToList() ?? [];
+        GD.Print($"Sts2TasMod event finished={finished} buttons={buttons.Count} options={model?.CurrentOptions.Count}");
+        if (!finished && ClickChoice(room, buttons, slot))
         {
             return;
         }
-        AwaitProceed("no buttons");
+        if (ClickProceedButtons(room, buttons))
+        {
+            LeaveFinished("clicked IsProceed");
+            return;
+        }
+        if (finished)
+        {
+            LeaveFinished("no proceed button");
+            return;
+        }
+        GD.Print("Sts2TasMod event waiting (not finished)");
     }
 
-    private static bool _proceeding;
+    private static bool _leaving;
 
-    private static async void AwaitProceed(string reason)
+    private static async void LeaveFinished(string reason)
     {
-        if (_proceeding)
+        if (_leaving)
         {
             return;
         }
-        _proceeding = true;
+        _leaving = true;
         try
         {
+            await ClickEventProceedIfNeeded();
             GD.Print($"Sts2TasMod await NEventRoom.Proceed ({reason})");
             await NEventRoom.Proceed();
             GD.Print("Sts2TasMod NEventRoom.Proceed completed");
         }
         catch (Exception ex)
         {
-            GD.PrintErr($"Sts2TasMod Proceed failed: {ex.Message}");
+            GD.PrintErr($"Sts2TasMod leave failed: {ex.Message}");
         }
         finally
         {
-            _proceeding = false;
+            _leaving = false;
         }
+    }
+
+    private static async Task ClickEventProceedIfNeeded()
+    {
+        try
+        {
+            var method = typeof(AutoSlayer).GetMethod(
+                "ClickEventProceedIfNeeded",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (method is null)
+            {
+                return;
+            }
+            if (method.Invoke(new AutoSlayer(), [CancellationToken.None]) is not Task task)
+            {
+                return;
+            }
+            GD.Print("Sts2TasMod ClickEventProceedIfNeeded");
+            var done = await Task.WhenAny(task, Task.Delay(4000));
+            GD.Print(done == task
+                ? "Sts2TasMod ClickEventProceedIfNeeded done"
+                : "Sts2TasMod ClickEventProceedIfNeeded timeout");
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Sts2TasMod ClickEventProceedIfNeeded: {ex.InnerException?.Message ?? ex.Message}");
+        }
+    }
+
+    private static bool ClickChoice(NEventRoom room, List<Node> buttons, int slot)
+    {
+        var choices = buttons
+            .Select((node, index) => (node, index))
+            .Where(pair => !IsLocked(pair.node) && !IsProceed(pair.node))
+            .ToList();
+        if (choices.Count == 0)
+        {
+            return false;
+        }
+        var pick = choices[Math.Clamp(slot, 0, choices.Count - 1)];
+        return ClickOption(room, pick.node, pick.index, $"option {pick.index}/{buttons.Count}");
+    }
+
+    private static bool ClickProceedButtons(NEventRoom room, List<Node> buttons)
+    {
+        foreach (var (node, index) in buttons.Select((node, index) => (node, index)))
+        {
+            if (IsProceed(node) && ClickOption(room, node, index, $"IsProceed {index}"))
+            {
+                return true;
+            }
+        }
+        foreach (var node in Nodes.FindAll(room, "NEventOptionButton"))
+        {
+            if (IsProceed(node) && ClickOption(room, node, 0, $"leftover {node.Name}"))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool ClickOption(NEventRoom room, Node node, int index, string label)
+    {
+        try
+        {
+            if (node is NEventOptionButton optionButton)
+            {
+                optionButton.EnableButton();
+                room.OptionButtonClicked(optionButton.Option, index);
+            }
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Sts2TasMod OptionButtonClicked: {ex.Message}");
+        }
+        if (node is not NClickableControl clickable)
+        {
+            return Nodes.ClickControl(node);
+        }
+        try
+        {
+            _ = UiHelper.Click(clickable);
+            GD.Print($"Sts2TasMod UiHelper.Click {label}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Sts2TasMod UiHelper.Click failed: {ex.Message}");
+        }
+        clickable.ForceClick();
+        GD.Print($"Sts2TasMod ForceClick {label}");
+        return true;
+    }
+
+    private static EventModel? EventModelOf(NEventRoom room)
+    {
+        return typeof(NEventRoom)
+            .GetField("_event", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?.GetValue(room) as EventModel;
+    }
+
+    private static bool IsProceed(Node node)
+    {
+        var option = node.GetType().GetProperty("Option")?.GetValue(node);
+        return option?.GetType().GetProperty("IsProceed")?.GetValue(option) is true;
+    }
+
+    private static bool IsLocked(Node node)
+    {
+        var option = node.GetType().GetProperty("Option")?.GetValue(node);
+        return option?.GetType().GetProperty("IsLocked")?.GetValue(option) is true;
     }
 
     private static bool AdvanceAncientDialogue(NEventRoom room)
@@ -137,13 +245,13 @@ internal static class EventReward
         }
         var onLast = typeof(NAncientEventLayout)
             .GetProperty("IsDialogueOnLastLine", BindingFlags.NonPublic | BindingFlags.Instance)
-            ?.GetValue(ancient) as bool? ?? false;
+            ?.GetValue(ancient) as bool? ?? true;
         if (onLast)
         {
             return false;
         }
         var hitbox = ancient.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
-        if (hitbox is null)
+        if (hitbox is null || !hitbox.IsVisibleInTree() || !hitbox.IsEnabled)
         {
             return false;
         }
