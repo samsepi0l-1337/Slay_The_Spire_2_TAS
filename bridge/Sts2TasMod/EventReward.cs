@@ -113,7 +113,14 @@ internal static class EventReward
             await ClickEventProceedIfNeeded();
             GD.Print($"Sts2TasMod await NEventRoom.Proceed ({reason})");
             await NEventRoom.Proceed();
-            GD.Print("Sts2TasMod NEventRoom.Proceed completed");
+            var map = MegaCrit.Sts2.Core.Nodes.Screens.Map.NMapScreen.Instance;
+            map?.SetTravelEnabled(true);
+            map?.Open(false);
+            if (NEventRoom.Instance is CanvasItem canvas)
+            {
+                canvas.Visible = false;
+            }
+            GD.Print($"Sts2TasMod NEventRoom.Proceed completed mapOpen={map?.IsOpen}");
         }
         catch (Exception ex)
         {

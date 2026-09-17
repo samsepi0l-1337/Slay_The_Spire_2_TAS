@@ -28,15 +28,15 @@ public static class RunFlow
             {
                 return Overlay("card_reward", act, floor, architect, Array.Empty<object>(), rewards, rewards, "rewards");
             }
+            var map = MapActions();
+            if (map.Count > 0 || MapIsOpen())
+            {
+                return Overlay("map", act, floor, architect, map, Array.Empty<object>(), map, "map");
+            }
             var eventActions = EventReward.EventActions();
             if (eventActions.Count > 0)
             {
                 return Overlay("event", act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), eventActions, "event");
-            }
-            var map = MapActions();
-            if (map.Count > 0)
-            {
-                return Overlay("map", act, floor, architect, map, Array.Empty<object>(), map, "map");
             }
             var ui = DetectUi();
             var events = architect ? [] : MenuActions();
@@ -56,6 +56,18 @@ public static class RunFlow
         if (MenuNav.OnMenuScreens())
         {
             MenuNav.ClickMenu();
+            return;
+        }
+        if (MapIsOpen())
+        {
+            try
+            {
+                ChooseMap(slot ?? 0);
+            }
+            catch (Exception ex)
+            {
+                GD.Print($"Sts2TasMod map not ready: {ex.Message}");
+            }
             return;
         }
         if (InEventRoom())
@@ -84,12 +96,28 @@ public static class RunFlow
     {
         try
         {
+            if (MapIsOpen())
+            {
+                return false;
+            }
             var room = NEventRoom.Instance;
             if (room is null || !room.IsInsideTree())
             {
                 return false;
             }
             return room is not CanvasItem canvas || canvas.IsVisibleInTree();
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    internal static bool MapIsOpen()
+    {
+        try
+        {
+            return NMapScreen.Instance is { IsOpen: true };
         }
         catch (Exception)
         {
@@ -131,15 +159,11 @@ public static class RunFlow
     {
         if (MenuNav.GameOverVisible()) { return "game_over"; }
         if (MenuNav.OnMenuScreens()) { return "menu"; }
+        if (MapIsOpen()) { return "map"; }
         if (InEventRoom()) { return "event"; }
         var root = Nodes.Root();
         if (Nodes.FindType(root, "NRewardsScreen") is Node rewards && Nodes.IsShown(rewards)) { return "rewards"; }
         if (Nodes.FindType(root, "NCardRewardSelectionScreen") is Node cards && Nodes.IsShown(cards)) { return "rewards"; }
-        try
-        {
-            if (NMapScreen.Instance is { IsOpen: true }) { return "map"; }
-        }
-        catch (Exception) { }
         if (ScreenAdvance.InWorldRoom()) { return "world"; }
         if (IsLoading()) { return "loading"; }
         return "unknown";
