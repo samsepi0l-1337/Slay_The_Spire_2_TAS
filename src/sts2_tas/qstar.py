@@ -10,70 +10,28 @@ import torch
 from sts2_tas.dataset import JsonlTransitionWriter
 from sts2_tas.env import Sts2Env
 from sts2_tas.executor import MacroExecutor
+from sts2_tas.qstar_features import FEATURE_DIM, FEATURE_VERSION, HIDDEN_SIZE, feature_vector
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 
-ACTION_TYPES = (
-    "play_card",
-    "end_turn",
-    "choose_reward",
-    "choose_map_node",
-    "choose_event_option",
-    "shop_buy",
-    "shop_remove",
-)
-FEATURE_DIM = 24
 DEFAULT_GAMMA = 0.95
 DEFAULT_ALPHA = 0.05
 DEFAULT_SEARCH_DEPTH = 2
 DEFAULT_MAX_STEPS = 32
 
 
-def feature_vector(snapshot: TelemetrySnapshot, action: MacroAction) -> list[float]:
-    player = snapshot.player
-    enemies = snapshot.enemies
-    card = _card(snapshot, action)
-    damage = int(card.get("damage", 0))
-    block = int(card.get("block", 0))
-    cost = int(card.get("cost", 0))
-    target_slot = action.args.get("target_slot")
-    lethal = 0.0
-    if isinstance(target_slot, int) and 0 <= target_slot < len(enemies):
-        hp = int(enemies[target_slot].get("hp", 0))
-        enemy_block = int(enemies[target_slot].get("block", 0))
-        if hp > 0 and max(0, damage - enemy_block) >= hp:
-            lethal = 1.0
-    max_hp = max(int(player["max_hp"]), 1)
-    return [
-        float(player["hp"]) / max_hp,
-        float(player["max_hp"]) / 200.0,
-        float(player["energy"]) / 10.0,
-        float(player["block"]) / 50.0,
-        float(player["gold"]) / 999.0,
-        float(snapshot.floor) / 50.0,
-        float(snapshot.act) / 4.0,
-        float(sum(int(enemy.get("hp", 0)) for enemy in enemies)) / 200.0,
-        float(sum(int(enemy.get("block", 0)) for enemy in enemies)) / 50.0,
-        float(len(snapshot.hand)) / 10.0,
-        *[1.0 if action.action_type == action_type else 0.0 for action_type in ACTION_TYPES],
-        float(action.args.get("hand_slot", 0)) / 10.0,
-        float(action.args.get("target_slot", 0)) / 10.0,
-        float(_choice_slot(action)) / 10.0,
-        float(damage) / 50.0,
-        float(block) / 50.0,
-        float(cost) / 5.0,
-        lethal,
-    ]
-
-
 class _QNetwork(torch.nn.Module):
-    def __init__(self, input_size: int) -> None:
+    def __init__(self, input_size: int, hidden_size: int = HIDDEN_SIZE) -> None:
         super().__init__()
-        self.linear = torch.nn.Linear(input_size, 1)
-        torch.nn.init.zeros_(self.linear.weight)
-        torch.nn.init.zeros_(self.linear.bias)
+        self.net = torch.nn.Sequential(
+            torch.nn.Linear(input_size, hidden_size),
+            torch.nn.ReLU(),
+            torch.nn.Linear(hidden_size, 1),
+        )
+        torch.nn.init.zeros_(self.net[-1].weight)
+        torch.nn.init.zeros_(self.net[-1].bias)
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
-        return self.linear(features)
+        return self.net(features)
 
 
 class QStarPolicy:
@@ -98,7 +56,10 @@ class QStarPolicy:
             key: value if isinstance(value, torch.Tensor) else torch.tensor(value, dtype=torch.float32)
             for key, value in artifact["model_state"].items()
         }
-        policy.model.load_state_dict(state)
+        try:
+            policy.model.load_state_dict(state)
+        except RuntimeError:
+            policy.updates = 0
         policy._optimizer = torch.optim.SGD(policy.model.parameters(), lr=policy.alpha)
         return policy
 
@@ -113,6 +74,9 @@ class QStarPolicy:
             "gamma": self.gamma,
             "alpha": self.alpha,
             "updates": self.updates,
+            "feature_dim": FEATURE_DIM,
+            "feature_version": FEATURE_VERSION,
+            "hidden_size": HIDDEN_SIZE,
             "model_state": self.model.state_dict(),
         }
         if path.suffix == ".json":
@@ -215,22 +179,6 @@ def _emit(executor: MacroExecutor, action: MacroAction) -> None:
         executor.execute(action)
         return
     executor.plan(action)
-
-
-def _card(snapshot: TelemetrySnapshot, action: MacroAction) -> dict[str, Any]:
-    if action.action_type != "play_card":
-        return {}
-    hand_slot = action.args.get("hand_slot", 0)
-    if not isinstance(hand_slot, int) or hand_slot < 0 or hand_slot >= len(snapshot.hand):
-        return {}
-    return snapshot.hand[hand_slot]
-
-
-def _choice_slot(action: MacroAction) -> int:
-    for key in ("choice_slot", "node_slot", "item_slot", "card_slot"):
-        if key in action.args:
-            return int(action.args[key])
-    return 0
 
 
 def _feature_tensor(snapshot: TelemetrySnapshot, action: MacroAction) -> torch.Tensor:

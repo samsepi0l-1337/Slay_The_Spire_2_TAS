@@ -52,7 +52,10 @@ public static class SnapshotFactory
                 ["block"] = ReadInt(player.Creature, "Block", "CurrentBlock") ?? 0,
                 ["gold"] = ReadInt(player, "Gold") ?? 0,
                 ["powers"] = Array.Empty<object>(),
-                ["resources"] = new Dictionary<string, object?>()
+                ["resources"] = new Dictionary<string, object?>
+                {
+                    ["stars"] = ReadInt(pcs, "Stars", "Star", "CurrentStars") ?? 0
+                }
             },
             ["hand"] = hand,
             ["draw_pile"] = Cards(pcs.DrawPile),

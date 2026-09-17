@@ -1,10 +1,13 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from sts2_tas.cli import main
 from sts2_tas.env import Sts2Env
 from sts2_tas.executor import MacroExecutor
 from sts2_tas.qstar import FEATURE_DIM, QStarPolicy, feature_vector, run_qstar, simulate
+from sts2_tas.qstar_features import IRONCLAD_MAX_HP, feature_index
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 
 
@@ -93,21 +96,33 @@ def test_feature_vector_encodes_lethal_choice_slots_and_missing_cards() -> None:
     strike = snapshot.valid_actions[0]
     features = feature_vector(snapshot, strike)
 
+    lethal = feature_index("lethal")
+    choice = feature_index("choice_slot")
+    damage = feature_index("damage")
+    hp = feature_index("hp")
     assert len(features) == FEATURE_DIM
-    assert features[-1] == 1.0
-    assert feature_vector(snapshot, snapshot.valid_actions[1])[-1] == 0.0
-    assert feature_vector(snapshot, MacroAction("end_turn", {}))[19] == 0.0
-    assert feature_vector(snapshot, MacroAction("choose_reward", {"choice_slot": 2}))[19] == 0.2
-    assert feature_vector(snapshot, MacroAction("choose_map_node", {"node_slot": 3}))[19] == 0.3
-    assert feature_vector(snapshot, MacroAction("shop_buy", {"item_slot": 4}))[19] == 0.4
-    assert feature_vector(snapshot, MacroAction("shop_remove", {"card_slot": 5}))[19] == 0.5
-    assert feature_vector(snapshot, MacroAction("play_card", {"hand_slot": 99}))[20] == 0.0
-    assert feature_vector(snapshot, MacroAction("play_card", {"hand_slot": -1}))[20] == 0.0
-    assert feature_vector(snapshot, MacroAction("play_card", {"hand_slot": 0, "target_slot": 99}))[-1] == 0.0
+    assert features[lethal] == 1.0
+    assert features[hp] == pytest.approx(70.0 / IRONCLAD_MAX_HP)
+    assert features[damage] == pytest.approx(6.0 / 24.0)
+    assert feature_vector(snapshot, snapshot.valid_actions[1])[lethal] == 0.0
+    assert feature_vector(snapshot, MacroAction("end_turn", {}))[choice] == 0.0
+    assert feature_vector(snapshot, MacroAction("choose_reward", {"choice_slot": 2}))[choice] == 0.2
+    assert feature_vector(snapshot, MacroAction("choose_map_node", {"node_slot": 3}))[choice] == 0.3
+    assert feature_vector(snapshot, MacroAction("shop_buy", {"item_slot": 4}))[choice] == 0.4
+    assert feature_vector(snapshot, MacroAction("shop_remove", {"card_slot": 5}))[choice] == 0.5
+    assert feature_vector(snapshot, MacroAction("play_card", {"hand_slot": 99}))[damage] == 0.0
+    assert feature_vector(snapshot, MacroAction("play_card", {"hand_slot": -1}))[damage] == 0.0
+    assert feature_vector(snapshot, MacroAction("play_card", {"hand_slot": 0, "target_slot": 99}))[lethal] == 0.0
 
     dead = combat_data()
     dead["enemies"][0]["hp"] = 0
-    assert feature_vector(TelemetrySnapshot.from_dict(dead), strike)[-1] == 0.0
+    assert feature_vector(TelemetrySnapshot.from_dict(dead), strike)[lethal] == 0.0
+    hemo = combat_data()
+    hemo["player"]["hp"] = 11
+    hemo["hand"][0] = {"id": "HEMOKINESIS", "name": "Hemokinesis", "cost": 1, "type": "attack", "damage": 15}
+    hemo_features = feature_vector(TelemetrySnapshot.from_dict(hemo), strike)
+    assert hemo_features[feature_index("self_hp_card")] == 1.0
+    assert hemo_features[feature_index("low_hp")] == 1.0
 
 
 def test_qstar_update_increases_value_of_played_action() -> None:
