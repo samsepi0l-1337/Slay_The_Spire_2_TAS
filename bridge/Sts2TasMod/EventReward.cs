@@ -76,6 +76,18 @@ internal static class EventReward
             {
                 _pickedPath = pick.GetPath();
                 GD.Print($"Sts2TasMod event select {pick.Name} n={options.Count} proceed={IsProceedOption(pick)}");
+                if (IsProceedOption(pick))
+                {
+                    ClickRoomProceed();
+                    try
+                    {
+                        _ = NEventRoom.Proceed();
+                        GD.Print("Sts2TasMod event proceed after IsProceed");
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
                 return;
             }
         }
@@ -130,9 +142,17 @@ internal static class EventReward
     {
         var room = NEventRoom.Instance;
         var option = button.GetType().GetProperty("Option")?.GetValue(button);
-        if (room is not null && InvokeLoose(room, "OptionButtonClicked", button, option))
+        if (room is not null)
         {
-            return true;
+            var clicked = InvokeLooseInt(room, "OptionButtonClicked", 0, button, option);
+            if (IsProceedOption(button))
+            {
+                clicked = InvokeLooseInt(room, "OptionButtonClicked", 1, button, option) || clicked;
+            }
+            if (clicked)
+            {
+                return true;
+            }
         }
         if (room is not null && InvokeLoose(room, "ChooseOptionForEvent", button, option))
         {
@@ -153,10 +173,15 @@ internal static class EventReward
 
     private static bool InvokeMatching(object target, string name, params object?[] candidates)
     {
-        return InvokeLoose(target, name, candidates);
+        return InvokeLooseInt(target, name, 0, candidates);
     }
 
     private static bool InvokeLoose(object target, string name, params object?[] candidates)
+    {
+        return InvokeLooseInt(target, name, 0, candidates);
+    }
+
+    private static bool InvokeLooseInt(object target, string name, int extraInt, params object?[] candidates)
     {
         const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
         foreach (var method in target.GetType().GetMethods(flags).Where(method => method.Name == name))
@@ -170,6 +195,11 @@ internal static class EventReward
                 if (match is not null)
                 {
                     args[i] = match;
+                    continue;
+                }
+                if (parameters[i].ParameterType == typeof(int))
+                {
+                    args[i] = extraInt;
                     continue;
                 }
                 if (parameters[i].ParameterType == typeof(bool))
