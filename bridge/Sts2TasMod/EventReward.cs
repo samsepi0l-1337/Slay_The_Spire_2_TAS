@@ -76,11 +76,6 @@ internal static class EventReward
             return;
         }
         var model = typeof(NEventRoom).GetField("_event", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(room) as EventModel;
-        if (model is { IsFinished: true })
-        {
-            AwaitProceed("finished");
-            return;
-        }
         var buttons = room.Layout?.OptionButtons?.ToList();
         if (buttons is { Count: > 0 })
         {
@@ -93,6 +88,15 @@ internal static class EventReward
             }
             Nodes.ClickControl(buttons[index]);
             return;
+        }
+        foreach (var node in Nodes.FindAll(room, "NEventOptionButton"))
+        {
+            if (node is NClickableControl leftover && leftover.IsVisibleInTree())
+            {
+                leftover.ForceClick();
+                GD.Print($"Sts2TasMod ForceClick leftover {leftover.Name}");
+                return;
+            }
         }
         if (AdvanceAncientDialogue(room, force: true))
         {
