@@ -200,7 +200,7 @@ internal static class EventReward
             try
             {
                 method.Invoke(method.IsStatic ? null : target, args);
-                GD.Print($"Sts2TasMod invoked {name}({parameters.Length})");
+                GD.Print($"Sts2TasMod invoked {name}({string.Join(",", parameters.Select(parameter => parameter.ParameterType.Name))})");
                 return true;
             }
             catch (Exception ex)
