@@ -123,25 +123,15 @@ internal static class EventReward
     private static bool SelectOption(Node button)
     {
         var room = NEventRoom.Instance;
-        foreach (var name in new[] { "OptionButtonClicked", "ChooseOptionForEvent" })
-        {
-            var method = room?.GetType().GetMethod(name);
-            if (method is null)
-            {
-                continue;
-            }
-            try
-            {
-                var args = method.GetParameters().Length == 1 ? new object[] { button } : Array.Empty<object>();
-                method.Invoke(room, args);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                GD.PrintErr($"Sts2TasMod {name}: {ex.InnerException?.Message ?? ex.Message}");
-            }
-        }
         var option = button.GetType().GetProperty("Option")?.GetValue(button);
+        if (room is not null && InvokeMatching(room, "OptionButtonClicked", button, option))
+        {
+            return true;
+        }
+        if (room is not null && InvokeMatching(room, "ChooseOptionForEvent", button, option))
+        {
+            return true;
+        }
         var chosen = option?.GetType().GetMethod("Chosen", Type.EmptyTypes);
         if (chosen is not null)
         {
@@ -158,11 +148,54 @@ internal static class EventReward
         return Nodes.ClickControl(button);
     }
 
+    private static bool InvokeMatching(object target, string name, params object?[] candidates)
+    {
+        foreach (var method in target.GetType().GetMethods().Where(method => method.Name == name))
+        {
+            var parameters = method.GetParameters();
+            object?[]? args = parameters.Length switch
+            {
+                0 => [],
+                1 => candidates.FirstOrDefault(candidate => candidate is not null && parameters[0].ParameterType.IsInstanceOfType(candidate)) is { } match
+                    ? [match]
+                    : null,
+                _ => null
+            };
+            if (args is null)
+            {
+                continue;
+            }
+            try
+            {
+                method.Invoke(target, args);
+                GD.Print($"Sts2TasMod invoked {name}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                GD.PrintErr($"Sts2TasMod {name}: {ex.InnerException?.Message ?? ex.Message}");
+            }
+        }
+        return false;
+    }
+
     private static bool ClickRoomProceed()
     {
         var room = NEventRoom.Instance;
-        var proceed = room?.GetType().GetProperty("ProceedButton")?.GetValue(room) as Node;
-        if (Nodes.ClickControl(proceed) || Nodes.ClickFirstVisible("NProceedButton"))
+        if (room is not null)
+        {
+            foreach (var name in new[] { "TryEnableProceedButton", "ShowProceedButton", "CreateProceedOption" })
+            {
+                InvokeMatching(room, name);
+            }
+            var proceed = room.GetType().GetProperty("ProceedButton")?.GetValue(room) as Node;
+            if (Nodes.ClickControl(proceed) || Nodes.ForceClickRaw(proceed))
+            {
+                GD.Print("Sts2TasMod event ProceedButton");
+                return true;
+            }
+        }
+        if (Nodes.ClickFirstVisible("NProceedButton") || Nodes.ClickFirstShown("NProceedButton"))
         {
             GD.Print("Sts2TasMod event proceed button");
             return true;
