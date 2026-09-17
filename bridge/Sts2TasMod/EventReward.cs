@@ -71,11 +71,10 @@ internal static class EventReward
         {
             return;
         }
-        if (AdvanceAncientDialogue(room, force: false))
+        if (AdvanceAncientDialogue(room))
         {
             return;
         }
-        var model = typeof(NEventRoom).GetField("_event", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(room) as EventModel;
         var buttons = room.Layout?.OptionButtons?.ToList();
         if (buttons is { Count: > 0 })
         {
@@ -98,7 +97,7 @@ internal static class EventReward
                 return;
             }
         }
-        if (AdvanceAncientDialogue(room, force: true))
+        if (AdvanceAncientDialogue(room))
         {
             return;
         }
@@ -130,7 +129,7 @@ internal static class EventReward
         }
     }
 
-    private static bool AdvanceAncientDialogue(NEventRoom room, bool force)
+    private static bool AdvanceAncientDialogue(NEventRoom room)
     {
         if (room.Layout is not NAncientEventLayout ancient)
         {
@@ -139,7 +138,7 @@ internal static class EventReward
         var onLast = typeof(NAncientEventLayout)
             .GetProperty("IsDialogueOnLastLine", BindingFlags.NonPublic | BindingFlags.Instance)
             ?.GetValue(ancient) as bool? ?? false;
-        if (onLast && !force)
+        if (onLast)
         {
             return false;
         }
@@ -148,9 +147,17 @@ internal static class EventReward
         {
             return false;
         }
-        hitbox.ForceClick();
-        GD.Print(force ? "Sts2TasMod advance Ancient dialogue (fallback)" : "Sts2TasMod advance Ancient dialogue");
-        return true;
+        try
+        {
+            hitbox.ForceClick();
+            GD.Print("Sts2TasMod advance Ancient dialogue");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Sts2TasMod dialogue click skipped: {ex.Message}");
+            return false;
+        }
     }
 
     internal static void ClaimRewards()
