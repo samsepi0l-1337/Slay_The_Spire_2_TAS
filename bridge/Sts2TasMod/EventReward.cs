@@ -1,5 +1,6 @@
 using System.Reflection;
 using Godot;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Events;
@@ -63,206 +64,61 @@ internal static class EventReward
         ];
     }
 
-    private static string _pickedPath = "";
-
     internal static void ChooseEvent(int slot)
     {
-        var options = EnabledOptions().Where(option => option.GetPath() != _pickedPath).ToList();
-        if (options.Count > 0)
-        {
-            var proceed = options.FirstOrDefault(IsProceedOption);
-            var pick = proceed ?? options[Math.Clamp(slot, 0, options.Count - 1)];
-            if (SelectOption(pick))
-            {
-                _pickedPath = pick.GetPath();
-                GD.Print($"Sts2TasMod event select {pick.Name} n={options.Count} proceed={IsProceedOption(pick)}");
-                if (IsProceedOption(pick))
-                {
-                    ClickRoomProceed();
-                    try
-                    {
-                        _ = NEventRoom.Proceed();
-                        GD.Print("Sts2TasMod event proceed after IsProceed");
-                    }
-                    catch (Exception)
-                    {
-                    }
-                }
-                return;
-            }
-        }
-        _pickedPath = "";
-        if (ClickRoomProceed())
-        {
-            return;
-        }
-        try
-        {
-            _ = NEventRoom.Proceed();
-            GD.Print("Sts2TasMod event proceed");
-        }
-        catch (Exception ex)
-        {
-            GD.PrintErr($"Sts2TasMod event proceed failed: {ex.Message}");
-        }
-    }
-
-    private static List<Node> EnabledOptions()
-    {
-        var found = new List<Node>();
         var room = NEventRoom.Instance;
         if (room is null || !room.IsInsideTree())
         {
-            return found;
+            return;
         }
-        foreach (var node in Nodes.FindAll(room, "NEventOptionButton"))
+        if (AdvanceAncientDialogue(room))
         {
-            if (!Nodes.IsShown(node) || !Nodes.Enabled(node) || IsLockedOption(node))
-            {
-                continue;
-            }
-            found.Add(node);
+            return;
         }
-        return found;
+        var model = typeof(NEventRoom).GetField("_event", BindingFlags.NonPublic | BindingFlags.Instance)?.GetValue(room) as EventModel;
+        if (model is { IsFinished: true })
+        {
+            _ = NEventRoom.Proceed();
+            GD.Print("Sts2TasMod NEventRoom.Proceed (finished)");
+            return;
+        }
+        var buttons = room.Layout?.OptionButtons?.ToList();
+        if (buttons is not { Count: > 0 })
+        {
+            GD.Print("Sts2TasMod event no option buttons");
+            return;
+        }
+        var index = Math.Clamp(slot, 0, buttons.Count - 1);
+        if (buttons[index] is NClickableControl clickable)
+        {
+            clickable.ForceClick();
+            GD.Print($"Sts2TasMod ForceClick option {index}/{buttons.Count}");
+            return;
+        }
+        Nodes.ClickControl(buttons[index]);
     }
 
-    private static bool IsLockedOption(Node button)
+    private static bool AdvanceAncientDialogue(NEventRoom room)
     {
-        var option = button.GetType().GetProperty("Option")?.GetValue(button);
-        return option?.GetType().GetProperty("IsLocked")?.GetValue(option) is true;
-    }
-
-    private static bool IsProceedOption(Node button)
-    {
-        var option = button.GetType().GetProperty("Option")?.GetValue(button);
-        return option?.GetType().GetProperty("IsProceed")?.GetValue(option) is true;
-    }
-
-    private static bool SelectOption(Node button)
-    {
-        var room = NEventRoom.Instance;
-        var option = button.GetType().GetProperty("Option")?.GetValue(button);
-        if (room is not null)
+        if (room.Layout is not NAncientEventLayout ancient)
         {
-            var clicked = InvokeLooseInt(room, "OptionButtonClicked", 0, button, option);
-            if (IsProceedOption(button))
-            {
-                clicked = InvokeLooseInt(room, "OptionButtonClicked", 1, button, option) || clicked;
-            }
-            if (clicked)
-            {
-                return true;
-            }
+            return false;
         }
-        if (room is not null && InvokeLoose(room, "ChooseOptionForEvent", button, option))
+        var onLast = typeof(NAncientEventLayout)
+            .GetProperty("IsDialogueOnLastLine", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?.GetValue(ancient) as bool? ?? true;
+        if (onLast)
         {
-            return true;
+            return false;
         }
-        if (option is not null && InvokeLoose(option, "Chosen", button, option))
+        var hitbox = ancient.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
+        if (hitbox is null)
         {
-            return true;
+            return false;
         }
-        if (button.HasSignal("Released"))
-        {
-            button.EmitSignal(NClickableControl.SignalName.Released, button);
-            GD.Print("Sts2TasMod event Released");
-            return true;
-        }
-        return Nodes.ClickControl(button);
-    }
-
-    private static bool InvokeMatching(object target, string name, params object?[] candidates)
-    {
-        return InvokeLooseInt(target, name, 0, candidates);
-    }
-
-    private static bool InvokeLoose(object target, string name, params object?[] candidates)
-    {
-        return InvokeLooseInt(target, name, 0, candidates);
-    }
-
-    private static bool InvokeLooseInt(object target, string name, int extraInt, params object?[] candidates)
-    {
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
-        foreach (var method in target.GetType().GetMethods(flags).Where(method => method.Name == name))
-        {
-            var parameters = method.GetParameters();
-            var args = new object?[parameters.Length];
-            var ok = true;
-            for (var i = 0; i < parameters.Length; i++)
-            {
-                var match = candidates.FirstOrDefault(candidate => candidate is not null && parameters[i].ParameterType.IsInstanceOfType(candidate));
-                if (match is not null)
-                {
-                    args[i] = match;
-                    continue;
-                }
-                if (parameters[i].ParameterType == typeof(int))
-                {
-                    args[i] = extraInt;
-                    continue;
-                }
-                if (parameters[i].ParameterType == typeof(bool))
-                {
-                    args[i] = true;
-                    continue;
-                }
-                if (parameters[i].HasDefaultValue)
-                {
-                    args[i] = parameters[i].DefaultValue;
-                    continue;
-                }
-                if (parameters[i].ParameterType.IsValueType)
-                {
-                    args[i] = Activator.CreateInstance(parameters[i].ParameterType);
-                    continue;
-                }
-                args[i] = null;
-                if (!parameters[i].ParameterType.IsClass)
-                {
-                    ok = false;
-                }
-            }
-            if (!ok)
-            {
-                continue;
-            }
-            try
-            {
-                method.Invoke(method.IsStatic ? null : target, args);
-                GD.Print($"Sts2TasMod invoked {name}({string.Join(",", parameters.Select(parameter => parameter.ParameterType.Name))})");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                GD.PrintErr($"Sts2TasMod {name}({parameters.Length}): {ex.InnerException?.Message ?? ex.Message}");
-            }
-        }
-        return false;
-    }
-
-    private static bool ClickRoomProceed()
-    {
-        var room = NEventRoom.Instance;
-        if (room is not null)
-        {
-            foreach (var name in new[] { "TryEnableProceedButton", "ShowProceedButton", "CreateProceedOption" })
-            {
-                InvokeMatching(room, name);
-            }
-            var proceed = room.GetType().GetProperty("ProceedButton")?.GetValue(room) as Node;
-            if (Nodes.ClickControl(proceed) || Nodes.ForceClickRaw(proceed))
-            {
-                GD.Print("Sts2TasMod event ProceedButton");
-                return true;
-            }
-        }
-        if (Nodes.ClickFirstVisible("NProceedButton") || Nodes.ClickFirstShown("NProceedButton"))
-        {
-            GD.Print("Sts2TasMod event proceed button");
-            return true;
-        }
-        return false;
+        hitbox.ForceClick();
+        GD.Print("Sts2TasMod advance Ancient dialogue");
+        return true;
     }
 
     internal static void ClaimRewards()
