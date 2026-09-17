@@ -61,19 +61,23 @@ internal static class EventReward
         ];
     }
 
+    private static string _pickedPath = "";
+
     internal static void ChooseEvent(int slot)
     {
-        var options = EnabledOptions();
+        var options = EnabledOptions().Where(option => option.GetPath() != _pickedPath).ToList();
         if (options.Count > 0)
         {
             var proceed = options.FirstOrDefault(IsProceedOption);
             var pick = proceed ?? options[Math.Clamp(slot, 0, options.Count - 1)];
             if (SelectOption(pick))
             {
-                GD.Print($"Sts2TasMod event select {pick.Name} n={options.Count}");
+                _pickedPath = pick.GetPath();
+                GD.Print($"Sts2TasMod event select {pick.Name} n={options.Count} proceed={IsProceedOption(pick)}");
                 return;
             }
         }
+        _pickedPath = "";
         if (ClickRoomProceed())
         {
             return;
