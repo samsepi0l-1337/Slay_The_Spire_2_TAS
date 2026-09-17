@@ -61,23 +61,21 @@ internal static class EventReward
         ];
     }
 
-    private static int _eventStep;
-
     internal static void ChooseEvent(int slot)
     {
-        _eventStep += 1;
-        var phase = _eventStep % 3;
-        if (phase == 1 && ClickDialogue())
+        var options = EnabledOptions();
+        if (options.Count > 0)
         {
-            return;
+            var proceed = options.FirstOrDefault(IsProceedOption);
+            var pick = proceed ?? options[Math.Clamp(slot, 0, options.Count - 1)];
+            if (SelectOption(pick))
+            {
+                GD.Print($"Sts2TasMod event select {pick.Name} n={options.Count}");
+                return;
+            }
         }
-        if (phase != 0 && ClickOption(slot + _eventStep / 3))
+        if (ClickRoomProceed())
         {
-            return;
-        }
-        if (Nodes.ClickFirstShown("NProceedButton") || Nodes.ClickFirstVisible("NProceedButton"))
-        {
-            GD.Print("Sts2TasMod event proceed button");
             return;
         }
         try
@@ -91,49 +89,82 @@ internal static class EventReward
         }
     }
 
-    private static bool ClickDialogue()
+    private static List<Node> EnabledOptions()
     {
-        if (NEventRoom.Instance is { } room && room.IsInsideTree())
+        var found = new List<Node>();
+        var room = NEventRoom.Instance;
+        if (room is null || !room.IsInsideTree())
         {
-            var hitbox = room.GetNodeOrNull<Node>("%DialogueHitbox") ?? room.FindChild("DialogueHitbox", true, false);
-            if (Nodes.ForceClickRaw(hitbox))
+            return found;
+        }
+        foreach (var node in Nodes.FindAll(room, "NEventOptionButton"))
+        {
+            if (!Nodes.IsShown(node) || !Nodes.Enabled(node) || IsLockedOption(node))
             {
-                GD.Print("Sts2TasMod DialogueHitbox");
-                return true;
+                continue;
             }
+            found.Add(node);
         }
-        if (Nodes.ClickFirstShown("NAncientDialogueHitbox"))
-        {
-            GD.Print("Sts2TasMod DialogueHitbox");
-            return true;
-        }
-        return false;
+        return found;
     }
 
-    private static bool ClickOption(int slot)
+    private static bool IsLockedOption(Node button)
     {
-        if (NEventRoom.Instance is { } room && room.IsInsideTree())
+        var option = button.GetType().GetProperty("Option")?.GetValue(button);
+        return option?.GetType().GetProperty("IsLocked")?.GetValue(option) is true;
+    }
+
+    private static bool IsProceedOption(Node button)
+    {
+        var option = button.GetType().GetProperty("Option")?.GetValue(button);
+        return option?.GetType().GetProperty("IsProceed")?.GetValue(option) is true;
+    }
+
+    private static bool SelectOption(Node button)
+    {
+        var room = NEventRoom.Instance;
+        foreach (var name in new[] { "OptionButtonClicked", "ChooseOptionForEvent" })
+        {
+            var method = room?.GetType().GetMethod(name);
+            if (method is null)
+            {
+                continue;
+            }
+            try
+            {
+                var args = method.GetParameters().Length == 1 ? new object[] { button } : Array.Empty<object>();
+                method.Invoke(room, args);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                GD.PrintErr($"Sts2TasMod {name}: {ex.InnerException?.Message ?? ex.Message}");
+            }
+        }
+        var option = button.GetType().GetProperty("Option")?.GetValue(button);
+        var chosen = option?.GetType().GetMethod("Chosen", Type.EmptyTypes);
+        if (chosen is not null)
         {
             try
             {
-                var buttons = room.Layout?.OptionButtons?.ToList();
-                if (buttons is { Count: > 0 })
-                {
-                    var index = Math.Clamp(slot, 0, buttons.Count - 1);
-                    if (Nodes.ForceClickRaw(buttons[index]) || Nodes.ForceClickRaw(buttons[0]))
-                    {
-                        GD.Print($"Sts2TasMod event option {index}");
-                        return true;
-                    }
-                }
+                chosen.Invoke(option, null);
+                return true;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
+                GD.PrintErr($"Sts2TasMod Chosen: {ex.InnerException?.Message ?? ex.Message}");
             }
         }
-        if (Nodes.ClickFirstShown("NEventOptionButton"))
+        return Nodes.ClickControl(button);
+    }
+
+    private static bool ClickRoomProceed()
+    {
+        var room = NEventRoom.Instance;
+        var proceed = room?.GetType().GetProperty("ProceedButton")?.GetValue(room) as Node;
+        if (Nodes.ClickControl(proceed) || Nodes.ClickFirstVisible("NProceedButton"))
         {
-            GD.Print("Sts2TasMod event option button");
+            GD.Print("Sts2TasMod event proceed button");
             return true;
         }
         return false;

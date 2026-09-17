@@ -74,6 +74,10 @@ internal static class MenuNav
 
     internal static void ClickMenu()
     {
+        if (MainMenuVisible())
+        {
+            _embarked = false;
+        }
         if (DismissGameOver())
         {
             return;
