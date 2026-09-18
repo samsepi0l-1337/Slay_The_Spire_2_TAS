@@ -99,10 +99,17 @@ internal static class EventReward
         GD.Print($"Sts2TasMod event finished={finished} buttons={buttons.Count} options={model?.CurrentOptions.Count}");
         if (!finished && ClickChoice(room, buttons, slot))
         {
+            _lastEventClickMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            return;
+        }
+        if (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _lastEventClickMs < 3000)
+        {
+            GD.Print("Sts2TasMod event settling");
             return;
         }
         if (!finished && ClickModelOption(room, model, slot))
         {
+            _lastEventClickMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             return;
         }
         if (ClickProceedButtons(room, buttons))
@@ -124,6 +131,7 @@ internal static class EventReward
     }
 
     private static bool _leaving;
+    private static long _lastEventClickMs;
 
     private static async void LeaveFinished(string reason)
     {
