@@ -101,10 +101,6 @@ internal static class OverlayClicks
             {
                 return;
             }
-            if (ClickGridConfirm())
-            {
-                return;
-            }
             var root = Nodes.Root();
             var cardScreen = Nodes.FindType(root, "NCardRewardSelectionScreen");
             if (cardScreen is not null && Nodes.IsShown(cardScreen))
@@ -208,16 +204,15 @@ internal static class OverlayClicks
             }
             foreach (var node in Nodes.FindAll(overlay, "NConfirmButton"))
             {
+                if (node.Name.ToString().Contains("SelectMode", StringComparison.Ordinal))
+                {
+                    continue;
+                }
                 if (Nodes.ClickControl(node) || Nodes.ForceClickRaw(node))
                 {
                     return true;
                 }
             }
-        }
-        if (Nodes.ClickFirstVisible("NConfirmButton") || Nodes.ClickFirstShown("NConfirmButton"))
-        {
-            GD.Print("Sts2TasMod grid confirm");
-            return true;
         }
         return false;
     }

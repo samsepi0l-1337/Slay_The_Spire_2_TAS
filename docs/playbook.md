@@ -10,7 +10,7 @@ Verified against MegaCrit AutoSlay handlers and the public STS2 CLI mod (ForceCl
 | Neow / event | After embark or event node | Ancient: ForceClick `%DialogueHitbox` until last line. Then click non-proceed `OptionButtons[i]`. Grid/deck overlays (`NDeckTransformSelectScreen`, `NDeckCardSelectScreen`, `NCardGridSelectionScreen`): Press one `NCardHolder`, then preview `_previewConfirmButton` / `NConfirmButton`. Do not keep Pressing the same holder. | Yes: option index vs gold/HP |
 | Map | After event/rewards close | `NMapScreen.TravelToMapCoord` first travelable | Yes: node type (combat/elite/rest/shop/treasure) |
 | Combat | Fight | Q* among `play_card`; skip Hemokinesis/Bloodletting/Offering when HP≤20; `end_turn` only if no cards | Yes: Q* |
-| Rewards | After combat or event loot | Enabled `NRewardButton` (gold/potion), `NCardHolder` Pressed, then `NProceedButton`. Do not keep clicking reward buttons after two claims. | Yes: card id vs skip |
+| Rewards | After combat or event loot | Enabled `NRewardButton` (gold/potion), `NCardHolder` Pressed, then `NProceedButton`. Do not keep clicking reward buttons after two claims. Do not ForceClick leftover `SelectModeConfirmButton`. | Yes: card id vs skip |
 | Rest | Campfire | `ChooseLocalOption(0)` HEAL, then `ProceedButton` | Yes: HEAL vs SMITH by HP |
 | Treasure | Chest | `ProceedButton` (skip or take) | Yes: relic vs skip |
 | Shop | Merchant | `ProceedButton` (leave; no buy until gold model exists) | Later |
