@@ -58,7 +58,7 @@ public static class RunFlow
             MenuNav.ClickMenu();
             return;
         }
-        if (EventReward.HasRewardUi())
+        if (EventReward.HasRewardUi() && DetectUi() != "map")
         {
             EventReward.ClaimRewards();
             return;

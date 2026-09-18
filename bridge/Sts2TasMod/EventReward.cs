@@ -47,14 +47,19 @@ internal static class EventReward
     internal static bool HasRewardUi()
     {
         var root = Nodes.Root();
-        foreach (var name in new[] { "NCardRewardSelectionScreen", "NRewardsScreen", "NCardSelectionScreen" })
+        if (Nodes.FindType(root, "NCardRewardSelectionScreen") is Node cards && Nodes.IsShown(cards))
         {
-            if (Nodes.FindType(root, name) is Node node && Nodes.IsShown(node))
-            {
-                return true;
-            }
+            return true;
         }
-        return false;
+        if (Nodes.FindType(root, "NCardSelectionScreen") is Node select && Nodes.IsShown(select))
+        {
+            return true;
+        }
+        if (RunFlow.MapIsOpen())
+        {
+            return false;
+        }
+        return Nodes.FindType(root, "NRewardsScreen") is Node rewards && Nodes.IsShown(rewards);
     }
 
     internal static List<Dictionary<string, object?>> RewardActions()
