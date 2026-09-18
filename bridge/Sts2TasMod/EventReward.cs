@@ -71,7 +71,7 @@ internal static class EventReward
             return;
         }
         OverlayClicks.LogOverlay();
-        if (OverlayClicks.HasRewardUi() || OverlayClicks.ClickAnyCardHolder())
+        if (OverlayClicks.HasRewardUi())
         {
             OverlayClicks.ClaimRewards();
             return;

@@ -1,3 +1,4 @@
+using System.Reflection;
 using Godot;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
@@ -6,14 +7,26 @@ namespace Sts2TasMod;
 
 internal static class OverlayClicks
 {
+    private static readonly string[] SelectScreens =
+    [
+        "NCardRewardSelectionScreen", "NCardSelectionScreen", "NCardGridSelectionScreen",
+        "NSimpleCardSelectScreen", "NDeckCardSelectScreen", "NDeckUpgradeSelectScreen",
+        "NDeckTransformSelectScreen"
+    ];
+
+    private static readonly HashSet<string> ClickedRewards = [];
+    private static string? _gridPick;
+    private static string? _gridOverlay;
+
     internal static bool HasRewardUi()
     {
+        var overlay = PeekName();
+        if (overlay is not null && IsSelectOverlay(overlay))
+        {
+            return true;
+        }
         var root = Nodes.Root();
-        foreach (var name in new[]
-                 {
-                     "NCardRewardSelectionScreen", "NCardSelectionScreen", "NCardGridSelectionScreen",
-                     "NSimpleCardSelectScreen", "NDeckCardSelectScreen", "NDeckUpgradeSelectScreen"
-                 })
+        foreach (var name in SelectScreens)
         {
             if (Nodes.FindType(root, name) is Node node && Nodes.IsShown(node))
             {
@@ -29,15 +42,22 @@ internal static class OverlayClicks
 
     internal static void LogOverlay()
     {
+        var overlay = PeekName();
+        if (overlay is not null)
+        {
+            GD.Print($"Sts2TasMod overlay={overlay}");
+        }
+    }
+
+    internal static string? PeekName()
+    {
         try
         {
-            if (NOverlayStack.Instance?.Peek() is Node overlay)
-            {
-                GD.Print($"Sts2TasMod overlay={overlay.GetType().Name}");
-            }
+            return NOverlayStack.Instance?.Peek() is Node overlay ? overlay.GetType().Name : null;
         }
         catch (Exception)
         {
+            return null;
         }
     }
 
@@ -51,7 +71,9 @@ internal static class OverlayClicks
                 if (node is NCardHolder holder && holder.CardModel is not null && Nodes.IsShown(holder))
                 {
                     holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
-                    GD.Print($"Sts2TasMod grid card {holder.CardModel.Id.Entry}");
+                    _gridPick = holder.CardModel.Id.Entry;
+                    _gridOverlay = PeekName();
+                    GD.Print($"Sts2TasMod grid card {_gridPick}");
                     return true;
                 }
             }
@@ -59,20 +81,28 @@ internal static class OverlayClicks
         return false;
     }
 
-    private static readonly HashSet<string> ClickedRewards = [];
-
     internal static void ClaimRewards()
     {
         LogOverlay();
         try
         {
+            var overlay = PeekName();
+            if (overlay != _gridOverlay)
+            {
+                _gridPick = null;
+                _gridOverlay = overlay;
+            }
+            if (IsGridSelect(overlay))
+            {
+                ClickGridThenConfirm();
+                return;
+            }
             if (ClickAnyCardHolder())
             {
                 return;
             }
-            if (Nodes.ClickFirstVisible("NConfirmButton"))
+            if (ClickGridConfirm())
             {
-                GD.Print("Sts2TasMod grid confirm");
                 return;
             }
             var root = Nodes.Root();
@@ -97,8 +127,119 @@ internal static class OverlayClicks
         {
             GD.PrintErr($"Sts2TasMod ClaimRewards: {ex.Message}");
             ClickedRewards.Clear();
+            _gridPick = null;
             _ = ClickProceed();
         }
+    }
+
+    private static bool IsSelectOverlay(string name)
+    {
+        return SelectScreens.Contains(name) || name.Contains("SelectScreen", StringComparison.Ordinal);
+    }
+
+    private static bool IsGridSelect(string? name)
+    {
+        if (string.IsNullOrEmpty(name))
+        {
+            return false;
+        }
+        return name.Contains("Grid", StringComparison.Ordinal)
+               || name.Contains("Deck", StringComparison.Ordinal)
+               || name.Contains("SimpleCardSelect", StringComparison.Ordinal);
+    }
+
+    private static void ClickGridThenConfirm()
+    {
+        if (_gridPick is not null)
+        {
+            if (ClickGridConfirm())
+            {
+                GD.Print($"Sts2TasMod grid confirm {_gridPick}");
+                _gridPick = null;
+                return;
+            }
+            GD.Print($"Sts2TasMod wait confirm {_gridPick}");
+            return;
+        }
+        if (ClickAnyCardHolder())
+        {
+            return;
+        }
+        if (ClickGridConfirm())
+        {
+            GD.Print("Sts2TasMod grid confirm leftover");
+        }
+    }
+
+    private static bool ClickGridConfirm()
+    {
+        Node? overlay = null;
+        try
+        {
+            overlay = NOverlayStack.Instance?.Peek();
+        }
+        catch (Exception)
+        {
+        }
+        if (overlay is not null)
+        {
+            foreach (var name in new[]
+                     {
+                         "_previewConfirmButton", "_singlePreviewConfirmButton",
+                         "_multiPreviewConfirmButton", "_confirmButton"
+                     })
+            {
+                if (Field(overlay, name) is Node button
+                    && (Nodes.ClickControl(button) || Nodes.ForceClickRaw(button)))
+                {
+                    return true;
+                }
+            }
+            try
+            {
+                var named = overlay.GetNodeOrNull("%Confirm");
+                if (named is not null && (Nodes.ClickControl(named) || Nodes.ForceClickRaw(named)))
+                {
+                    return true;
+                }
+            }
+            catch (Exception)
+            {
+            }
+            foreach (var node in Nodes.FindAll(overlay, "NConfirmButton"))
+            {
+                if (Nodes.ClickControl(node) || Nodes.ForceClickRaw(node))
+                {
+                    return true;
+                }
+            }
+        }
+        if (Nodes.ClickFirstVisible("NConfirmButton") || Nodes.ClickFirstShown("NConfirmButton"))
+        {
+            GD.Print("Sts2TasMod grid confirm");
+            return true;
+        }
+        return false;
+    }
+
+    private static object? Field(object obj, string name)
+    {
+        for (var type = obj.GetType(); type is not null; type = type.BaseType)
+        {
+            var field = type.GetField(name, BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+            if (field is not null)
+            {
+                try
+                {
+                    return field.GetValue(obj);
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
+            }
+        }
+        return null;
     }
 
     private static bool ClickUnclaimedReward()

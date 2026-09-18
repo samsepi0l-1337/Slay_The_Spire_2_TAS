@@ -52,6 +52,7 @@ Not present:
 - [x] `qstar.py`: Q* limited-depth search over legal macros, online TD weight updates during play, and `run-qstar`.
 - [x] `live.py`: live Q* loop over Harmony/TCP frames with HP-delta rewards. Combat-only TD; UI overlays are not terminal.
 - [x] Q* features scaled to STS2 wiki (Ironclad 80 HP, energy 3, A10) with a two-layer net.
+- [x] OverlayClicks treats `NDeckTransformSelectScreen` as reward UI: one grid Press then preview confirm.
 - [x] `dataset.py`: JSONL first, SQLite/Parquet compatible transition records.
 
 ## Target Bridge Surface
