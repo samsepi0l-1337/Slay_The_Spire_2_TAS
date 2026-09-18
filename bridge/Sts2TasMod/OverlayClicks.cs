@@ -59,10 +59,14 @@ internal static class OverlayClicks
         return false;
     }
 
+    private static int _rewardClicks;
+
     internal static void ClaimRewards()
     {
+        LogOverlay();
         if (ClickAnyCardHolder())
         {
+            _rewardClicks = 0;
             return;
         }
         if (Nodes.ClickFirstVisible("NConfirmButton"))
@@ -76,13 +80,36 @@ internal static class OverlayClicks
         {
             if (PickFirstRewardCard(cardScreen) || SkipRewardCards(cardScreen))
             {
-                return;
+                _rewardClicks = 0;
             }
             return;
         }
-        if (Nodes.ClickFirstVisible("NRewardButton")) { return; }
-        if (Nodes.ClickFirstVisible("NProceedButton")) { return; }
+        if (_rewardClicks >= 2 && ClickProceed())
+        {
+            _rewardClicks = 0;
+            return;
+        }
+        if (Nodes.ClickFirstVisible("NRewardButton"))
+        {
+            _rewardClicks += 1;
+            return;
+        }
+        if (ClickProceed())
+        {
+            _rewardClicks = 0;
+            return;
+        }
         Nodes.ClickNamed(root, "ProceedButton");
+    }
+
+    private static bool ClickProceed()
+    {
+        if (Nodes.ClickFirstVisible("NProceedButton") || Nodes.ClickFirstShown("NProceedButton"))
+        {
+            GD.Print("Sts2TasMod reward proceed");
+            return true;
+        }
+        return false;
     }
 
     private static bool PickFirstRewardCard(Node screen)
