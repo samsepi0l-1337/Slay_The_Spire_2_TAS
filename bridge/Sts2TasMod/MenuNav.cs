@@ -123,8 +123,8 @@ internal static class MenuNav
             GD.Print("Sts2TasMod dismiss game over");
             return true;
         }
-        GD.Print("Sts2TasMod game over no-op");
-        return true;
+        GD.Print("Sts2TasMod game over leftover");
+        return false;
     }
 
     private static bool NMapScreenOpen()
