@@ -5,7 +5,6 @@ using MegaCrit.Sts2.Core.AutoSlay;
 using MegaCrit.Sts2.Core.AutoSlay.Helpers;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
-using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 
@@ -44,27 +43,9 @@ internal static class EventReward
         return actions;
     }
 
-    internal static bool HasRewardUi()
-    {
-        var root = Nodes.Root();
-        if (Nodes.FindType(root, "NCardRewardSelectionScreen") is Node cards && Nodes.IsShown(cards))
-        {
-            return true;
-        }
-        if (Nodes.FindType(root, "NCardSelectionScreen") is Node select && Nodes.IsShown(select))
-        {
-            return true;
-        }
-        if (RunFlow.MapIsOpen())
-        {
-            return false;
-        }
-        return Nodes.FindType(root, "NRewardsScreen") is Node rewards && Nodes.IsShown(rewards);
-    }
-
     internal static List<Dictionary<string, object?>> RewardActions()
     {
-        if (!HasRewardUi())
+        if (!OverlayClicks.HasRewardUi())
         {
             return [];
         }
@@ -89,9 +70,10 @@ internal static class EventReward
         {
             return;
         }
-        if (HasRewardUi() || ClickEventCards(room))
+        OverlayClicks.LogOverlay();
+        if (OverlayClicks.HasRewardUi() || OverlayClicks.ClickAnyCardHolder())
         {
-            ClaimRewards();
+            OverlayClicks.ClaimRewards();
             return;
         }
         var model = EventModelOf(room);
@@ -112,8 +94,9 @@ internal static class EventReward
             GD.Print("Sts2TasMod event settling");
             return;
         }
-        if (!finished && ClickModelOption(room, model, slot))
+        if (!finished && ClickModelOption(room, model, slot + _stuckOption))
         {
+            _stuckOption += 1;
             _lastEventClickMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             return;
         }
@@ -137,6 +120,7 @@ internal static class EventReward
 
     private static bool _leaving;
     private static long _lastEventClickMs;
+    private static int _stuckOption;
 
     private static async void LeaveFinished(string reason)
     {
@@ -145,6 +129,7 @@ internal static class EventReward
             return;
         }
         _leaving = true;
+        _stuckOption = 0;
         try
         {
             await ClickEventProceedIfNeeded();
@@ -194,20 +179,6 @@ internal static class EventReward
         {
             GD.PrintErr($"Sts2TasMod ClickEventProceedIfNeeded: {ex.InnerException?.Message ?? ex.Message}");
         }
-    }
-
-    private static bool ClickEventCards(NEventRoom room)
-    {
-        foreach (var node in Nodes.FindAll(room, "NCardHolder"))
-        {
-            if (node is NCardHolder holder && holder.CardModel is not null && Nodes.IsShown(holder))
-            {
-                holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
-                GD.Print($"Sts2TasMod event card {holder.CardModel.Id.Entry}");
-                return true;
-            }
-        }
-        return false;
     }
 
     private static bool ClickModelOption(NEventRoom room, EventModel? model, int slot)
@@ -344,55 +315,5 @@ internal static class EventReward
             GD.PrintErr($"Sts2TasMod dialogue click skipped: {ex.Message}");
             return false;
         }
-    }
-
-    internal static void ClaimRewards()
-    {
-        var root = Nodes.Root();
-        var cardScreen = Nodes.FindType(root, "NCardRewardSelectionScreen");
-        if (cardScreen is not null && Nodes.IsShown(cardScreen))
-        {
-            if (PickFirstRewardCard(cardScreen)) { return; }
-            if (SkipRewardCards(cardScreen)) { return; }
-            return;
-        }
-        if (Nodes.ClickFirstVisible("NRewardButton")) { return; }
-        if (Nodes.ClickFirstVisible("NProceedButton")) { return; }
-        Nodes.ClickNamed(root, "ProceedButton");
-    }
-
-    private static bool PickFirstRewardCard(Node screen)
-    {
-        var row = screen.GetNodeOrNull<Control>("UI/CardRow");
-        if (row is null)
-        {
-            return false;
-        }
-        foreach (var child in row.GetChildren())
-        {
-            if (child is NCardHolder holder && holder.CardModel is not null && Nodes.IsShown(holder))
-            {
-                holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
-                GD.Print($"Sts2TasMod selected reward {holder.CardModel.Id.Entry}");
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static bool SkipRewardCards(Node screen)
-    {
-        var alts = screen.GetNodeOrNull<Control>("UI/RewardAlternatives");
-        if (alts is not null)
-        {
-            foreach (var child in alts.GetChildren())
-            {
-                if (Nodes.ClickControl(child))
-                {
-                    return true;
-                }
-            }
-        }
-        return Nodes.ClickFirstVisible("NChoiceSelectionSkipButton");
     }
 }

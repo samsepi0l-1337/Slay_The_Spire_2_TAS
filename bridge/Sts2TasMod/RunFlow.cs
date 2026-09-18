@@ -58,9 +58,9 @@ public static class RunFlow
             MenuNav.ClickMenu();
             return;
         }
-        if (EventReward.HasRewardUi() && DetectUi() != "map")
+        if (OverlayClicks.HasRewardUi() && DetectUi() != "map")
         {
-            EventReward.ClaimRewards();
+            OverlayClicks.ClaimRewards();
             return;
         }
         if (MapIsOpen())
@@ -87,7 +87,7 @@ public static class RunFlow
         }
         if (actionType == "choose_reward")
         {
-            EventReward.ClaimRewards();
+            OverlayClicks.ClaimRewards();
             return;
         }
         if (ScreenAdvance.TryWorld())
