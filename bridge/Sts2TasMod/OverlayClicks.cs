@@ -81,7 +81,7 @@ internal static class OverlayClicks
         return false;
     }
 
-    internal static void ClaimRewards()
+    internal static void ClaimRewards(int? slot = null)
     {
         LogOverlay();
         try
@@ -91,6 +91,10 @@ internal static class OverlayClicks
             {
                 _gridPick = null;
                 _gridOverlay = overlay;
+            }
+            if (slot == 1 && ClickSkip())
+            {
+                return;
             }
             if (IsGridSelect(overlay))
             {
@@ -105,6 +109,11 @@ internal static class OverlayClicks
             var cardScreen = Nodes.FindType(root, "NCardRewardSelectionScreen");
             if (cardScreen is not null && Nodes.IsShown(cardScreen))
             {
+                if (slot == 1)
+                {
+                    _ = SkipRewardCards(cardScreen);
+                    return;
+                }
                 _ = PickFirstRewardCard(cardScreen) || SkipRewardCards(cardScreen);
                 return;
             }
@@ -293,12 +302,53 @@ internal static class OverlayClicks
         {
             foreach (var child in alts.GetChildren())
             {
-                if (Nodes.ClickControl(child))
+                if (Nodes.ClickControl(child) || Nodes.ForceClickRaw(child))
                 {
+                    GD.Print($"Sts2TasMod skip {child.Name}");
                     return true;
                 }
             }
         }
-        return Nodes.ClickFirstVisible("NChoiceSelectionSkipButton");
+        return ClickSkip();
+    }
+
+    internal static bool ClickSkip()
+    {
+        foreach (var name in new[]
+                 {
+                     "NCardRewardAlternativeButton", "NChoiceSelectionSkipButton", "NSkipButton"
+                 })
+        {
+            if (Nodes.ClickFirstVisible(name) || Nodes.ClickFirstShown(name))
+            {
+                GD.Print($"Sts2TasMod skip {name}");
+                return true;
+            }
+        }
+        Node? overlay = null;
+        try
+        {
+            overlay = NOverlayStack.Instance?.Peek() as Node;
+        }
+        catch (Exception)
+        {
+        }
+        if (overlay is null)
+        {
+            return false;
+        }
+        try
+        {
+            var close = overlay.GetNodeOrNull("%Close");
+            if (close is not null && (Nodes.ClickControl(close) || Nodes.ForceClickRaw(close)))
+            {
+                GD.Print("Sts2TasMod skip close");
+                return true;
+            }
+        }
+        catch (Exception)
+        {
+        }
+        return false;
     }
 }

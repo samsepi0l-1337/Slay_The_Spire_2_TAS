@@ -33,6 +33,10 @@ public static class RunFlow
             {
                 return Overlay("map", act, floor, architect, map, Array.Empty<object>(), map, "map");
             }
+            if (ScreenAdvance.InWorldRoom())
+            {
+                return Overlay(ScreenAdvance.WorldPhase(), act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), MenuActions(), "world");
+            }
             var eventActions = EventReward.EventActions();
             if (eventActions.Count > 0)
             {
@@ -60,7 +64,7 @@ public static class RunFlow
         }
         if (OverlayClicks.HasRewardUi() && DetectUi() != "map")
         {
-            OverlayClicks.ClaimRewards();
+            OverlayClicks.ClaimRewards(slot);
             return;
         }
         if (MapIsOpen())
@@ -87,7 +91,7 @@ public static class RunFlow
         }
         if (actionType == "choose_reward")
         {
-            OverlayClicks.ClaimRewards();
+            OverlayClicks.ClaimRewards(slot);
             return;
         }
         if (ScreenAdvance.TryWorld())

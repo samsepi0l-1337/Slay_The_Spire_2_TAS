@@ -55,6 +55,11 @@ internal static class EventReward
             {
                 ["action_type"] = "choose_reward",
                 ["args"] = new Dictionary<string, int> { ["choice_slot"] = 0 }
+            },
+            new Dictionary<string, object?>
+            {
+                ["action_type"] = "choose_reward",
+                ["args"] = new Dictionary<string, int> { ["choice_slot"] = 1 }
             }
         ];
     }

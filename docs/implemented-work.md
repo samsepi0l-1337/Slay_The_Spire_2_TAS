@@ -54,6 +54,8 @@ Not present:
 - [x] Q* features scaled to STS2 wiki (Ironclad 80 HP, energy 3, A10) with a two-layer net.
 - [x] OverlayClicks treats `NDeckTransformSelectScreen` as reward UI: one grid Press then preview confirm.
 - [x] Combat `NPlayerHand.IsInCardSelection` (Armaments) Presses a holder then `%SelectModeConfirmButton`.
+- [x] Rest site awaits `ChooseLocalOption` then `AfterSelectingOption` before Proceed.
+- [x] Card reward `choose_reward` slot 1 clicks skip (넘어가기).
 - [x] `dataset.py`: JSONL first, SQLite/Parquet compatible transition records.
 
 ## Target Bridge Surface
