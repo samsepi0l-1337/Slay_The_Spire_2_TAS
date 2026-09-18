@@ -44,16 +44,22 @@ internal static class EventReward
         return actions;
     }
 
+    internal static bool HasRewardUi()
+    {
+        var root = Nodes.Root();
+        foreach (var name in new[] { "NCardRewardSelectionScreen", "NRewardsScreen", "NCardSelectionScreen" })
+        {
+            if (Nodes.FindType(root, name) is Node node && Nodes.IsShown(node))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     internal static List<Dictionary<string, object?>> RewardActions()
     {
-        if (RunFlow.InEventRoom())
-        {
-            return [];
-        }
-        var root = Nodes.Root();
-        var cards = Nodes.FindType(root, "NCardRewardSelectionScreen");
-        var rewards = Nodes.FindType(root, "NRewardsScreen");
-        if ((cards is null || !Nodes.IsShown(cards)) && (rewards is null || !Nodes.IsShown(rewards)))
+        if (!HasRewardUi())
         {
             return [];
         }
@@ -78,11 +84,24 @@ internal static class EventReward
         {
             return;
         }
+        if (HasRewardUi() || ClickEventCards(room))
+        {
+            ClaimRewards();
+            return;
+        }
         var model = EventModelOf(room);
         var finished = model?.IsFinished == true;
         var buttons = room.Layout?.OptionButtons?.Cast<Node>().ToList() ?? [];
+        if (buttons.Count == 0)
+        {
+            buttons = Nodes.FindAll(room, "NEventOptionButton").ToList();
+        }
         GD.Print($"Sts2TasMod event finished={finished} buttons={buttons.Count} options={model?.CurrentOptions.Count}");
         if (!finished && ClickChoice(room, buttons, slot))
+        {
+            return;
+        }
+        if (!finished && ClickModelOption(room, model, slot))
         {
             return;
         }
@@ -91,9 +110,14 @@ internal static class EventReward
             LeaveFinished("clicked IsProceed");
             return;
         }
-        if (finished)
+        if (finished || (model?.CurrentOptions.Count ?? 0) == 0)
         {
             LeaveFinished("no proceed button");
+            return;
+        }
+        if (Nodes.ClickFirstVisible("NConfirmButton") || Nodes.ClickFirstVisible("NProceedButton"))
+        {
+            GD.Print("Sts2TasMod event confirm/proceed overlay");
             return;
         }
         GD.Print("Sts2TasMod event waiting (not finished)");
@@ -156,6 +180,40 @@ internal static class EventReward
         catch (Exception ex)
         {
             GD.PrintErr($"Sts2TasMod ClickEventProceedIfNeeded: {ex.InnerException?.Message ?? ex.Message}");
+        }
+    }
+
+    private static bool ClickEventCards(NEventRoom room)
+    {
+        foreach (var node in Nodes.FindAll(room, "NCardHolder"))
+        {
+            if (node is NCardHolder holder && holder.CardModel is not null && Nodes.IsShown(holder))
+            {
+                holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
+                GD.Print($"Sts2TasMod event card {holder.CardModel.Id.Entry}");
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool ClickModelOption(NEventRoom room, EventModel? model, int slot)
+    {
+        if (model is null || model.CurrentOptions.Count == 0)
+        {
+            return false;
+        }
+        var index = Math.Clamp(slot, 0, model.CurrentOptions.Count - 1);
+        try
+        {
+            room.OptionButtonClicked(model.CurrentOptions[index], index);
+            GD.Print($"Sts2TasMod model option {index}/{model.CurrentOptions.Count}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"Sts2TasMod model option: {ex.Message}");
+            return false;
         }
     }
 

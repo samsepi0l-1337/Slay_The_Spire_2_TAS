@@ -7,7 +7,7 @@ Verified against MegaCrit AutoSlay handlers and the public STS2 CLI mod (ForceCl
 | Main Continue | Saved run exists | Never Continue (Silent save). `AbandonRun` then confirm popup | No (UI) |
 | Main Singleplayer | After abandon / no save | `SingleplayerButton` ForceClick even if disabled, then `StandardButton` | No |
 | Character | New run | `NCharacterSelectButton` IRONCLAD then enabled `ConfirmButton` | No (always Ironclad) |
-| Neow / event | After embark or event node | Ancient: ForceClick `%DialogueHitbox` until last line. Then click non-proceed `OptionButtons[i]`. When finished, ForceClick `IsProceed` then `AutoSlayer.ClickEventProceedIfNeeded` and `await NEventRoom.Proceed()`. Do not call Proceed while `IsFinished` is false. | Yes: option index vs gold/HP |
+| Neow / event | After embark or event node | Ancient: ForceClick `%DialogueHitbox` until last line. Then click non-proceed `OptionButtons[i]`. If buttons vanish but `CurrentOptions` remain, `OptionButtonClicked` on the model or pick `NCardHolder`. When finished, ForceClick `IsProceed` then Proceed. | Yes: option index vs gold/HP |
 | Map | After event/rewards close | `NMapScreen.TravelToMapCoord` first travelable | Yes: node type (combat/elite/rest/shop/treasure) |
 | Combat | Fight | Q* among `play_card`; skip Hemokinesis/Bloodletting/Offering when HP≤20; `end_turn` only if no cards | Yes: Q* |
 | Rewards | After combat | Enabled `NRewardButton`, `NCardHolder` Pressed, then enabled `NProceedButton` | Yes: card id vs skip |

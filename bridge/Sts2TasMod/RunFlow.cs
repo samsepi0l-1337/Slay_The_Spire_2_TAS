@@ -58,6 +58,11 @@ public static class RunFlow
             MenuNav.ClickMenu();
             return;
         }
+        if (EventReward.HasRewardUi())
+        {
+            EventReward.ClaimRewards();
+            return;
+        }
         if (MapIsOpen())
         {
             try
