@@ -176,7 +176,7 @@ internal static class OverlayClicks
         Node? overlay = null;
         try
         {
-            overlay = NOverlayStack.Instance?.Peek();
+            overlay = NOverlayStack.Instance?.Peek() as Node;
         }
         catch (Exception)
         {
