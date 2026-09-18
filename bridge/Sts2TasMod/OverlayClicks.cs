@@ -59,47 +59,66 @@ internal static class OverlayClicks
         return false;
     }
 
-    private static int _rewardClicks;
+    private static readonly HashSet<string> ClickedRewards = [];
 
     internal static void ClaimRewards()
     {
         LogOverlay();
-        if (ClickAnyCardHolder())
+        try
         {
-            _rewardClicks = 0;
-            return;
-        }
-        if (Nodes.ClickFirstVisible("NConfirmButton"))
-        {
-            GD.Print("Sts2TasMod grid confirm");
-            return;
-        }
-        var root = Nodes.Root();
-        var cardScreen = Nodes.FindType(root, "NCardRewardSelectionScreen");
-        if (cardScreen is not null && Nodes.IsShown(cardScreen))
-        {
-            if (PickFirstRewardCard(cardScreen) || SkipRewardCards(cardScreen))
+            if (ClickAnyCardHolder())
             {
-                _rewardClicks = 0;
+                return;
             }
-            return;
+            if (Nodes.ClickFirstVisible("NConfirmButton"))
+            {
+                GD.Print("Sts2TasMod grid confirm");
+                return;
+            }
+            var root = Nodes.Root();
+            var cardScreen = Nodes.FindType(root, "NCardRewardSelectionScreen");
+            if (cardScreen is not null && Nodes.IsShown(cardScreen))
+            {
+                _ = PickFirstRewardCard(cardScreen) || SkipRewardCards(cardScreen);
+                return;
+            }
+            if (ClickUnclaimedReward())
+            {
+                return;
+            }
+            ClickedRewards.Clear();
+            if (ClickProceed())
+            {
+                return;
+            }
+            Nodes.ClickNamed(root, "ProceedButton");
         }
-        if (_rewardClicks >= 2 && ClickProceed())
+        catch (Exception ex)
         {
-            _rewardClicks = 0;
-            return;
+            GD.PrintErr($"Sts2TasMod ClaimRewards: {ex.Message}");
+            ClickedRewards.Clear();
+            _ = ClickProceed();
         }
-        if (Nodes.ClickFirstVisible("NRewardButton"))
+    }
+
+    private static bool ClickUnclaimedReward()
+    {
+        foreach (var node in Nodes.FindAll(Nodes.Root(), "NRewardButton"))
         {
-            _rewardClicks += 1;
-            return;
+            var id = $"{node.GetType().Name}:{node.Name}:{node.GetInstanceId()}";
+            if (ClickedRewards.Contains(id) || !Nodes.IsShown(node))
+            {
+                continue;
+            }
+            if (!Nodes.ClickControl(node))
+            {
+                continue;
+            }
+            ClickedRewards.Add(id);
+            GD.Print($"Sts2TasMod claim {id}");
+            return true;
         }
-        if (ClickProceed())
-        {
-            _rewardClicks = 0;
-            return;
-        }
-        Nodes.ClickNamed(root, "ProceedButton");
+        return false;
     }
 
     private static bool ClickProceed()
