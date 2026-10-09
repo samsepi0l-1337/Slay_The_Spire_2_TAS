@@ -73,7 +73,12 @@ def is_cleared(snapshot: TelemetrySnapshot) -> bool:
 
 def reward_between(previous: TelemetrySnapshot, current: TelemetrySnapshot) -> tuple[float, bool]:
     terminated = current.phase == "terminal" or is_cleared(current)
-    if previous.phase == "menu" or current.phase == "menu":
+    if (
+        not _same_run(previous, current)
+        or previous.extras.get("player_authoritative") is False
+        or current.extras.get("player_authoritative") is False
+        or previous.phase == "menu" or current.phase == "menu"
+    ):
         return 0.0, terminated
     reward = 0.0
     if previous.phase == "combat" or current.phase == "combat":
@@ -96,6 +101,12 @@ def reward_between(previous: TelemetrySnapshot, current: TelemetrySnapshot) -> t
     return reward, terminated
 
 
+def _same_run(previous: TelemetrySnapshot, current: TelemetrySnapshot) -> bool:
+    return (previous.seed, previous.extras.get("run_instance_id")) == (
+        current.seed, current.extras.get("run_instance_id")
+    )
+
+
 def run_live(
     frames: Iterator[TelemetrySnapshot],
     model: Path,
@@ -110,8 +121,6 @@ def run_live(
     if max_steps <= 0:
         raise ValueError("max_steps must be positive")
     policy = QStarPolicy.load_or_create(model)
-    if until_clear and output.exists():
-        output.unlink()
     writer = JsonlTransitionWriter(output)
     status_path = output.with_suffix(".status.json")
     previous: TelemetrySnapshot | None = None
@@ -122,31 +131,39 @@ def run_live(
     last_key: tuple[str, str, int, int] | None = None
     last_cmd = 0.0
     for snapshot in frames:
+        if previous is not None and not _same_run(previous, snapshot):
+            previous = None
+            chosen = None
+            last_key = None
+            last_cmd = 0.0
         if snapshot.phase == "menu" or snapshot.extras.get("loading") or snapshot.screen_id == "loading":
             _write_status(status_path, snapshot, None, commands, waiting=True)
             continue
         if previous is not None and chosen is not None:
             reward, terminated = reward_between(previous, snapshot)
-            if previous.phase == "combat" or snapshot.phase == "combat" or snapshot.phase == "terminal":
+            if (
+                previous.extras.get("player_authoritative") is not False
+                and snapshot.extras.get("player_authoritative") is not False
+                and (previous.phase == "combat" or snapshot.phase == "combat" or snapshot.phase == "terminal")
+            ):
                 policy.update(previous, chosen, reward, snapshot, terminated)
-            if not until_clear or transitions % 25 == 0:
-                writer.append(
-                    TransitionRecord(
-                        game_version=previous.game_version,
-                        mod_version=previous.mod_version,
-                        seed=previous.seed,
-                        timestamp=previous.timestamp,
-                        floor=previous.floor,
-                        phase=previous.phase,
-                        state_json=previous.to_dict(),
-                        valid_actions_json=[action.to_dict() for action in previous.valid_actions],
-                        chosen_action_json=chosen.to_dict(),
-                        reward=reward,
-                        terminal=terminated,
-                        result="live",
-                        policy_id="qstar",
-                    )
+            writer.append(
+                TransitionRecord(
+                    game_version=previous.game_version,
+                    mod_version=previous.mod_version,
+                    seed=previous.seed,
+                    timestamp=previous.timestamp,
+                    floor=previous.floor,
+                    phase=previous.phase,
+                    state_json=previous.to_dict(),
+                    valid_actions_json=[action.to_dict() for action in previous.valid_actions],
+                    chosen_action_json=chosen.to_dict(),
+                    reward=reward,
+                    terminal=terminated,
+                    result="live",
+                    policy_id="qstar",
                 )
+            )
             transitions += 1
             chosen = None
             if not until_clear or transitions % 25 == 0:
@@ -173,8 +190,11 @@ def run_live(
             _write_status(status_path, snapshot, chosen, commands, waiting=False)
             if command_delay_s > 0:
                 time.sleep(command_delay_s)
+        else:
+            chosen = None
+            _write_status(status_path, snapshot, None, commands, waiting=False)
         previous = snapshot
-    if transitions or chosen is not None:
+    if transitions or previous is not None:
         policy.save(model)
     return {
         "algorithm": "qstar-live",

@@ -31,7 +31,7 @@ def test_loading_does_not_consume_pending_transition(tmp_path):
     loading = snapshot(phase="menu", screen_id="loading", valid_actions=[], extras={"loading": True})
     final = snapshot(phase="terminal", valid_actions=[])
     final.enemies[0]["hp"] = 0
-    result = run_live(iter([initial, loading, final]), tmp_path / "model.json", tmp_path / "live.jsonl", search_depth=0)
+    result = run_live(iter([initial, loading, final]), tmp_path / "model.json", tmp_path / "live.jsonl", search_depth=0, send_command=lambda _action, _screen: None)
     record = json.loads((tmp_path / "live.jsonl").read_text())
     assert result["transitions"] == 1
     assert record["terminal"] is True
@@ -44,7 +44,7 @@ def test_nested_waiting_status_and_batched_model_persist_at_eof(tmp_path):
     run_live(iter([empty]), tmp_path / "model.json", output)
     assert output.with_suffix(".status.json").exists()
     model = tmp_path / "model.json"
-    result = run_live(iter([snapshot()] * 3), model, output, search_depth=0, until_clear=True)
+    result = run_live(iter([snapshot()] * 3), model, output, search_depth=0, until_clear=True, send_command=lambda _action, _screen: None)
     assert result["updates"] == 2
     assert json.loads(model.read_text())["updates"] == 2
 
@@ -96,7 +96,7 @@ def test_nonpositive_max_steps_sends_no_commands(tmp_path, max_steps):
 
 def test_victory_after_pending_action_sets_cleared(tmp_path):
     final = snapshot(phase="terminal", valid_actions=[], extras={"victory": True})
-    result = run_live(iter([snapshot(), final]), tmp_path / "model.json", tmp_path / "live.jsonl", search_depth=0)
+    result = run_live(iter([snapshot(), final]), tmp_path / "model.json", tmp_path / "live.jsonl", search_depth=0, send_command=lambda _action, _screen: None)
     assert result["cleared"] is True
 
 
@@ -180,8 +180,52 @@ def test_menu_overlay_preserves_pending_combat_action(tmp_path):
     menu.player["hp"] = 1
     final = snapshot(phase="terminal", valid_actions=[])
     final.enemies[0]["hp"] = 0
-    result = run_live(iter([snapshot(), menu, final]), tmp_path / "model.json", tmp_path / "live.jsonl", search_depth=0)
+    result = run_live(iter([snapshot(), menu, final]), tmp_path / "model.json", tmp_path / "live.jsonl", search_depth=0, send_command=lambda _action, _screen: None)
     record = json.loads((tmp_path / "live.jsonl").read_text())
     assert result["updates"] == 1
     assert record["reward"] == 6
     assert record["terminal"] is True
+
+
+def test_until_clear_preserves_existing_log_and_records_every_transition(tmp_path):
+    output = tmp_path / "live.jsonl"
+    output.write_text('{"marker": "prior-run"}\n')
+    result = run_live(iter([snapshot()] * 3), tmp_path / "model.json", output,
+                      search_depth=0, until_clear=True, send_command=lambda _action, _screen: None)
+    records = [json.loads(line) for line in output.read_text().splitlines()]
+    assert records[0] == {"marker": "prior-run"}
+    assert len(records) == result["transitions"] + 1 == 3
+
+
+def test_dry_run_never_learns_unsent_action(tmp_path):
+    result = run_live(iter([snapshot()] * 3), tmp_path / "model.json", tmp_path / "live.jsonl", search_depth=0)
+    assert result["commands"] == result["transitions"] == result["updates"] == 0
+    assert not (tmp_path / "live.jsonl").exists()
+
+
+@pytest.mark.parametrize("same_seed, with_run_id", [(False, False), (False, True), (True, True)])
+def test_new_run_discards_pending_action_and_hp_reset_reward(tmp_path, same_seed, with_run_id):
+    from sts2_tas.live import reward_between
+    old = snapshot(seed="old", extras={"run_instance_id": "old-run"} if with_run_id else {})
+    old.player["hp"] = 2
+    new = snapshot(seed="old" if same_seed else "new",
+                   extras={"run_instance_id": "new-run"} if with_run_id else {})
+    new.player["hp"] = 80
+    assert reward_between(old, new) == (0.0, False)
+    result = run_live(iter([old, new]), tmp_path / "model.json", tmp_path / "live.jsonl",
+                      search_depth=0, send_command=lambda _action, _screen: None)
+    assert result["commands"] == 2
+    assert result["transitions"] == result["updates"] == 0
+
+
+def test_placeholder_player_fields_do_not_train(tmp_path):
+    from sts2_tas.live import reward_between
+    first = snapshot()
+    overlay = snapshot(phase="event", event_choices=[{"id": "next"}], enemies=[],
+                       valid_actions=[{"action_type": "choose_event_option", "args": {"choice_slot": 0}}],
+                       extras={"player_authoritative": False})
+    overlay.player["hp"] = 1
+    assert reward_between(first, overlay) == (0.0, False)
+    result = run_live(iter([first, overlay]), tmp_path / "model.json", tmp_path / "live.jsonl",
+                      search_depth=0, send_command=lambda _action, _screen: None)
+    assert result["updates"] == 0

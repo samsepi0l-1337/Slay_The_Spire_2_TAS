@@ -13,7 +13,7 @@ execution acknowledgement: a subsequent telemetry frame is still the observable
 transition boundary.
 
 Status output creates its parent directory, and learned weights are saved when
-the input stream ends, including between the 25-transition batched saves used by
+the input stream ends, including between the 25-transition batched model saves used by
 `until_clear`. Victory flags recognize the explicit true values `true`, `1`,
 `"true"`, and `"1"`; malformed flags and `"false"` cannot claim completion.
 
@@ -35,3 +35,10 @@ enemies are not observed damage; menu placeholders are not HP observations.
 Player HP deltas remain meaningful across real combat boundaries. The reached-act-3
 flag alone cannot prove victory, and a low-HP combat with only an
 HP-cost card chooses legal `end_turn` instead.
+
+Live logs append every observed transition without deleting existing records.
+Only actions sent through the command callback become pending transitions; dry-run
+planning sends no commands and does not update the model or create transitions.
+Pending actions reset when seed or `extras.run_instance_id` changes. Legacy frames
+without a run id retain seed-based identity. `extras.player_authoritative=false`
+prevents placeholder player values from contributing rewards or TD updates.

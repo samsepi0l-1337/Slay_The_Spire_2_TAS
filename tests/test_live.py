@@ -226,7 +226,7 @@ def test_run_live_stops_at_max_steps(tmp_path: Path) -> None:
     first = load_snapshot()
     mid = load_snapshot()
     last = load_snapshot()
-    result = run_live(iter([first, mid, last]), tmp_path / "qstar.json", tmp_path / "live.jsonl", search_depth=0, max_steps=1)
+    result = run_live(iter([first, mid, last]), tmp_path / "qstar.json", tmp_path / "live.jsonl", search_depth=0, max_steps=1, send_command=lambda _action, _screen: None)
     assert result["transitions"] == 1
 
 
