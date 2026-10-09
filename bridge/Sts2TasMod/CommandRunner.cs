@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Sts2Bridge;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.GameActions;
@@ -13,17 +14,12 @@ public static class CommandRunner
     {
         try
         {
-            using var document = JsonDocument.Parse(line);
-            var root = document.RootElement;
-            if (!root.TryGetProperty("action", out var action))
-            {
-                PipeHub.WriteSnapshot();
-                return;
-            }
-            var actionType = action.GetProperty("action_type").GetString();
-            var args = action.TryGetProperty("args", out var rawArgs) ? rawArgs : default;
+            var snapshot = JsonSerializer.SerializeToElement(SnapshotFactory.Capture());
+            var command = MacroCommand.Validate(line, snapshot);
+            var actionType = command.ActionType;
+            var args = command.Args;
             GD.Print($"Sts2TasMod command {actionType}");
-            if (HandSelect.Active())
+            if (actionType == "play_card" && HandSelect.Active())
             {
                 HandSelect.Apply(ReadInt(args, "hand_slot"));
             }
@@ -75,7 +71,10 @@ public static class CommandRunner
             throw new InvalidOperationException("hand_slot out of range");
         }
         var card = cards[handSlot.Value];
-        var target = targetSlot is null ? null : state.HittableEnemies.ElementAtOrDefault(targetSlot.Value);
+        var enemies = state.HittableEnemies.ToArray();
+        if (targetSlot is not null && (targetSlot.Value < 0 || targetSlot.Value >= enemies.Length))
+            throw new InvalidOperationException("target_slot out of range");
+        var target = targetSlot is null ? null : enemies[targetSlot.Value];
         if (!card.CanPlay(out var reason, out _))
         {
             throw new InvalidOperationException($"cannot play {card.Id.Entry}: {reason}");
@@ -91,12 +90,8 @@ public static class CommandRunner
         return state?.Players.Count > 0 ? state.Players[0] : null;
     }
 
-    private static int? ReadInt(JsonElement args, string key)
+    private static int? ReadInt(IReadOnlyDictionary<string, int> args, string key)
     {
-        if (args.ValueKind != JsonValueKind.Object || !args.TryGetProperty(key, out var value) || value.ValueKind != JsonValueKind.Number)
-        {
-            return null;
-        }
-        return value.GetInt32();
+        return args.TryGetValue(key, out var value) ? value : null;
     }
 }

@@ -209,8 +209,13 @@ public static class RunFlow
             ["screen_id"] = architect ? "architect" : loading ? "loading" : phase,
             ["player"] = new Dictionary<string, object?>
             {
-                ["hp"] = 1, ["max_hp"] = 1, ["energy"] = 0, ["block"] = 0, ["gold"] = 0,
-                ["powers"] = Array.Empty<object>(), ["resources"] = new Dictionary<string, object?>()
+                ["hp"] = 1,
+                ["max_hp"] = 1,
+                ["energy"] = 0,
+                ["block"] = 0,
+                ["gold"] = 0,
+                ["powers"] = Array.Empty<object>(),
+                ["resources"] = new Dictionary<string, object?>()
             },
             ["hand"] = Array.Empty<object>(),
             ["draw_pile"] = Array.Empty<object>(),
@@ -230,7 +235,7 @@ public static class RunFlow
                 ["game_version"] = "v0.107.1",
                 ["architect"] = architect,
                 ["reached_act3"] = act >= 3,
-                ["act3_boss_cleared"] = architect || IsVictory(),
+                ["act3_boss_cleared"] = IsVictory(),
                 ["victory"] = IsVictory(),
                 ["loading"] = loading,
                 ["ui"] = ui

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using Sts2Bridge;
 
 namespace Sts2TelemetryBridge;
 
@@ -46,27 +47,36 @@ public static class Program
             Console.Error.WriteLine("pipe-serve requires --fixture PATH");
             return 2;
         }
-        var snapshot = File.ReadAllText(fixture);
-        using var doc = JsonDocument.Parse(snapshot);
-        var parts = listen.Split(':');
-        var ip = IPAddress.Parse(parts[0]);
-        var port = int.Parse(parts[1]);
-        using var listener = new TcpListener(ip, port);
-        listener.Start();
-        Console.WriteLine(JsonSerializer.Serialize(new { transport = "tcp", listen, fail_closed = true }));
-        using var client = listener.AcceptTcpClient();
-        using var stream = client.GetStream();
-        var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-        using var reader = new StreamReader(stream, utf8, leaveOpen: true);
-        using var writer = new StreamWriter(stream, utf8, leaveOpen: true) { AutoFlush = true };
-        var sequence = 1;
-        WriteFrame(writer, sequence, doc.RootElement);
-        while (reader.ReadLine() is not null)
+        try
         {
-            sequence += 1;
+            var snapshot = File.ReadAllText(fixture);
+            using var doc = JsonDocument.Parse(snapshot);
+            if (!IPEndPoint.TryParse(listen, out var endpoint) || !IPAddress.IsLoopback(endpoint.Address) || endpoint.Port == 0)
+                throw new InvalidOperationException("--listen must be a loopback IP endpoint with a nonzero port");
+            using var listener = new TcpListener(endpoint);
+            listener.Start();
+            Console.WriteLine(JsonSerializer.Serialize(new { transport = "tcp", listen, fail_closed = true }));
+            using var client = listener.AcceptTcpClient();
+            using var stream = client.GetStream();
+            var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+            using var reader = new StreamReader(stream, utf8, leaveOpen: true);
+            using var writer = new StreamWriter(stream, utf8, leaveOpen: true) { AutoFlush = true };
+            var sequence = 1;
             WriteFrame(writer, sequence, doc.RootElement);
+            string? line;
+            while ((line = reader.ReadLine()) is not null)
+            {
+                MacroCommand.Validate(line, doc.RootElement);
+                sequence += 1;
+                WriteFrame(writer, sequence, doc.RootElement);
+            }
+            return 0;
         }
-        return 0;
+        catch (Exception ex) when (ex is IOException or SocketException or JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException)
+        {
+            Console.Error.WriteLine($"pipe-serve failed closed: {ex.Message}");
+            return 2;
+        }
     }
 
     private static void WriteFrame(StreamWriter writer, int sequence, JsonElement payload)
