@@ -194,6 +194,7 @@ public static class RunFlow
         var run = RunManager.Instance?.DebugOnlyGetState();
         var player = run?.Players.FirstOrDefault();
         var victory = IsVictory();
+        loading |= phase != "terminal" && actions.Count == 0;
         if (victory || loading)
         {
             actions = [];

@@ -77,3 +77,9 @@ The existing helper command also checks run identity stability, separation, and
 null state. Consumer regressions must additionally check living Architect,
 waiting combat, nonauthoritative HP, and changed run identities; fixture transport
 success alone does not establish producer runtime behavior.
+
+All nonterminal out-of-combat overlays with no available actions use the same
+loading/menu contract. This includes an open map while travelable nodes are
+unavailable. The seven Overlay callers share this normalization; HP, seed and
+run-instance metadata remain present while commands are withheld. Actual Godot
+map timing remains unobserved.
