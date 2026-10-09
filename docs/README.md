@@ -2,6 +2,7 @@
 
 These documents describe the current fixture-based implementation and the current verification boundary for the present live-game mod source.
 
+- [2026-10-09 인계 기록](handoff-2026-10-09.md): 작업 중지 상태, 검증 코드 SHA, 미해결 P1과 재개 순서.
 - [Architecture](architecture.md): target runtime contract for the telemetry bridge, Gymnasium environment, ML policy, and macro-action executor.
 - [Rewrite plan](plan.md): decision record for the target rewrite, dependencies, test order, and verification gates.
 - [Implemented work](implemented-work.md): current implementation ledger and target checklist.
