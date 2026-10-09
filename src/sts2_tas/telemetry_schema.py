@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import math
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
@@ -10,6 +12,8 @@ class ValidationError(ValueError):
 
 
 def _require(mapping: dict[str, Any], key: str) -> Any:
+    if not isinstance(mapping, dict):
+        raise ValidationError("expected an object")
     if key not in mapping:
         raise ValidationError(f"missing required field: {key}")
     return mapping[key]
@@ -26,6 +30,8 @@ def _require_list(mapping: dict[str, Any], key: str) -> list[Any]:
     value = _require(mapping, key)
     if not isinstance(value, list):
         raise ValidationError(f"{key} must be a list")
+    if any(not isinstance(item, dict) for item in value):
+        raise ValidationError(f"{key} entries must be objects")
     return value
 
 
@@ -55,7 +61,7 @@ class MacroAction:
     def from_dict(cls, data: dict[str, Any]) -> "MacroAction":
         action_type = _require(data, "action_type")
         args = data.get("args", {})
-        if action_type not in cls.allowed_types:
+        if not isinstance(action_type, str) or action_type not in cls.allowed_types:
             raise ValidationError(f"unknown action_type: {action_type}")
         if not isinstance(args, dict):
             raise ValidationError("args must be an object")
@@ -76,7 +82,12 @@ class MacroAction:
         for key in required[action_type]:
             if key not in args:
                 raise ValidationError(f"{action_type} missing {key}")
+        allowed = set(required[action_type])
+        if action_type == "play_card":
+            allowed.add("target_slot")
         for key, value in args.items():
+            if key not in allowed:
+                raise ValidationError(f"{action_type} unexpected argument: {key}")
             if not isinstance(value, int) or isinstance(value, bool):
                 raise ValidationError(f"{key} must be an integer")
             if value < 0:
@@ -146,7 +157,8 @@ class TelemetrySnapshot:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "TelemetrySnapshot":
         phase = _require(data, "phase")
-        if phase not in cls.phases:
+        data = deepcopy(data)
+        if not isinstance(phase, str) or phase not in cls.phases:
             raise ValidationError(f"unknown phase: {phase}")
         player = _require_dict(data, "player")
         cls._validate_player(player)
@@ -160,7 +172,12 @@ class TelemetrySnapshot:
         shop_choices = list(_require_list(data, "shop_choices"))
         event_choices = list(_require_list(data, "event_choices"))
         rest_choices = list(_require_list(data, "rest_choices"))
-        extras = dict(data.get("extras", {}))
+        extras = data.get("extras", {})
+        if not isinstance(extras, dict):
+            raise ValidationError("extras must be an object")
+        timestamp = _require(data, "timestamp")
+        if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)) or not math.isfinite(timestamp):
+            raise ValidationError("timestamp must be a finite number")
         if extras.get("loading") or str(data.get("screen_id", "")) == "loading":
             phase = "menu"
         actions = [MacroAction.from_dict(item) for item in _require_list(data, "valid_actions")]
@@ -177,7 +194,7 @@ class TelemetrySnapshot:
             mod_version=str(_require(data, "mod_version")),
             schema_version=schema_version,
             seed=str(_require(data, "seed")),
-            timestamp=float(_require(data, "timestamp")),
+            timestamp=float(timestamp),
             phase=phase,
             floor=_require_int(data, "floor"),
             act=_require_int(data, "act"),
@@ -196,7 +213,7 @@ class TelemetrySnapshot:
             event_choices=event_choices,
             rest_choices=rest_choices,
             valid_actions=actions,
-            extras=dict(data.get("extras", {})),
+            extras=extras,
         )
 
     @staticmethod
@@ -243,7 +260,7 @@ class TelemetrySnapshot:
             raise ValidationError(f"{key} out of range")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        return deepcopy({
             "game_version": self.game_version,
             "mod_version": self.mod_version,
             "schema_version": self.schema_version,
@@ -268,7 +285,7 @@ class TelemetrySnapshot:
             "rest_choices": list(self.rest_choices),
             "valid_actions": [action.to_dict() for action in self.valid_actions],
             "extras": dict(self.extras),
-        }
+        })
 
 
 @dataclass(frozen=True)

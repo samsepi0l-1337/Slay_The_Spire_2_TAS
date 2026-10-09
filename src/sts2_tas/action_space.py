@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from numbers import Integral
 
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 
@@ -21,7 +22,7 @@ class ActionSpace:
         return [True for _ in self.actions]
 
     def action_at(self, index: int) -> MacroAction:
-        if index < 0 or index >= len(self.actions):
+        if isinstance(index, bool) or not isinstance(index, Integral) or index < 0 or index >= len(self.actions):
             raise ValueError(f"illegal action index: {index}")
         return self.actions[index]
 

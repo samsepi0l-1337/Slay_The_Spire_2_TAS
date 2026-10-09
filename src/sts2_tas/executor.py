@@ -22,8 +22,7 @@ class MacroExecutor:
     def execute(self, action: MacroAction) -> dict[str, Any]:
         if not self.execute_enabled:
             raise PermissionError("native input requires --execute")
-        plan = self.plan(action)
-        return {**plan, "execute": True, "result": "acknowledged"}
+        raise NotImplementedError("native input backend is not implemented")
 
     @staticmethod
     def _commands(action: MacroAction) -> list[dict[str, Any]]:

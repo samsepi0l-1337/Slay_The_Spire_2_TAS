@@ -17,8 +17,9 @@ class Sts2Env:
         writer: JsonlTransitionWriter | None = None,
         policy_id: str | None = None,
     ) -> None:
-        self.snapshot = snapshot
-        self.action_space = ActionSpace.from_snapshot(snapshot)
+        self._initial_snapshot = deepcopy(snapshot)
+        self.snapshot = deepcopy(snapshot)
+        self.action_space = ActionSpace.from_snapshot(self.snapshot)
         self.writer = writer
         self.policy_id = policy_id
         self.last_seed: int | None = None
@@ -26,6 +27,8 @@ class Sts2Env:
     def reset(self, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
         del options
         self.last_seed = seed
+        self.snapshot = deepcopy(self._initial_snapshot)
+        self.action_space = ActionSpace.from_snapshot(self.snapshot)
         return self._observe(self.snapshot), {"seed": seed, "valid_action_mask": self.action_masks()}
 
     def step(self, action: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
