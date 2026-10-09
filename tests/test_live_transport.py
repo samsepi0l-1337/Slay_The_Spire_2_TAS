@@ -123,7 +123,8 @@ def test_run_live_cli_over_tcp(tmp_path: Path, capsys) -> None:
     def serve() -> None:
         conn, _ = listener.accept()
         conn.sendall(payload.encode("utf-8"))
-        conn.settimeout(2)
+        # Match transport startup budget while Torch initializes the first policy.
+        conn.settimeout(30)
         try:
             received.append(json.loads(conn.recv(4096).decode("utf-8")))
         except OSError:

@@ -47,3 +47,8 @@ prevents placeholder player values from contributing rewards or TD updates.
 
 TCP accepts bracketed IPv6 endpoints such as `tcp:[::1]:9902`; brackets delimit
 the host in the endpoint and are removed before socket address resolution.
+
+The CLI loopback server allows 30 seconds for the first command, matching the
+transport connection budget. Cold Torch optimizer/policy startup can exceed the
+former 2-second receive timeout; command, screen, and thread-completion assertions
+remain unchanged. The separate stream-close test has no policy startup.
