@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import pickle
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +38,9 @@ class QStarPolicy:
         self.gamma = gamma
         self.alpha = alpha
         self.updates = updates
-        self.model = _QNetwork(FEATURE_DIM)
+        with torch.random.fork_rng(devices=[]):
+            torch.random.default_generator.manual_seed(0)
+            self.model = _QNetwork(FEATURE_DIM)
         self._optimizer = torch.optim.SGD(self.model.parameters(), lr=alpha)
 
     @classmethod
@@ -52,6 +53,11 @@ class QStarPolicy:
             alpha=float(artifact.get("alpha", DEFAULT_ALPHA)),
             updates=int(artifact.get("updates", 0)),
         )
+        if any(artifact.get(key, expected) != expected for key, expected in (
+            ("feature_dim", FEATURE_DIM), ("feature_version", FEATURE_VERSION), ("hidden_size", HIDDEN_SIZE)
+        )):
+            policy.updates = 0
+            return policy
         state = {
             key: value if isinstance(value, torch.Tensor) else torch.tensor(value, dtype=torch.float32)
             for key, value in artifact["model_state"].items()
@@ -59,8 +65,7 @@ class QStarPolicy:
         try:
             policy.model.load_state_dict(state)
         except RuntimeError:
-            policy.updates = 0
-        policy._optimizer = torch.optim.SGD(policy.model.parameters(), lr=policy.alpha)
+            return cls(gamma=policy.gamma, alpha=policy.alpha)
         return policy
 
     @classmethod
@@ -186,7 +191,6 @@ def _feature_tensor(snapshot: TelemetrySnapshot, action: MacroAction) -> torch.T
 
 
 def _read_artifact(path: Path) -> dict[str, Any]:
-    try:
-        return torch.load(path, weights_only=False)
-    except (OSError, RuntimeError, ValueError, pickle.UnpicklingError):
-        return json.loads(path.read_text())
+    return json.loads(path.read_text()) if path.suffix == ".json" else torch.load(
+        path, weights_only=True, map_location="cpu"
+    )

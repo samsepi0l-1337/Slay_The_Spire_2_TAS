@@ -247,7 +247,7 @@ def test_run_qstar_stops_at_max_steps_and_skips_terminal_snapshots(tmp_path: Pat
     assert empty["updates"] == 0
 
 
-def test_run_qstar_cli_updates_weights_and_honors_execute(tmp_path: Path, capsys) -> None:
+def test_run_qstar_cli_updates_weights_with_dry_run_plans(tmp_path: Path, capsys) -> None:
     model = tmp_path / "qstar.json"
     output = tmp_path / "run.jsonl"
 
@@ -267,7 +267,6 @@ def test_run_qstar_cli_updates_weights_and_honors_execute(tmp_path: Path, capsys
                 "1",
                 "--max-steps",
                 "8",
-                "--execute",
             ]
         )
         == 0
@@ -280,3 +279,30 @@ def test_run_qstar_cli_updates_weights_and_honors_execute(tmp_path: Path, capsys
     assert result["updates"] == result["transitions"]
     assert result["plans"] == result["transitions"]
     assert json.loads(model.read_text())["updates"] == result["updates"]
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_run_qstar_logs_and_saves_only_after_executor_returns(tmp_path: Path, monkeypatch, fails: bool) -> None:
+    executor = MacroExecutor("Slay the Spire 2", execute_enabled=True)
+    calls = []
+
+    def execute(self: MacroExecutor, action: MacroAction) -> None:
+        calls.append(action)
+        if fails:
+            raise NotImplementedError("native input backend is not implemented")
+
+    monkeypatch.setattr(MacroExecutor, "execute", execute)
+    model = tmp_path / "model.pt"
+    output = tmp_path / "run.jsonl"
+    if fails:
+        with pytest.raises(NotImplementedError, match="native input backend"):
+            run_qstar(load_snapshot(), model, output, executor=executor)
+        assert not model.exists()
+        assert not output.exists()
+    else:
+        result = run_qstar(load_snapshot(), model, output, executor=executor)
+        assert result["plans"] == result["transitions"] == len(calls)
+        assert model.exists()
+        assert len(output.read_text().splitlines()) == len(calls)
+
+    assert calls

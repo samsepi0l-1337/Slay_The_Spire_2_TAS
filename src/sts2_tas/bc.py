@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import pickle
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,10 +23,9 @@ class BehavioralCloningPolicy:
 
     @classmethod
     def load(cls, path: Path) -> "BehavioralCloningPolicy":
-        try:
-            artifact = torch.load(path, weights_only=False)
-        except (OSError, RuntimeError, ValueError, pickle.UnpicklingError):
-            artifact = json.loads(path.read_text())
+        artifact = json.loads(path.read_text()) if path.suffix == ".json" else torch.load(
+            path, weights_only=True, map_location="cpu"
+        )
         model_state = {
             key: value if isinstance(value, torch.Tensor) else torch.tensor(value, dtype=torch.float32)
             for key, value in artifact.get("model_state", {}).items()
@@ -64,16 +62,17 @@ class BehavioralCloningPolicy:
         return action if action in valid_actions else valid_actions[0]
 
     def _score(self, state: dict[str, Any], action: MacroAction) -> float:
-        model = _TorchScorer(len(_feature_vector(state, action, self.feature_schema)))
-        model.load_state_dict(self.model_state)
-        model.eval()
         with torch.no_grad():
             features = torch.tensor(_feature_vector(state, action, self.feature_schema), dtype=torch.float32)
-            return float(model(features).item())
+            return float(torch.nn.functional.linear(
+                features, self.model_state["linear.weight"], self.model_state["linear.bias"]
+            ).item())
 
 
 def train_behavioral_cloning(dataset: Path, model: Path) -> BehavioralCloningPolicy:
     samples = _read_jsonl(dataset)
+    if not samples:
+        raise ValueError("no actionable demonstrations")
     feature_schema = _build_feature_schema(samples)
     model_state = _train_torch_scorer(samples, feature_schema)
     votes: dict[str, Counter[str]] = {}
@@ -96,8 +95,6 @@ def evaluate_behavioral_cloning(dataset: Path, model: Path) -> dict[str, float |
     correct = 0
     for sample in _read_jsonl(dataset):
         valid = [MacroAction.from_dict(action) for action in sample["valid_actions"]]
-        if not valid:
-            continue
         predicted = policy.predict(sample["state"], valid)
         correct += int(predicted == MacroAction.from_dict(sample["chosen_action"]))
         total += 1
@@ -106,7 +103,26 @@ def evaluate_behavioral_cloning(dataset: Path, model: Path) -> dict[str, float |
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    samples = []
+    for number, line in enumerate(path.read_text().splitlines(), 1):
+        if not line.strip():
+            continue
+        sample = json.loads(line)
+        if not isinstance(sample, dict) or not isinstance(sample.get("state"), dict):
+            raise ValueError(f"line {number}: state must be an object")
+        encoded_actions = sample.get("valid_actions")
+        if not isinstance(encoded_actions, list):
+            raise ValueError(f"line {number}: valid_actions must be a list")
+        if not encoded_actions:
+            if sample["state"].get("phase") == "terminal":
+                continue
+            raise ValueError(f"line {number}: empty legal actions")
+        valid = [MacroAction.from_dict(action) for action in encoded_actions]
+        chosen = MacroAction.from_dict(sample["chosen_action"])
+        if chosen not in valid:
+            raise ValueError(f"line {number}: chosen action is not legal")
+        samples.append(sample)
+    return samples
 
 
 class _TorchScorer(torch.nn.Module):
@@ -175,9 +191,10 @@ def _action_features(action: MacroAction, schema: dict[str, Any]) -> list[float]
 
 
 def _train_torch_scorer(samples: list[dict[str, Any]], schema: dict[str, Any]) -> dict[str, torch.Tensor]:
-    torch.manual_seed(0)
     input_size = len(_feature_vector(samples[0]["state"], MacroAction.from_dict(samples[0]["valid_actions"][0]), schema))
-    model = _TorchScorer(input_size)
+    with torch.random.fork_rng(devices=[]):
+        torch.random.default_generator.manual_seed(0)
+        model = _TorchScorer(input_size)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.05)
     for _ in range(300):
         for sample in samples:
