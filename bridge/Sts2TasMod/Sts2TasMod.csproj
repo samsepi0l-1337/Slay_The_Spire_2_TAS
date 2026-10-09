@@ -27,9 +27,14 @@
   <ItemGroup>
     <None Include="Sts2TasMod.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-  <Target Name="DeployMod" AfterTargets="Build" Condition="Exists('$(STS2GameDir)')">
+  <Target Name="DeployMod" AfterTargets="Build" Condition="'$(DeployMod)' == 'true' AND Exists('$(STS2GameDir)')">
     <MakeDir Directories="$(STS2GameDir)/mods/Sts2TasMod" />
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(STS2GameDir)/mods/Sts2TasMod" />
     <Copy SourceFiles="$(ProjectDir)Sts2TasMod.json" DestinationFolder="$(STS2GameDir)/mods/Sts2TasMod" />
   </Target>
+  <ItemGroup>
+    <Compile Include="../Common/MacroCommand.cs" Link="MacroCommand.cs" />
+    <Compile Include="../Common/EventChoices.cs" Link="EventChoices.cs" />
+    <Compile Include="../Common/RunIdentity.cs" Link="RunIdentity.cs" />
+  </ItemGroup>
 </Project>

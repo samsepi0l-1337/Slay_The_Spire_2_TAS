@@ -12,7 +12,7 @@ $env:PYTHONPATH = "src"
 $env:STS2_GAME_DIR = $GameDir
 
 Write-Output "Building Harmony telemetry mod and fixture bridge"
-dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release
+dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release -p:DeployMod=true
 if ($LASTEXITCODE -ne 0) { throw "mod build failed" }
 dotnet build "bridge\Sts2TelemetryBridge\Sts2TelemetryBridge.csproj" -c Release
 if ($LASTEXITCODE -ne 0) { throw "bridge build failed" }
@@ -27,13 +27,14 @@ Start-Sleep -Seconds 3
 try {
     New-Item -ItemType Directory -Force -Path "models" | Out-Null
     Write-Output "Running Q* live loop"
-    uv run --extra dev sts2-tas run-live `
+    uv run --locked --extra dev sts2-tas run-live `
         --transport tcp:127.0.0.1:28771 `
         --model models\qstar-live.json `
         --output models\qstar-live.jsonl `
         --search-depth 1 `
         --max-steps 8 `
         --execute
+    if ($LASTEXITCODE -ne 0) { throw "uv command failed: $LASTEXITCODE" }
 }
 finally {
     if (-not $serve.HasExited) {

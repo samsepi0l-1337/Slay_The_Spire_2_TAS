@@ -14,18 +14,18 @@ public static class ModEntry
 
     public static void Initialize()
     {
-        PipeHub.Start(PipeName);
-        GD.Print($"Sts2TasMod {ModVersion} pipe '{PipeName}' listening");
         try
         {
             PatchPoints.AssertPresent();
             var harmony = new Harmony(HarmonyId);
             harmony.PatchAll(Assembly.GetExecutingAssembly());
+            PipeHub.Start(PipeName);
+            GD.Print($"Sts2TasMod {ModVersion} pipe '{PipeName}' listening");
+            MainThread.Run(PipeHub.StartHeartbeat);
         }
         catch (Exception ex)
         {
             GD.PrintErr($"Sts2TasMod Harmony failed closed: {ex.Message}");
         }
-        MainThread.Run(PipeHub.StartHeartbeat);
     }
 }

@@ -16,12 +16,8 @@ if (Get-Process -Name "SlayTheSpire2" -ErrorAction SilentlyContinue) {
 }
 
 Write-Output "=== build and deploy Harmony mod ==="
-dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release
+dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release -p:DeployMod=true
 if ($LASTEXITCODE -ne 0) { throw "mod build failed" }
-$gameMods = "C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2\mods\Sts2TasMod"
-New-Item -ItemType Directory -Force -Path $gameMods | Out-Null
-Copy-Item "bridge\Sts2TasMod\bin\Release\net9.0\Sts2TasMod.dll" $gameMods -Force
-Copy-Item "bridge\Sts2TasMod\Sts2TasMod.json" $gameMods -Force
 
 Get-Process -Name "SlayTheSpire2" -ErrorAction SilentlyContinue | Stop-Process -Force
 Start-Sleep -Seconds 2
@@ -29,7 +25,9 @@ $task = "STS2TasLaunch"
 $tr = "cmd.exe /c start steam://rungameid/2868840"
 Write-Output "=== launch STS2 via Steam on interactive console ==="
 schtasks /Create /TN $task /TR $tr /SC ONCE /ST 23:59 /F /IT | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "schtasks command failed: $LASTEXITCODE" }
 schtasks /Run /TN $task | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "schtasks command failed: $LASTEXITCODE" }
 
 $deadline = (Get-Date).AddMinutes(2)
 $proc = $null

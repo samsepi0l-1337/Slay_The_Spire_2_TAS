@@ -33,7 +33,10 @@ class TelemetryFrameReader:
             raise ValidationError(f"duplicate frame sequence: {sequence}")
         if self.last_sequence is not None and sequence < self.last_sequence:
             raise ValidationError(f"out of order frame sequence: {sequence}")
-        payload = TelemetrySnapshot.from_dict(frame.get("payload", {}))
+        payload_data = frame.get("payload", {})
+        if not isinstance(payload_data, dict):
+            raise ValidationError("frame payload must be an object")
+        payload = TelemetrySnapshot.from_dict(payload_data)
         self.last_sequence = sequence
         return TelemetryFrame(sequence, payload)
 

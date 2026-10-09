@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from sts2_tas.bc import evaluate_behavioral_cloning, train_behavioral_cloning
@@ -18,7 +19,14 @@ from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
-    result = args.func(args)
+    try:
+        result = args.func(args)
+    except (OSError, ValueError, NotImplementedError) as exc:
+        print(f"sts2-tas: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("sts2-tas: interrupted", file=sys.stderr)
+        return 130
     if result is not None:
         print(json.dumps(result, sort_keys=True))
     return 0
@@ -26,13 +34,23 @@ def main(argv: list[str] | None = None) -> int:
 
 def _bridge_smoke(args: argparse.Namespace) -> dict[str, int | str]:
     snapshot = _load_snapshot(args.fixture)
-    return {"phase": snapshot.phase, "valid_actions": len(snapshot.valid_actions), "schema_version": snapshot.schema_version}
+    return {
+        "phase": snapshot.phase,
+        "valid_actions": len(snapshot.valid_actions),
+        "schema_version": snapshot.schema_version,
+    }
 
 
 def _env_step(args: argparse.Namespace) -> dict[str, object]:
     env = Sts2Env(_load_snapshot(args.snapshot))
     observation, reward, terminated, truncated, info = env.step(args.action_index)
-    return {"observation": observation, "reward": reward, "terminated": terminated, "truncated": truncated, "info": info}
+    return {
+        "observation": observation,
+        "reward": reward,
+        "terminated": terminated,
+        "truncated": truncated,
+        "info": info,
+    }
 
 
 def _collect_demo(args: argparse.Namespace) -> dict[str, object]:
@@ -117,9 +135,11 @@ def _run_live(args: argparse.Namespace) -> dict[str, object]:
             command_cooldown_s=args.command_cooldown,
         )
     finally:
-        reader.close()
-        if writer is not reader:
-            writer.close()
+        try:
+            reader.close()
+        finally:
+            if writer is not reader:
+                writer.close()
 
 
 def _load_snapshot(path: Path) -> TelemetrySnapshot:
@@ -130,7 +150,9 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="sts2-tas")
     subcommands = parser.add_subparsers(required=True)
     _add_path_command(subcommands, "bridge-smoke", "fixture", _bridge_smoke)
-    _add_path_command(subcommands, "env-step", "snapshot", _env_step).add_argument("--action-index", type=int, required=True)
+    _add_path_command(subcommands, "env-step", "snapshot", _env_step).add_argument(
+        "--action-index", type=int, required=True
+    )
     collect = _add_path_command(subcommands, "collect-demo", "snapshot", _collect_demo)
     collect.add_argument("--output", type=Path, required=True)
     train_bc = subcommands.add_parser("train-bc")

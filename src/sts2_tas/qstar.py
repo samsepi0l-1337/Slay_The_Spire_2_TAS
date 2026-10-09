@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import pickle
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +38,9 @@ class QStarPolicy:
         self.gamma = gamma
         self.alpha = alpha
         self.updates = updates
-        self.model = _QNetwork(FEATURE_DIM)
+        with torch.random.fork_rng(devices=[]):
+            torch.random.default_generator.manual_seed(0)
+            self.model = _QNetwork(FEATURE_DIM)
         self._optimizer = torch.optim.SGD(self.model.parameters(), lr=alpha)
 
     @classmethod
@@ -52,15 +53,24 @@ class QStarPolicy:
             alpha=float(artifact.get("alpha", DEFAULT_ALPHA)),
             updates=int(artifact.get("updates", 0)),
         )
-        state = {
-            key: value if isinstance(value, torch.Tensor) else torch.tensor(value, dtype=torch.float32)
-            for key, value in artifact["model_state"].items()
-        }
-        try:
-            policy.model.load_state_dict(state)
-        except RuntimeError:
+        if any(
+            artifact.get(key, expected) != expected
+            for key, expected in (
+                ("feature_dim", FEATURE_DIM),
+                ("feature_version", FEATURE_VERSION),
+                ("hidden_size", HIDDEN_SIZE),
+            )
+        ):
             policy.updates = 0
-        policy._optimizer = torch.optim.SGD(policy.model.parameters(), lr=policy.alpha)
+            return policy
+        try:
+            state = {
+                key: value if isinstance(value, torch.Tensor) else torch.tensor(value, dtype=torch.float32)
+                for key, value in artifact["model_state"].items()
+            }
+            policy.model.load_state_dict(state)
+        except (KeyError, AttributeError, TypeError, ValueError, RuntimeError):
+            return cls(gamma=policy.gamma, alpha=policy.alpha)
         return policy
 
     @classmethod
@@ -80,7 +90,10 @@ class QStarPolicy:
             "model_state": self.model.state_dict(),
         }
         if path.suffix == ".json":
-            encoded = {**artifact, "model_state": {key: value.tolist() for key, value in artifact["model_state"].items()}}
+            encoded = {
+                **artifact,
+                "model_state": {key: value.tolist() for key, value in artifact["model_state"].items()},
+            }
             path.write_text(json.dumps(encoded, sort_keys=True))
             return
         torch.save(artifact, path)
@@ -107,7 +120,9 @@ class QStarPolicy:
         with torch.no_grad():
             target_value = reward
             if not terminated and next_snapshot.valid_actions:
-                target_value += self.gamma * max(self.q_value(next_snapshot, nxt) for nxt in next_snapshot.valid_actions)
+                target_value += self.gamma * max(
+                    self.q_value(next_snapshot, nxt) for nxt in next_snapshot.valid_actions
+                )
             target = torch.tensor(target_value, dtype=torch.float32)
         loss = torch.nn.functional.mse_loss(predicted, target)
         self._optimizer.zero_grad()
@@ -186,7 +201,8 @@ def _feature_tensor(snapshot: TelemetrySnapshot, action: MacroAction) -> torch.T
 
 
 def _read_artifact(path: Path) -> dict[str, Any]:
-    try:
-        return torch.load(path, weights_only=False)
-    except (OSError, RuntimeError, ValueError, pickle.UnpicklingError):
-        return json.loads(path.read_text())
+    return (
+        json.loads(path.read_text())
+        if path.suffix == ".json"
+        else torch.load(path, weights_only=True, map_location="cpu")
+    )

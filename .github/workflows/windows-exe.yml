@@ -7,7 +7,7 @@ on:
       - ".github/workflows/windows-exe.yml"
       - "pyproject.toml"
       - "uv.lock"
-      - "scripts/build-windows-exe.ps1"
+      - "scripts/**"
       - "data/fixtures/**"
       - "tests/**"
       - "config/**"
@@ -38,7 +38,9 @@ jobs:
 
       - name: Smoke executable
         shell: pwsh
-        run: ./dist/sts2-tas.exe --help
+        run: |
+          ./dist/sts2-tas.exe --help
+          if ($LASTEXITCODE -ne 0) { throw "executable help failed: $LASTEXITCODE" }
 
       - name: Smoke PyTorch train in frozen exe
         shell: pwsh
@@ -47,17 +49,20 @@ jobs:
           ./dist/sts2-tas.exe train-bc `
             --dataset data/fixtures/ml-train-smoke.jsonl `
             --model $model
+          if ($LASTEXITCODE -ne 0) { throw "train-bc failed: $LASTEXITCODE" }
           if (-not (Test-Path $model)) { throw "train-bc did not write model: $model" }
 
       - name: Smoke fixture bridge contract in frozen exe
         shell: pwsh
         run: |
           ./dist/sts2-tas.exe bridge-smoke --fixture data/fixtures/telemetry-combat.json
+          if ($LASTEXITCODE -ne 0) { throw "bridge-smoke failed: $LASTEXITCODE" }
 
       - name: Smoke dry-run action planner in frozen exe
         shell: pwsh
         run: |
           ./dist/sts2-tas.exe act --action-json '{"action_type":"end_turn","args":{}}'
+          if ($LASTEXITCODE -ne 0) { throw "action planner failed: $LASTEXITCODE" }
 
       - name: Smoke Q-star play loop in frozen exe
         shell: pwsh
@@ -70,6 +75,7 @@ jobs:
             --output $output `
             --episodes 1 `
             --search-depth 1
+          if ($LASTEXITCODE -ne 0) { throw "run-qstar failed: $LASTEXITCODE" }
           if (-not (Test-Path $model)) { throw "run-qstar did not write model: $model" }
 
       - name: Upload executable

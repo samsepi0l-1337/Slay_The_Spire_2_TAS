@@ -15,7 +15,7 @@
 - [x] Implement action mask flatten/unflatten in `action_space.py`.
 - [x] Implement macro executor with dry-run output, target-window guard, and `--execute` gate.
 - [x] Add bridge fixture tests for valid, corrupt, duplicate, out-of-order, and reconnecting stream frames.
-- Add dependencies in one lockfile pass: `gymnasium`, `stable-baselines3`, `sb3-contrib`, `pydantic`, `pandas`, `pyautogui`, `pynput`, `mss`, `opencv-python`, and `mlflow`.
+- Add dependencies only when a concrete implementation needs them: `gymnasium`, `stable-baselines3`, `sb3-contrib`, `pydantic`, `pandas`, `pyautogui`, `pynput`, `mss`, `opencv-python`, and `mlflow`.
 
 ## P2: Bridge And Public CLI
 
@@ -47,3 +47,11 @@
 ## Acceptance Boundary
 
 Do not claim live game automation works until a Windows local session proves bridge attach, target process detection, valid action masks, dry-run plan, and `--execute` input acknowledgement against the actual game. Unit tests and bridge fixtures prove contracts, not live gameplay success.
+
+## Reproducible checks
+
+- [x] Pinned Ruff lint/format commands and Linux/Windows quality CI.
+- [x] Mandatory subprocess fixture pipeline and C# TCP producer E2E.
+- [x] Explicit PowerShell native exit checks in build/CI commands.
+
+See [quality checks](quality-checks.md). Live-game verification remains a separate acceptance gate.

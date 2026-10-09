@@ -19,10 +19,14 @@ public static class PatchPoints
 
     internal static IEnumerable<KeyValuePair<string, string>> RequiredSymbols()
     {
+        yield return new("mod_initializer", "MegaCrit.Sts2.Core.Modding.ModInitializerAttribute");
+        yield return new("combat_state", "MegaCrit.Sts2.Core.Combat.CombatState");
         yield return new("combat_manager", "MegaCrit.Sts2.Core.Combat.CombatManager");
         yield return new("combat_state_tracker", "MegaCrit.Sts2.Core.Combat.CombatStateTracker");
+        yield return new("notify_combat_state_changed", "MegaCrit.Sts2.Core.Combat.CombatStateTracker.NotifyCombatStateChanged");
         yield return new("play_card_action", "MegaCrit.Sts2.Core.GameActions.PlayCardAction");
-        yield return new("player_cmd", "MegaCrit.Sts2.Core.Commands.PlayerCmd");
+        yield return new("player_cmd_end_turn", "MegaCrit.Sts2.Core.Commands.PlayerCmd.EndTurn");
+        yield return new("action_queue_synchronizer", "MegaCrit.Sts2.Core.GameActions.Multiplayer.ActionQueueSynchronizer.RequestEnqueue");
         yield return new("run_manager", "MegaCrit.Sts2.Core.Runs.RunManager");
     }
 
@@ -45,7 +49,7 @@ public static class PatchPoints
         {
             return true;
         }
-        return type.GetMember(method, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static).Length > 0;
+        return type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static).Any(candidate => candidate.Name == method);
     }
 
     public static string Describe()

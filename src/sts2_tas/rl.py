@@ -13,7 +13,7 @@ def train_maskable_ppo_smoke(dataset: Path, model: Path, timesteps: int) -> dict
     if model.suffix == ".json":
         payload = json.loads(model.read_text())
     else:
-        payload = torch.load(model, weights_only=False)
+        payload = torch.load(model, weights_only=True, map_location="cpu")
     payload["algorithm"] = "maskable-ppo-smoke"
     payload["timesteps"] = timesteps
     payload["policy_states"] = len(policy.table)
