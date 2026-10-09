@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../Common/EventChoices.cs" Link="EventChoices.cs" />
+    <Compile Include="../../Common/RunIdentity.cs" Link="RunIdentity.cs" />
   </ItemGroup>
 </Project>
