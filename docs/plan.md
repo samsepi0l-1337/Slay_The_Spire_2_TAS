@@ -62,7 +62,7 @@ Retired public commands: `tas-probe`, `tas-record`, `tas-replay`, `tas-verify`, 
 
 ## Target Bridge
 
-- `bridge/Sts2TelemetryBridge/` will contain the Godot 4 C#/.NET project.
+- `bridge/Sts2TelemetryBridge/` is the independent .NET fixture producer. `bridge/Sts2TasMod/` contains the Godot/Harmony mod; building the mod requires game assemblies.
 - `.sln` and `.csproj` should be version-controlled with the bridge.
 - Harmony bootstrap should load versioned patch points from `config/patch-points.<game_version>.json`.
 - Default transport should be Windows named pipe; WebSocket is optional for tooling.
@@ -112,7 +112,9 @@ These checks are valid now:
 ```bash
 uv lock --check
 git diff --check
-PYTHONPATH=src uv run --extra dev pytest --cov=sts2_tas --cov-fail-under=100
+uv run --locked --extra dev ruff check src tests scripts
+uv run --locked --extra dev ruff format --check src tests scripts
+uv run --locked --extra dev pytest --cov=sts2_tas --cov-fail-under=100
 ```
 
 Windows bridge smoke is required when the live bridge exists: build the C# bridge, run fake telemetry producer, run Python `bridge-smoke`. Real game smoke is required before claiming live automation works.
@@ -124,3 +126,5 @@ Windows bridge smoke is required when the live bridge exists: build the C# bridg
 - [Stable-Baselines3 install docs](https://stable-baselines3.readthedocs.io/en/master/guide/install.html)
 - [MaskablePPO docs](https://sb3-contrib.readthedocs.io/en/master/modules/ppo_mask.html)
 - [Godot C# docs](https://docs.godotengine.org/en/4.5/tutorials/scripting/c_sharp/c_sharp_basics.html)
+
+See [quality checks](quality-checks.md). Fixture E2E requires the .NET 8 SDK. Mod source exists, but fixture verification does not establish current live-game attach or command application.

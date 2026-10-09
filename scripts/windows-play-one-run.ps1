@@ -6,11 +6,17 @@ Set-Location $Repo
 $env:PYTHONPATH = "src"
 
 Write-Output "=== pull main ==="
-if (Test-Path ".git") {
-    git fetch origin main
-    git checkout -f -B main origin/main
-}
+if (-not (Test-Path ".git")) { throw "expected an existing repository" }
+$dirty = git status --porcelain
+if ($LASTEXITCODE -ne 0) { throw "git status failed: $LASTEXITCODE" }
+if ($dirty) { throw "working tree has local changes; update it manually" }
+$branch = git branch --show-current
+if ($LASTEXITCODE -ne 0) { throw "branch check failed: $LASTEXITCODE" }
+if ($branch -ne "main") { throw "expected main branch; refusing to switch branches" }
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "fast-forward update failed: $LASTEXITCODE" }
 git log -1 --oneline
+if ($LASTEXITCODE -ne 0) { throw "git command failed: $LASTEXITCODE" }
 
 Write-Output "=== stop previous TAS and STS2 ==="
 Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
@@ -20,32 +26,16 @@ cmd /c "taskkill /F /IM SlayTheSpire2.exe >nul 2>&1"
 Start-Sleep -Seconds 5
 
 Write-Output "=== build and deploy Harmony mod ==="
-dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release
+dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release -p:DeployMod=true
 if ($LASTEXITCODE -ne 0) { throw "mod build failed" }
-$gameMods = "C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2\mods\Sts2TasMod"
-New-Item -ItemType Directory -Force -Path $gameMods | Out-Null
-$dll = Join-Path $PWD "bridge\Sts2TasMod\bin\Release\net9.0\Sts2TasMod.dll"
-$cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq "CN=Sts2TasMod" } | Select-Object -First 1
-if (-not $cert) {
-    $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject "CN=Sts2TasMod" -CertStoreLocation Cert:\CurrentUser\My
-}
-$cer = Join-Path $env:TEMP "Sts2TasMod.cer"
-Export-Certificate -Cert $cert -FilePath $cer | Out-Null
-certutil -user -addstore TrustedPublisher $cer | Out-Null
-Copy-Item $dll $gameMods -Force
-Copy-Item "bridge\Sts2TasMod\Sts2TasMod.json" $gameMods -Force
-$destDll = Join-Path $gameMods "Sts2TasMod.dll"
-$signed = Set-AuthenticodeSignature -FilePath $destDll -Certificate $cert
-if ($signed.Status -notin @("Valid", "UnknownError")) {
-    throw ("Authenticode status=" + $signed.Status + " " + $signed.StatusMessage)
-}
-Unblock-File $destDll -ErrorAction SilentlyContinue
-Write-Output ("signed " + $signed.Status)
+# Deployment preserves existing trust; configure any required signing outside this script.
 
 $taskGame = "STS2TasLaunch"
 $trGame = "cmd.exe /c start steam://rungameid/2868840"
 schtasks /Create /TN $taskGame /TR $trGame /SC ONCE /ST 23:59 /F /IT | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "schtasks command failed: $LASTEXITCODE" }
 schtasks /Run /TN $taskGame | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "schtasks command failed: $LASTEXITCODE" }
 
 $deadline = (Get-Date).AddMinutes(2)
 $proc = $null
@@ -76,7 +66,9 @@ $taskTas = "STS2TasPlay"
 $trTas = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$runlive`""
 Write-Output "=== start TAS in console session ==="
 schtasks /Create /TN $taskTas /TR $trTas /SC ONCE /ST 23:59 /F /IT | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "schtasks command failed: $LASTEXITCODE" }
 schtasks /Run /TN $taskTas | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "schtasks command failed: $LASTEXITCODE" }
 $log = Join-Path $Repo "models\play-one-run.log"
 $err = Join-Path $Repo "models\play-one-run.err"
 $tasDeadline = (Get-Date).AddSeconds(20)

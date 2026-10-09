@@ -35,7 +35,9 @@ Current checks:
 ```bash
 uv lock --check
 git diff --check
-PYTHONPATH=src uv run --extra dev pytest --cov=sts2_tas --cov-fail-under=100
+uv run --locked --extra dev ruff check src tests scripts
+uv run --locked --extra dev ruff format --check src tests scripts
+uv run --locked --extra dev pytest --cov=sts2_tas --cov-fail-under=100
 ```
 
 ## Runtime Boundary
@@ -54,3 +56,5 @@ Keep generated artifacts outside the image:
 - `data/*.png`
 - `models/*`
 - `mlruns/`
+
+See [quality checks](quality-checks.md). Fixture E2E requires the .NET 8 SDK. Mod source exists, but fixture verification does not establish current live-game attach or command application.

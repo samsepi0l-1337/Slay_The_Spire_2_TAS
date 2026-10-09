@@ -9,14 +9,15 @@ The current checkout has the first runnable fixture-based automation and learnin
 Present files:
 
 - `src/sts2_tas/`: telemetry schema/client, Gymnasium-style env adapter, action masks, dry-run executor, heuristic policy, torch BC/PPO-smoke training, Q* play with online weight updates, dataset logging, and CLI.
-- `tests/`: regression tests for schema, action space, env, executor, heuristic, dataset, ML, and CLI.
+- `tests/`: unit and subprocess fixture E2E tests for schema, action space, env, executor, heuristic, dataset, ML, and CLI.
 - `data/fixtures/`: fixture telemetry and ML smoke records.
-- `bridge/Sts2TelemetryBridge/`: minimal .NET bridge project skeleton for fixture smoke.
+- `bridge/Sts2TelemetryBridge/`: .NET fixture smoke/TCP producer; `bridge/Sts2TasMod/` contains the Godot/Harmony mod source.
 - `config/`: versioned patch-point fixture config.
 - `docs/`: architecture, rewrite plan, roadmap, Docker boundary, and implementation checklist.
 - `pyproject.toml`: package metadata, Python `>=3.14`, CLI entry point, and coverage settings.
 - `.python-version`: pinned to `3.14.5`.
 - `Dockerfile`: Python CLI image.
+- `.github/workflows/quality.yml`: Linux/Windows lint, formatting, 100% coverage and C#-to-Python fixture E2E.
 - `.github/workflows/windows-exe.yml`: Windows executable workflow for the new CLI smoke surface.
 
 The implementation is fixture/local research only. It does not claim live gameplay automation until a Windows local session proves bridge attach, target process detection, valid action masks, dry-run plan, and `--execute` acknowledgement against the actual game.
@@ -61,10 +62,16 @@ Current verification:
 ```bash
 uv lock --check
 git diff --check
-PYTHONPATH=src uv run --extra dev pytest --cov=sts2_tas --cov-fail-under=100
+uv run --locked --extra dev ruff check src tests scripts
+uv run --locked --extra dev ruff format --check src tests scripts
+uv run --locked --extra dev pytest --cov=sts2_tas --cov-fail-under=100
 ```
 
+Expected input/transport errors print to stderr and return exit code `1`; interrupted runs return `130`. Argument syntax errors return `2`. Native `act --execute` / `run-qstar --execute` require an implemented input backend and fail closed when unavailable. `run-live --execute` sends structured commands through the bridge transport; sending a command alone does not prove game application.
+
 ## Docs
+
+- [docs/quality-checks.md](docs/quality-checks.md)
 
 - [docs/README.md](docs/README.md)
 - [docs/architecture.md](docs/architecture.md)

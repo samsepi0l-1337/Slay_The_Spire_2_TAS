@@ -2,7 +2,7 @@
 
 ## Current State
 
-This repository now contains the first fixture-based runtime source tree, tests, bridge project skeleton, build script, patch-point config, and telemetry fixtures.
+This repository now contains the first fixture-based runtime source tree, tests, fixture bridge and live mod source, build script, patch-point config, and telemetry fixtures.
 
 Implemented or present:
 
@@ -20,11 +20,13 @@ Implemented or present:
 - [x] `config/patch-points.0.1-test.json`
 - [x] `data/fixtures/`
 
-Not present:
+Present source, requiring live-session verification:
 
-- [x] live Godot/Harmony attach against the actual game process
-- [x] production named-pipe transport
-- [x] real Windows `--execute` acknowledgement against Slay the Spire 2
+- [x] Godot/Harmony mod attach implementation (`bridge/Sts2TasMod`).
+- [x] named-pipe `sts2-tas` transport implementation.
+- [ ] Current Windows game-process attach and valid live action masks independently verified.
+- [ ] Real game command application independently verified; fixture commands are transport evidence only.
+- [ ] Python native input backend; enabled calls fail closed instead of acknowledging unperformed input.
 
 ## Target Public Commands
 
@@ -81,6 +83,7 @@ Currently declared dev/build dependencies:
 
 - [x] `pytest`
 - [x] `pytest-cov`
+- [x] `ruff` (pinned dev dependency)
 - [x] `pyinstaller`
 
 Target dependencies not yet declared:
@@ -110,3 +113,14 @@ Target dependencies not yet declared:
 - [x] Environment steps persist the next snapshot before exposing the next mask.
 - [x] Demo JSONL records include BC-compatible `state`, `valid_actions`, and `chosen_action` aliases while preserving audit fields.
 - [x] Runtime logs include enough state/action/reward context for audit and replay of decisions.
+
+## Quality verification
+
+- [x] CLI expected errors use stderr/nonzero exit; interrupt returns `130`.
+- [x] Live CLI closes both handles even if reader cleanup fails, without double-closing a shared pipe.
+- [x] Subprocess E2E covers fixture collection, BC training/evaluation and Q* persisted output.
+- [x] C# fixture producer is built and consumed by a real Python live CLI subprocess in pytest.
+- [x] Linux/Windows CI enforces lint, format and Python 100% coverage.
+- [x] PowerShell build/CI native commands explicitly check `$LASTEXITCODE`.
+
+See [quality checks](quality-checks.md) for commands and scope.
