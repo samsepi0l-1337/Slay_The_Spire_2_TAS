@@ -48,3 +48,11 @@ After the core, ML, live and producer follow-ups were combined:
 - `uv lock --check`, `git diff --check` and a source/test/script line-count inspection passed; all Python/C#/PowerShell files are at most 400 lines, excluding generated build files.
 - Python runtime formatting preserved the parsed AST. Windows PowerShell parsing is wired into CI but was not executed locally because `pwsh` is unavailable. Windows SSH and actual game validation remain separate coordinator checks.
 - `docker info` failed because `/Users/samsepiol/.docker/run/docker.sock` was absent; no image-build success is claimed.
+
+## Dependency security follow-up (2026-10-09)
+
+Unused Pillow and macOS Quartz runtime dependencies were removed after checking `src`, tests, scripts, bridge code and the Windows PyInstaller build entry point. The installed Torch PyInstaller hook has no hard Pillow/Quartz imports; this inspection does not claim a frozen Windows build.
+
+The Torch minimum is now `2.13.0`, and the lockfile uses Torch `2.13.0` plus setuptools `83.0.0`, the supplied security-alert patch boundaries. `uv lock --upgrade-package 'torch==2.13.0' --upgrade-package 'setuptools==83.0.0'` resolved successfully. CUDA/triton transitive changes are required by Torch's declared Linux dependencies; attempting the old CUDA toolkit or cusparselt versions failed resolution with incompatible exact requirements. Unrelated package versions remain unchanged.
+
+`uv sync --locked --extra dev --extra build` installed these versions and removed Pillow/Quartz. The full suite then produced `173 passed, 16 subtests passed in 21.88s`, with 100.00% coverage (1192 statements, zero missed). Lock, Ruff lint/format and diff checks passed. Closure of remote Dependabot alerts must be confirmed after the updated branch is published; this local result does not claim remote alert closure.

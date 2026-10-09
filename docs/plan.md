@@ -75,8 +75,8 @@ Current declared runtime dependencies:
 
 - `numpy`
 - `torch`
-- `pillow`
-- `pyobjc-framework-quartz` on macOS only
+
+Unused OCR-era Pillow and macOS Quartz dependencies are removed; the structured telemetry runtime does not import them.
 
 Target additions:
 

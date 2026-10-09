@@ -75,9 +75,7 @@ Present source, requiring live-session verification:
 Currently declared runtime dependencies:
 
 - [x] `numpy`
-- [x] `pillow`
 - [x] `torch`
-- [x] `pyobjc-framework-quartz` on macOS only
 
 Currently declared dev/build dependencies:
 
@@ -85,6 +83,8 @@ Currently declared dev/build dependencies:
 - [x] `pytest-cov`
 - [x] `ruff` (pinned dev dependency)
 - [x] `pyinstaller`
+
+Unused OCR-era Pillow and macOS Quartz dependencies are removed; the structured telemetry runtime does not import them.
 
 Target dependencies not yet declared:
 
