@@ -164,7 +164,7 @@ class Sts2Env:
 
     @staticmethod
     def _is_targeted(card: dict[str, Any]) -> bool:
-        return card.get("type") == "attack" or "damage" in card
+        return card.get("type") == "attack" or int(card.get("damage", 0)) > 0
 
     @staticmethod
     def _observe(snapshot: TelemetrySnapshot) -> dict[str, Any]:

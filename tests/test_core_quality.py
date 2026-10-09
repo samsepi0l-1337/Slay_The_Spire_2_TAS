@@ -73,7 +73,7 @@ def test_snapshot_rejects_invalid_action_objects(action):
         TelemetrySnapshot.from_dict(data)
 
 
-@pytest.mark.parametrize("timestamp", [True, "bad", float("nan"), float("inf"), None])
+@pytest.mark.parametrize("timestamp", [True, "bad", float("nan"), float("inf"), None, 10**400])
 def test_snapshot_rejects_non_finite_or_non_numeric_timestamps(timestamp):
     data = snapshot_data()
     data["timestamp"] = timestamp
@@ -113,3 +113,18 @@ def test_env_captures_actions_independently_from_input_snapshot():
     snapshot.valid_actions[0].args["hand_slot"] = 99
     assert env.action_space.actions[0].args["hand_slot"] == 0
     assert env.step(0)[2] is True
+
+
+def test_env_rebuild_preserves_zero_damage_card_target_semantics():
+    data = snapshot_data()
+    data["enemies"][0]["hp"] = 20
+    data["hand"][0]["damage"] = 0
+    data["hand"][1]["damage"] = 0
+    env = Sts2Env(TelemetrySnapshot.from_dict(data))
+    env.step(2)
+    assert env.snapshot.valid_actions == [
+        MacroAction("play_card", {"hand_slot": 0, "target_slot": 0}),
+        MacroAction("play_card", {"hand_slot": 1}),
+        MacroAction("end_turn", {}),
+    ]
+    assert Sts2Env._is_targeted({"damage": 6}) is True

@@ -20,7 +20,10 @@ integer slots and snapshot choice bounds remain enforced.
 
 Action indices accept integer policy outputs, including NumPy integers, while
 rejecting booleans, floating-point values and nonnumeric objects before state
-mutation.
+mutation. Combat masks keep zero-damage skills untargeted even when the bridge
+always emits a `damage` field, while zero-damage attacks remain targeted.
+Oversized numeric timestamps that cannot convert to a finite float are rejected
+with `ValidationError`, preserving corrupt-frame handling.
 
 ## Execution boundary
 
@@ -37,7 +40,9 @@ this correction does not remove its command sender.
 - Independent environment action capture before correction: 1 failed, 28 passed.
 - Targeted tests cover source/export isolation, episode reset, integer indices,
   malformed objects and timestamps, argument shape and the execution gate.
-- Final core runtime/schema/quality checks: 50 passed.
+- Initial core runtime/schema/quality checks: 50 passed.
+- Zero-damage targeting and oversized timestamp regression: 2 failed before
+  correction; final focused core checks: 52 passed.
 - Full suite before caller integration: 93 passed, 1 expected Q* execute
   regression failure; all core modules had 100% statement coverage. The one
   uncovered statement was the Q* return after the unavailable execute backend.

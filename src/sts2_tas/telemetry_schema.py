@@ -176,7 +176,13 @@ class TelemetrySnapshot:
         if not isinstance(extras, dict):
             raise ValidationError("extras must be an object")
         timestamp = _require(data, "timestamp")
-        if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)) or not math.isfinite(timestamp):
+        if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
+            raise ValidationError("timestamp must be a finite number")
+        try:
+            timestamp = float(timestamp)
+        except OverflowError as exc:
+            raise ValidationError("timestamp must be a finite number") from exc
+        if not math.isfinite(timestamp):
             raise ValidationError("timestamp must be a finite number")
         if extras.get("loading") or str(data.get("screen_id", "")) == "loading":
             phase = "menu"
