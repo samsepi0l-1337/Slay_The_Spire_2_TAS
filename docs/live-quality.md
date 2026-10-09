@@ -1,0 +1,37 @@
+# Live transition and transport quality
+
+`run-live` keeps one pending action and consumes it once on the next non-loading
+snapshot. Loading/menu frames report waiting status without becoming a learning
+transition. Frames suppressed by command cooldown cannot reuse a consumed action.
+A terminal/victory frame ends the run even when no action is pending; `until_clear`
+continues through early terminal frames until victory or the positive step limit.
+
+The send callback receives `(action, expected_screen_id)` from the current
+snapshot. `command_sender` serializes that exact screen in `MacroActionCommand`;
+native command sending remains gated by `--execute`. This does not establish an
+execution acknowledgement: a subsequent telemetry frame is still the observable
+transition boundary.
+
+Status output creates its parent directory, and learned weights are saved when
+the input stream ends, including between the 25-transition batched saves used by
+`until_clear`. Victory flags recognize the explicit true values `true`, `1`,
+`"true"`, and `"1"`; malformed flags and `"false"` cannot claim completion.
+
+The frame reader rejects a non-object payload with `ValidationError` before
+advancing its sequence. `frame_stream` skips such corrupt frames and accepts the
+next valid frame. TCP connection setup releases its original socket owner after
+creating reader/writer streams, and closes a partial reader on setup failure.
+Closing both returned streams therefore closes the connection.
+
+Regression checks cover cooldown credit, loading-to-terminal credit, EOF weight
+persistence, nested status paths, positive step limits, exact screen commands,
+malformed victory flags/payloads, partial TCP setup, and a real loopback TCP EOF.
+The CLI loopback test checks the serialized screen contract with no game input.
+Windows/game execution remains a separate integration check.
+
+Combat rewards compare enemy HP only for matching enemy ids/slots in the same
+seed, act, floor, and combat screen (or its terminal frame). Spawned or missing
+enemies are not observed damage; menu placeholders are not HP observations.
+Player HP deltas remain meaningful across real combat boundaries. The reached-act-3
+flag alone cannot prove victory, and a low-HP combat with only an
+HP-cost card chooses legal `end_turn` instead.

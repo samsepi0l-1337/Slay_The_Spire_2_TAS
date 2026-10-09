@@ -40,9 +40,11 @@ def pick_action(snapshot: TelemetrySnapshot, policy: QStarPolicy, search_depth: 
     if snapshot.phase == "combat":
         plays = [action for action in snapshot.valid_actions if action.action_type == "play_card"]
         if int(snapshot.player.get("hp", 0)) <= 20:
-            safe = [action for action in plays if not _costs_hp(snapshot, action)]
-            if safe:
-                plays = safe
+            plays = [action for action in plays if not _costs_hp(snapshot, action)]
+            if not plays:
+                end_turn = next((action for action in snapshot.valid_actions if action.action_type == "end_turn"), None)
+                if end_turn is not None:
+                    return end_turn
         if plays:
             return max(plays, key=lambda action: (policy.qstar(snapshot, action, search_depth), _card_score(snapshot, action)))
     return policy.select(snapshot, search_depth)
@@ -62,24 +64,35 @@ def _card_score(snapshot: TelemetrySnapshot, action: MacroAction) -> tuple[int, 
 
 def is_cleared(snapshot: TelemetrySnapshot) -> bool:
     extras = snapshot.extras
-    if extras.get("act3_boss_cleared") in {True, 1, "1", "true"}:
+    if extras.get("act3_boss_cleared") in (True, 1, "1", "true"):
         return True
-    if extras.get("victory") in {True, 1, "1", "true"}:
+    if extras.get("victory") in (True, 1, "1", "true"):
         return True
-    return snapshot.act >= 3 and snapshot.phase == "terminal" and bool(extras.get("reached_act3"))
+    return False
 
 
 def reward_between(previous: TelemetrySnapshot, current: TelemetrySnapshot) -> tuple[float, bool]:
-    previous_hp = _enemy_hp(previous)
-    current_hp = _enemy_hp(current)
+    terminated = current.phase == "terminal" or is_cleared(current)
+    if previous.phase == "menu" or current.phase == "menu":
+        return 0.0, terminated
     reward = 0.0
     if previous.phase == "combat" or current.phase == "combat":
-        reward = float(previous_hp - current_hp)
-        reward += 0.1 * float(int(current.player.get("block", 0)) - int(previous.player.get("block", 0)))
-        reward += float(int(current.player["hp"]) - int(previous.player["hp"]))
+        reward = float(int(current.player["hp"]) - int(previous.player["hp"]))
+        same_encounter = (
+            previous.phase == "combat" and current.phase in {"combat", "terminal"}
+            and (previous.seed, previous.act, previous.floor) == (current.seed, current.act, current.floor)
+            and (previous.screen_id == current.screen_id or current.phase == "terminal")
+        )
+        if same_encounter:
+            current_enemies = {(enemy.get("id"), enemy.get("slot")): enemy for enemy in current.enemies}
+            reward += sum(
+                int(enemy.get("hp", 0)) - int(current_enemies[key].get("hp", 0))
+                for enemy in previous.enemies
+                if (key := (enemy.get("id"), enemy.get("slot"))) in current_enemies
+            )
+            reward += 0.1 * float(int(current.player.get("block", 0)) - int(previous.player.get("block", 0)))
     elif current.floor > previous.floor:
         reward = 1.0
-    terminated = current.phase == "terminal" or is_cleared(current)
     return reward, terminated
 
 
@@ -87,13 +100,15 @@ def run_live(
     frames: Iterator[TelemetrySnapshot],
     model: Path,
     output: Path,
-    send_command: Callable[[MacroAction], None] | None = None,
+    send_command: Callable[[MacroAction, str], None] | None = None,
     search_depth: int = DEFAULT_SEARCH_DEPTH,
     max_steps: int = DEFAULT_MAX_STEPS,
     until_clear: bool = False,
     command_delay_s: float = 0.0,
     command_cooldown_s: float = 0.0,
 ) -> dict[str, Any]:
+    if max_steps <= 0:
+        raise ValueError("max_steps must be positive")
     policy = QStarPolicy.load_or_create(model)
     if until_clear and output.exists():
         output.unlink()
@@ -107,6 +122,9 @@ def run_live(
     last_key: tuple[str, str, int, int] | None = None
     last_cmd = 0.0
     for snapshot in frames:
+        if snapshot.phase == "menu" or snapshot.extras.get("loading") or snapshot.screen_id == "loading":
+            _write_status(status_path, snapshot, None, commands, waiting=True)
+            continue
         if previous is not None and chosen is not None:
             reward, terminated = reward_between(previous, snapshot)
             if previous.phase == "combat" or snapshot.phase == "combat" or snapshot.phase == "terminal":
@@ -130,15 +148,16 @@ def run_live(
                     )
                 )
             transitions += 1
+            chosen = None
             if not until_clear or transitions % 25 == 0:
                 policy.save(model)
-            if is_cleared(snapshot):
-                cleared = True
-                policy.save(model)
-                break
-            if (terminated and not until_clear) or transitions >= max_steps:
-                policy.save(model)
-                break
+        if is_cleared(snapshot):
+            cleared = True
+            _write_status(status_path, snapshot, None, commands, waiting=False)
+            break
+        if (snapshot.phase == "terminal" and not until_clear) or transitions >= max_steps:
+            _write_status(status_path, snapshot, None, commands, waiting=False)
+            break
         if not should_command(snapshot, last_key, last_cmd, cooldown_s=command_cooldown_s):
             if not snapshot.valid_actions:
                 previous = snapshot
@@ -149,13 +168,13 @@ def run_live(
         last_key = (snapshot.screen_id, snapshot.phase, snapshot.act, snapshot.floor)
         last_cmd = time.time()
         if send_command is not None:
-            send_command(chosen)
+            send_command(chosen, snapshot.screen_id)
             commands += 1
             _write_status(status_path, snapshot, chosen, commands, waiting=False)
             if command_delay_s > 0:
                 time.sleep(command_delay_s)
         previous = snapshot
-    if previous is not None and chosen is not None and transitions == 0:
+    if transitions or chosen is not None:
         policy.save(model)
     return {
         "algorithm": "qstar-live",
@@ -192,12 +211,12 @@ def frame_stream(reader_stream: TextIO) -> Iterator[TelemetrySnapshot]:
             continue
 
 
-def command_sender(writer: TextIO, execute: bool) -> Callable[[MacroAction], None] | None:
+def command_sender(writer: TextIO, execute: bool) -> Callable[[MacroAction, str], None] | None:
     if not execute:
         return None
 
-    def send(action: MacroAction) -> None:
-        payload = MacroActionCommand("live", action, "live").to_dict()
+    def send(action: MacroAction, expected_screen_id: str) -> None:
+        payload = MacroActionCommand("live", action, expected_screen_id).to_dict()
         writer.write(json.dumps(payload, sort_keys=True) + "\n")
         writer.flush()
 
@@ -207,8 +226,18 @@ def command_sender(writer: TextIO, execute: bool) -> Callable[[MacroAction], Non
 def _connect_tcp(address: str, timeout_s: float) -> tuple[TextIO, TextIO]:
     host, port_text = address.rsplit(":", 1)
     sock = socket.create_connection((host, int(port_text)), timeout=timeout_s)
-    sock.settimeout(None)
-    return sock.makefile("r", encoding="utf-8", newline="\n"), sock.makefile("w", encoding="utf-8", newline="\n")
+    reader = None
+    try:
+        sock.settimeout(None)
+        reader = sock.makefile("r", encoding="utf-8", newline="\n")
+        writer = sock.makefile("w", encoding="utf-8", newline="\n")
+        return reader, writer
+    except BaseException:
+        if reader is not None:
+            reader.close()
+        raise
+    finally:
+        sock.close()
 
 
 def _connect_pipe(
@@ -240,6 +269,7 @@ def _write_status(
     commands: int,
     waiting: bool,
 ) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
             {
@@ -259,7 +289,3 @@ def _write_status(
             sort_keys=True,
         )
     )
-
-
-def _enemy_hp(snapshot: TelemetrySnapshot) -> int:
-    return sum(int(enemy.get("hp", 0)) for enemy in snapshot.enemies)
