@@ -36,9 +36,11 @@ def _require_list(mapping: dict[str, Any], key: str) -> list[Any]:
     if key in {"hand", "draw_pile", "discard_pile", "exhaust_pile"}:
         fields = ("cost", "damage", "block")
     elif key == "enemies":
-        fields = ("hp", "block")
+        fields = ("hp", "block", "slot")
     for index, item in enumerate(value):
         _validate_optional_ints(item, fields, f"{key}[{index}]")
+        if key == "enemies" and "id" in item and not isinstance(item["id"], str):
+            raise ValidationError(f"enemies[{index}].id must be a string")
     return value
 
 

@@ -64,3 +64,31 @@ def test_snapshot_keeps_optional_defaults_and_integer_card_cost_sentinels():
     assert snapshot.hand[0]["cost"] == -1
     assert "damage" not in snapshot.hand[0]
     assert "resources" not in snapshot.player
+
+
+@pytest.mark.parametrize(
+    "key,value,expected_type",
+    [
+        ("id", {}, "a string"),
+        ("id", None, "a string"),
+        ("slot", [], "an integer"),
+        ("slot", True, "an integer"),
+    ],
+)
+def test_frame_reader_rejects_unhashable_or_invalid_enemy_identity(key, value, expected_type):
+    data = json.loads(FIXTURE.read_text())
+    data["enemies"][0][key] = value
+    reader = TelemetryFrameReader()
+    with pytest.raises(ValidationError, match=rf"enemies\[0\].{key} must be {expected_type}"):
+        reader.accept_json(json.dumps({"sequence": 1, "payload": data}))
+    valid = json.loads(FIXTURE.read_text())
+    assert reader.accept_json(json.dumps({"sequence": 1, "payload": valid})).sequence == 1
+
+
+def test_snapshot_preserves_missing_enemy_identity_defaults():
+    data = json.loads(FIXTURE.read_text())
+    del data["enemies"][0]["id"]
+    del data["enemies"][0]["slot"]
+    snapshot = TelemetrySnapshot.from_dict(data)
+    assert snapshot.enemies[0].get("id") is None
+    assert snapshot.enemies[0].get("slot") is None

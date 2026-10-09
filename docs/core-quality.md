@@ -16,10 +16,12 @@ Telemetry object fields, entity-list entries and macro actions reject invalid
 shapes with `ValidationError`. Timestamps must be finite numeric values; boolean
 values are rejected. Macro arguments must match the action shape, including the
 optional `target_slot` for `play_card`. Consumed optional card `cost`, `damage`
-and `block` fields in all four piles, enemy `hp`/`block`,
+and `block` fields in all four piles, enemy `hp`/`block`/`slot`,
 `player.resources.stars` and `extras.ascension` must be integers when present.
 `player.resources` must be an object when present. Missing optional fields
 retain their existing defaults, and integer cost sentinels remain accepted.
+Enemy `id` must be a string when present so encounter reward identity remains
+hashable; missing enemy identity fields retain their existing defaults.
 Existing required fields, nonnegative integer slots and snapshot choice bounds remain enforced.
 
 Action indices accept integer policy outputs, including NumPy integers, while
@@ -54,6 +56,9 @@ this correction does not remove its command sender.
   focused core tests: 67 passed after correction. Full pre-integration suite:
   111 passed with the same Q* execute expectation failure; core coverage 100%.
   The frame reader also verifies that rejected values do not advance sequence.
+- Enemy identity regressions: 4 failed, 16 passed before correction; 20 passed
+  after correction. Integrated full suite: 178 passed, 16 subtests passed;
+  100.00% Python statement coverage. Pinned Ruff lint and format checks passed.
 - Existing core tests are split into runtime and schema files to stay below the
   repository's 400-line file limit.
 
