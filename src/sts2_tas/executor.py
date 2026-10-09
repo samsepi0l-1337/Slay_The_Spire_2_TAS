@@ -34,7 +34,13 @@ class MacroExecutor:
         if action.action_type == "end_turn":
             return [{"kind": "key", "key": "E"}]
         if action.action_type in {"choose_reward", "choose_event_option"}:
-            return [{"kind": "click", "target": action.action_type.removeprefix("choose_"), "slot": action.args["choice_slot"]}]
+            return [
+                {
+                    "kind": "click",
+                    "target": action.action_type.removeprefix("choose_"),
+                    "slot": action.args["choice_slot"],
+                }
+            ]
         if action.action_type == "choose_map_node":
             return [{"kind": "click", "target": "map", "slot": action.args["node_slot"]}]
         if action.action_type == "shop_buy":

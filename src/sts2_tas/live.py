@@ -46,7 +46,9 @@ def pick_action(snapshot: TelemetrySnapshot, policy: QStarPolicy, search_depth: 
                 if end_turn is not None:
                     return end_turn
         if plays:
-            return max(plays, key=lambda action: (policy.qstar(snapshot, action, search_depth), _card_score(snapshot, action)))
+            return max(
+                plays, key=lambda action: (policy.qstar(snapshot, action, search_depth), _card_score(snapshot, action))
+            )
     return policy.select(snapshot, search_depth)
 
 
@@ -77,14 +79,16 @@ def reward_between(previous: TelemetrySnapshot, current: TelemetrySnapshot) -> t
         not _same_run(previous, current)
         or previous.extras.get("player_authoritative") is False
         or current.extras.get("player_authoritative") is False
-        or previous.phase == "menu" or current.phase == "menu"
+        or previous.phase == "menu"
+        or current.phase == "menu"
     ):
         return 0.0, terminated
     reward = 0.0
     if previous.phase == "combat" or current.phase == "combat":
         reward = float(int(current.player["hp"]) - int(previous.player["hp"]))
         same_encounter = (
-            previous.phase == "combat" and current.phase in {"combat", "terminal"}
+            previous.phase == "combat"
+            and current.phase in {"combat", "terminal"}
             and (previous.seed, previous.act, previous.floor) == (current.seed, current.act, current.floor)
             and (previous.screen_id == current.screen_id or current.phase == "terminal")
         )
@@ -103,7 +107,8 @@ def reward_between(previous: TelemetrySnapshot, current: TelemetrySnapshot) -> t
 
 def _same_run(previous: TelemetrySnapshot, current: TelemetrySnapshot) -> bool:
     return (previous.seed, previous.extras.get("run_instance_id")) == (
-        current.seed, current.extras.get("run_instance_id")
+        current.seed,
+        current.extras.get("run_instance_id"),
     )
 
 

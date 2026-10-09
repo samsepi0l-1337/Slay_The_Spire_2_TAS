@@ -112,8 +112,8 @@ These checks are valid now:
 ```bash
 uv lock --check
 git diff --check
-uv run --locked --extra dev ruff check src tests scripts
-uv run --locked --extra dev ruff format --check src tests scripts
+uv run --locked --extra dev ruff check src tests scripts bridge/tests
+uv run --locked --extra dev ruff format --check src tests scripts bridge/tests
 uv run --locked --extra dev pytest --cov=sts2_tas --cov-fail-under=100
 ```
 

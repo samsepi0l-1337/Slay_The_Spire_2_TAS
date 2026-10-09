@@ -6,20 +6,22 @@ import pytest
 from sts2_tas.telemetry_client import TelemetryFrameReader
 from sts2_tas.telemetry_schema import TelemetrySnapshot, ValidationError
 
-
 FIXTURE = Path(__file__).parent / "fixtures" / "telemetry-combat.json"
 
 
-@pytest.mark.parametrize("field,key,value", [
-    ("hand", "damage", "bad"),
-    ("hand", "cost", None),
-    ("hand", "block", True),
-    ("draw_pile", "damage", "bad"),
-    ("discard_pile", "cost", []),
-    ("exhaust_pile", "block", 1.5),
-    ("enemies", "hp", "bad"),
-    ("enemies", "block", {}),
-])
+@pytest.mark.parametrize(
+    "field,key,value",
+    [
+        ("hand", "damage", "bad"),
+        ("hand", "cost", None),
+        ("hand", "block", True),
+        ("draw_pile", "damage", "bad"),
+        ("discard_pile", "cost", []),
+        ("exhaust_pile", "block", 1.5),
+        ("enemies", "hp", "bad"),
+        ("enemies", "block", {}),
+    ],
+)
 def test_frame_reader_rejects_consumed_entity_numbers(field, key, value):
     data = json.loads(FIXTURE.read_text())
     if not data[field]:

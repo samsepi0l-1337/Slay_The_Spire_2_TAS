@@ -2,7 +2,7 @@
 
 ## Status
 
-This is the target architecture for the rewrite. The checkout now includes a Harmony telemetry mod, named-pipe/TCP transport, and a Q* live play loop. Live attach still fail-closes when the running game version or patch-point symbols do not match `config/patch-points.<game_version>.json`.
+This is the target architecture for the rewrite. The checkout now includes a Harmony telemetry mod, named-pipe/TCP transport, and a Q* live play loop. Attach fail-closes when configured type/method symbols are missing or Harmony patch application fails. The manifest does not independently identify the running game version or verify method signatures. Current fixture tests do not establish live attach or game command application.
 
 ## Goal
 
@@ -55,13 +55,13 @@ The following surfaces are present as fixture/local implementations:
 - `src/sts2_tas/dataset.py`
 - telemetry fixtures under `data/fixtures/`
 
-The Harmony mod `bridge/Sts2TasMod` loads through the official `[ModInitializer]`, patches `CombatStateTracker.NotifyCombatStateChanged`, emits `TelemetrySnapshot` frames on pipe `sts2-tas`, and applies `play_card` / `end_turn` through `PlayCardAction` and `PlayerCmd.EndTurn`. `run-live` consumes those frames, chooses with Q*, and updates weights from real HP deltas. Fixture TCP `pipe-serve` is the Windows smoke path when the game window is not in combat.
+The Harmony mod `bridge/Sts2TasMod` loads through the official `[ModInitializer]`, patches `CombatStateTracker.NotifyCombatStateChanged`, emits `TelemetrySnapshot` frames on pipe `sts2-tas`, and applies `play_card` / `end_turn` through `PlayCardAction` and `PlayerCmd.EndTurn`. `run-live` consumes those frames, chooses with Q*, and updates weights only for actions actually sent followed by authoritative same-run outcomes. Dry-run planning does not fabricate learning transitions. Fixture TCP `pipe-serve` is the Windows smoke path when the game window is not in combat.
 
 ## Bridge Project
 
-The target bridge is `bridge/Sts2TelemetryBridge`, a Godot 4 C#/.NET project. Its `.sln` and `.csproj` files should be version-controlled so the bridge build shape is explicit. Harmony patch bootstrap should read `config/patch-points.<game_version>.json`; if inspected symbols do not match the running game version, the bridge must emit fail-closed diagnostics instead of guessing.
+The .NET 8 fixture producer is `bridge/Sts2TelemetryBridge`; the Godot/Harmony mod is `bridge/Sts2TasMod` and requires .NET 9 plus game assemblies. Both project shapes are version-controlled. Mod startup checks the configured type/method symbol manifest before opening telemetry. A normal build does not deploy; intentional local installation requires `-p:DeployMod=true`.
 
-The default transport is a Windows named pipe. WebSocket is optional for tooling. The bridge should emit `TelemetrySnapshot` frames and accept `MacroActionCommand` envelopes from Python only after schema and target validation.
+The mod transport is a Windows named pipe; the independent fixture producer uses loopback TCP. WebSocket remains a target option. The bridge should emit `TelemetrySnapshot` frames and accept `MacroActionCommand` envelopes from Python only after schema and target validation.
 
 ## TelemetrySnapshot
 
@@ -70,7 +70,7 @@ A `TelemetrySnapshot` is the target Python bridge input. It must include:
 - `game_version`, `mod_version`, `schema_version`, `seed`, `timestamp`
 - `phase`: `combat`, `card_reward`, `map`, `shop`, `event`, `rest`, `terminal`, or `menu`
 - `floor`, `act`, `screen_id`
-- `player`: hp, max hp, energy, block, gold, powers, resources
+- `player`: required integer hp, max hp, energy, block and gold; powers/resources are optional. Consumed `resources.stars` must be an integer when supplied.
 - `hand`, `draw_pile`, `discard_pile`, `exhaust_pile`
 - `enemies` with ids, slots, hp, block, intent, powers
 - `relics`, `potions`, map choices, reward choices, shop choices, event/rest choices
@@ -103,18 +103,18 @@ Supported initial action types:
 - `shop_buy(item_slot)`
 - `shop_remove(card_slot)`
 
-The executor converts macro actions to guarded input sequences using current target window metadata. Coordinates are window-relative. Native input requires `--execute`; dry-run writes the planned input to logs.
+The Python executor produces dry-run plans with window-relative coordinates and a target title. It has no native input backend: `act --execute` and `run-qstar --execute` fail closed. Live bridge commands are a separate `--execute`-gated transport path, validated against the current screen and exact advertised action arguments before dispatch. Neither a sent command nor the next fixture frame is an execution acknowledgement.
 
 ## Q* Play Loop
 
 `run-qstar` plays a snapshot until the environment is terminal or `max_steps` is hit. Each step:
 
-1. Expand legal macros with limited-depth search. Immediate env reward is `g`; the learned linear Q-function is the heuristic `h`.
-2. Convert the chosen macro to an executor plan, or native input when `--execute` is set.
+1. Expand legal macros with limited-depth search. Immediate env reward is `g`; the learned two-layer Q-function is the heuristic `h`.
+2. Convert the chosen macro to a dry-run executor plan; enabled native execution rejects an unavailable backend.
 3. Apply the action, write a JSONL transition, and take a TD update `Q(s,a) <- r + γ max_a' Q(s',a')`.
 4. Persist weights after every episode so later runs continue from the updated model.
 
-`run-qstar` remains the fixture/env trainer. `run-live` is the Harmony/pipe loop. Combat env still discards played cards, rebuilds energy-gated valid actions, and redraws on `end_turn` so Q* search has a local model. Live TD updates run only on combat/terminal frames so menu/Neow overlays cannot zero-out Q*. Empty-enemy UI overlays are not terminal. Q* features are scaled to STS2 wiki values (Ironclad 80 HP, energy 3, draw 5, 3 acts, A10) with a two-layer net; mismatched saved weights reset so the policy can re-learn.
+`run-qstar` remains the fixture/env trainer. `run-live` is the Harmony/pipe loop. Combat env still discards played cards, rebuilds energy-gated valid actions, and redraws on `end_turn` so Q* search has a local model. Live TD updates require a sent pending action and an authoritative same-run combat/terminal outcome; loading/waiting/cooldown frames cannot reuse action credit. Seed or bridge run-instance changes reset pending credit. Empty-enemy UI overlays are not terminal. Q* features are scaled to STS2 wiki values (Ironclad 80 HP, energy 3, draw 5, 3 acts, A10) with a two-layer net; feature metadata mismatches or malformed state dictionaries reset the complete Q* model and update count; unsupported algorithms are rejected. Torch loading uses `weights_only=True`.
 
 ## Logging
 
@@ -147,4 +147,6 @@ Forbidden:
 - public-match automation
 - network side effects from the bridge
 
-If target process, bridge schema, versioned patch points, or action acknowledgement do not match expectations, the runtime must fail closed and log diagnostics.
+Schema, configured symbol and advertised command validation fail closed with diagnostics. Process/window identity and actual game action application still require independent live-session evidence; the current protocol does not provide an execution acknowledgement.
+
+See [core](core-quality.md), [live](live-quality.md), [bridge](bridge-quality.md), [ML](ml-quality.md) and [quality checks](quality-checks.md) for the implemented corrections and verification scope.

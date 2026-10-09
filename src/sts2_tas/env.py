@@ -24,7 +24,9 @@ class Sts2Env:
         self.policy_id = policy_id
         self.last_seed: int | None = None
 
-    def reset(self, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+    def reset(
+        self, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         del options
         self.last_seed = seed
         self.snapshot = deepcopy(self._initial_snapshot)
@@ -156,7 +158,9 @@ class Sts2Env:
                 continue
             if Sts2Env._is_targeted(card):
                 for target_slot in living:
-                    actions.append({"action_type": "play_card", "args": {"hand_slot": hand_slot, "target_slot": target_slot}})
+                    actions.append(
+                        {"action_type": "play_card", "args": {"hand_slot": hand_slot, "target_slot": target_slot}}
+                    )
                 continue
             actions.append({"action_type": "play_card", "args": {"hand_slot": hand_slot}})
         actions.append({"action_type": "end_turn", "args": {}})

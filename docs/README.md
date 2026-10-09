@@ -6,6 +6,12 @@ These documents describe the current fixture-based implementation and the curren
 - [Rewrite plan](plan.md): decision record for the target rewrite, dependencies, test order, and verification gates.
 - [Implemented work](implemented-work.md): current implementation ledger and target checklist.
 - [Roadmap](roadmap.md): implementation order from repository repair through telemetry, Gymnasium, bridge, ML, and export work.
+- [Quality checks](quality-checks.md): reproducible integrated Python/C# gates and evidence limits.
+- [Core quality](core-quality.md): snapshot ownership, validation and input-backend corrections.
+- [Live quality](live-quality.md): pending transitions, loading/cooldown, transport and rewards.
+- [Bridge quality](bridge-quality.md): command eligibility, fixture checks and mod build boundary.
+- [ML quality](ml-quality.md): artifact validation and legal-action training behavior.
+- [Playbook](playbook.md): manual local game workflow.
 - [Docker](docker.md): current Docker limitation and the target container boundary.
 - [AGENTS.md](../AGENTS.md): module ownership and path guidance for future implementation work.
 
@@ -55,7 +61,7 @@ Current implementation gate:
 ```bash
 uv lock --check
 git diff --check
-uv run --locked --extra dev ruff check src tests scripts
-uv run --locked --extra dev ruff format --check src tests scripts
+uv run --locked --extra dev ruff check src tests scripts bridge/tests
+uv run --locked --extra dev ruff format --check src tests scripts bridge/tests
 uv run --locked --extra dev pytest --cov=sts2_tas --cov-fail-under=100
 ```

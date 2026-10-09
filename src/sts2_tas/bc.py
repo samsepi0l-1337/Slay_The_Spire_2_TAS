@@ -23,8 +23,10 @@ class BehavioralCloningPolicy:
 
     @classmethod
     def load(cls, path: Path) -> "BehavioralCloningPolicy":
-        artifact = json.loads(path.read_text()) if path.suffix == ".json" else torch.load(
-            path, weights_only=True, map_location="cpu"
+        artifact = (
+            json.loads(path.read_text())
+            if path.suffix == ".json"
+            else torch.load(path, weights_only=True, map_location="cpu")
         )
         model_state = {
             key: value if isinstance(value, torch.Tensor) else torch.tensor(value, dtype=torch.float32)
@@ -45,7 +47,10 @@ class BehavioralCloningPolicy:
             "table": self.table,
         }
         if path.suffix == ".json":
-            json_artifact = {**artifact, "model_state": {key: value.tolist() for key, value in self.model_state.items()}}
+            json_artifact = {
+                **artifact,
+                "model_state": {key: value.tolist() for key, value in self.model_state.items()},
+            }
             path.write_text(json.dumps(json_artifact, sort_keys=True))
             return
         torch.save(artifact, path)
@@ -64,9 +69,11 @@ class BehavioralCloningPolicy:
     def _score(self, state: dict[str, Any], action: MacroAction) -> float:
         with torch.no_grad():
             features = torch.tensor(_feature_vector(state, action, self.feature_schema), dtype=torch.float32)
-            return float(torch.nn.functional.linear(
-                features, self.model_state["linear.weight"], self.model_state["linear.bias"]
-            ).item())
+            return float(
+                torch.nn.functional.linear(
+                    features, self.model_state["linear.weight"], self.model_state["linear.bias"]
+                ).item()
+            )
 
 
 def train_behavioral_cloning(dataset: Path, model: Path) -> BehavioralCloningPolicy:
@@ -191,7 +198,9 @@ def _action_features(action: MacroAction, schema: dict[str, Any]) -> list[float]
 
 
 def _train_torch_scorer(samples: list[dict[str, Any]], schema: dict[str, Any]) -> dict[str, torch.Tensor]:
-    input_size = len(_feature_vector(samples[0]["state"], MacroAction.from_dict(samples[0]["valid_actions"][0]), schema))
+    input_size = len(
+        _feature_vector(samples[0]["state"], MacroAction.from_dict(samples[0]["valid_actions"][0]), schema)
+    )
     with torch.random.fork_rng(devices=[]):
         torch.random.default_generator.manual_seed(0)
         model = _TorchScorer(input_size)

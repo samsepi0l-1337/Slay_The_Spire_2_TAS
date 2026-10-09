@@ -17,7 +17,6 @@ from sts2_tas.live import (
 from sts2_tas.telemetry_client import TelemetryFrameReader
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 
-
 FIXTURE = Path(__file__).parent / "fixtures" / "telemetry-combat.json"
 
 
@@ -96,7 +95,9 @@ def test_connect_pipe_retries_then_succeeds_and_times_out(tmp_path: Path) -> Non
             raise OSError("busy")
         return handle
 
-    reader, writer = _connect_pipe("sts2-tas", 1.0, platform="nt", opener=opener, sleeper=lambda _: None, clock=lambda: 0.0)
+    reader, writer = _connect_pipe(
+        "sts2-tas", 1.0, platform="nt", opener=opener, sleeper=lambda _: None, clock=lambda: 0.0
+    )
     assert reader is handle
     assert writer is handle
 

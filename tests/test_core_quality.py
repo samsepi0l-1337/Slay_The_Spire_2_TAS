@@ -9,7 +9,6 @@ from sts2_tas.action_space import ActionSpace
 from sts2_tas.env import Sts2Env
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot, ValidationError
 
-
 FIXTURE = Path(__file__).parent / "fixtures" / "telemetry-combat.json"
 
 

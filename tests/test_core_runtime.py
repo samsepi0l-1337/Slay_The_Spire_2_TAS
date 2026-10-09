@@ -12,13 +12,11 @@ from sts2_tas.heuristic import choose_action
 from sts2_tas.telemetry_client import TelemetryFrameReader, TelemetryStreamClient
 from sts2_tas.telemetry_schema import MacroAction, MacroActionCommand, RunRecord, TelemetrySnapshot, ValidationError
 
-
 FIXTURE = Path(__file__).parent / "fixtures" / "telemetry-combat.json"
 
 
 def load_snapshot() -> TelemetrySnapshot:
     return TelemetrySnapshot.from_json(FIXTURE.read_text())
-
 
 
 def test_action_space_round_trips_and_rejects_duplicate_actions() -> None:
@@ -120,7 +118,9 @@ def test_heuristic_and_env_apply_enemy_block_before_hp_damage() -> None:
 def test_heuristic_phase_fallbacks_and_no_action_guard() -> None:
     data = json.loads(FIXTURE.read_text())
     data["enemies"][0]["hp"] = 20
-    assert choose_action(TelemetrySnapshot.from_dict(data)) == MacroAction("play_card", {"hand_slot": 0, "target_slot": 0})
+    assert choose_action(TelemetrySnapshot.from_dict(data)) == MacroAction(
+        "play_card", {"hand_slot": 0, "target_slot": 0}
+    )
 
     data["valid_actions"] = [
         {"action_type": "choose_reward", "args": {"choice_slot": 1}},
@@ -244,10 +244,6 @@ def test_transition_record_is_jsonl_serializable(tmp_path: Path) -> None:
     assert written["chosen_action"] == written["chosen_action_json"]
     assert JsonlTransitionWriter(path).records()[0]["run_id"] == "run-1"
     assert JsonlTransitionWriter(tmp_path / "missing.jsonl").records() == []
-
-
-
-
 
 
 def test_env_advances_non_combat_choice_screens_to_terminal() -> None:

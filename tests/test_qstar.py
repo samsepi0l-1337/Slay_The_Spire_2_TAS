@@ -10,7 +10,6 @@ from sts2_tas.qstar import FEATURE_DIM, QStarPolicy, feature_vector, run_qstar, 
 from sts2_tas.qstar_features import IRONCLAD_MAX_HP, feature_index
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 
-
 FIXTURE = Path(__file__).parent / "fixtures" / "telemetry-combat.json"
 
 

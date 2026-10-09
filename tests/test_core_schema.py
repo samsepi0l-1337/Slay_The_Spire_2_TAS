@@ -5,7 +5,6 @@ import pytest
 
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot, ValidationError
 
-
 FIXTURE = Path(__file__).parent / "fixtures" / "telemetry-combat.json"
 
 
@@ -15,7 +14,6 @@ def test_telemetry_snapshot_rejects_missing_required_field() -> None:
 
     with pytest.raises(ValidationError, match="seed"):
         TelemetrySnapshot.from_dict(data)
-
 
 
 def test_schema_rejects_malformed_shapes_and_arguments() -> None:
@@ -63,7 +61,6 @@ def test_schema_rejects_malformed_shapes_and_arguments() -> None:
         TelemetrySnapshot.from_dict(data)
 
 
-
 def test_schema_rejects_invalid_json_phase_empty_actions_and_player_fields() -> None:
     with pytest.raises(ValidationError, match="invalid json"):
         TelemetrySnapshot.from_json("{")
@@ -109,7 +106,6 @@ def test_schema_rejects_invalid_json_phase_empty_actions_and_player_fields() -> 
     data["player"]["hp"] = True
     with pytest.raises(ValidationError, match="player.hp must be an integer"):
         TelemetrySnapshot.from_dict(data)
-
 
 
 def test_schema_validates_choice_action_slots_against_snapshot_choices() -> None:

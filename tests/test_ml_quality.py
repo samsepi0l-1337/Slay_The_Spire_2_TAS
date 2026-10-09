@@ -9,7 +9,6 @@ from sts2_tas.bc import BehavioralCloningPolicy, train_behavioral_cloning
 from sts2_tas.qstar import QStarPolicy
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 
-
 DATASET = Path(__file__).parent / "fixtures" / "ml-train-smoke.jsonl"
 SNAPSHOT = Path(__file__).parent / "fixtures" / "telemetry-combat.json"
 
@@ -71,12 +70,15 @@ def test_bc_training_rejects_dataset_without_demonstrations(tmp_path, content):
     assert not model.exists()
 
 
-@pytest.mark.parametrize("change, message", [
-    ({"state": []}, "state must be an object"),
-    ({"valid_actions": {}}, "valid_actions must be a list"),
-    ({"valid_actions": []}, "empty legal actions"),
-    ({"chosen_action": {"action_type": "choose_reward", "args": {"choice_slot": 0}}}, "chosen action is not legal"),
-])
+@pytest.mark.parametrize(
+    "change, message",
+    [
+        ({"state": []}, "state must be an object"),
+        ({"valid_actions": {}}, "valid_actions must be a list"),
+        ({"valid_actions": []}, "empty legal actions"),
+        ({"chosen_action": {"action_type": "choose_reward", "args": {"choice_slot": 0}}}, "chosen action is not legal"),
+    ],
+)
 def test_bc_training_validates_samples_before_writing(tmp_path, change, message):
     sample = json.loads(DATASET.read_text().splitlines()[0])
     sample.update(change)

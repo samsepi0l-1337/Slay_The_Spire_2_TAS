@@ -208,7 +208,9 @@ class TelemetrySnapshot:
             raise ValidationError("valid_actions cannot be empty")
         if actions and phase in {"terminal", "menu"}:
             raise ValidationError(f"{phase} snapshots cannot expose valid_actions")
-        cls._validate_action_slots(actions, hand, enemies, map_choices, reward_choices, shop_choices, event_choices, rest_choices)
+        cls._validate_action_slots(
+            actions, hand, enemies, map_choices, reward_choices, shop_choices, event_choices, rest_choices
+        )
         return cls(
             game_version=str(_require(data, "game_version")),
             mod_version=str(_require(data, "mod_version")),
@@ -285,32 +287,34 @@ class TelemetrySnapshot:
             raise ValidationError(f"{key} out of range")
 
     def to_dict(self) -> dict[str, Any]:
-        return deepcopy({
-            "game_version": self.game_version,
-            "mod_version": self.mod_version,
-            "schema_version": self.schema_version,
-            "seed": self.seed,
-            "timestamp": self.timestamp,
-            "phase": self.phase,
-            "floor": self.floor,
-            "act": self.act,
-            "screen_id": self.screen_id,
-            "player": dict(self.player),
-            "hand": list(self.hand),
-            "draw_pile": list(self.draw_pile),
-            "discard_pile": list(self.discard_pile),
-            "exhaust_pile": list(self.exhaust_pile),
-            "enemies": list(self.enemies),
-            "relics": list(self.relics),
-            "potions": list(self.potions),
-            "map_choices": list(self.map_choices),
-            "reward_choices": list(self.reward_choices),
-            "shop_choices": list(self.shop_choices),
-            "event_choices": list(self.event_choices),
-            "rest_choices": list(self.rest_choices),
-            "valid_actions": [action.to_dict() for action in self.valid_actions],
-            "extras": dict(self.extras),
-        })
+        return deepcopy(
+            {
+                "game_version": self.game_version,
+                "mod_version": self.mod_version,
+                "schema_version": self.schema_version,
+                "seed": self.seed,
+                "timestamp": self.timestamp,
+                "phase": self.phase,
+                "floor": self.floor,
+                "act": self.act,
+                "screen_id": self.screen_id,
+                "player": dict(self.player),
+                "hand": list(self.hand),
+                "draw_pile": list(self.draw_pile),
+                "discard_pile": list(self.discard_pile),
+                "exhaust_pile": list(self.exhaust_pile),
+                "enemies": list(self.enemies),
+                "relics": list(self.relics),
+                "potions": list(self.potions),
+                "map_choices": list(self.map_choices),
+                "reward_choices": list(self.reward_choices),
+                "shop_choices": list(self.shop_choices),
+                "event_choices": list(self.event_choices),
+                "rest_choices": list(self.rest_choices),
+                "valid_actions": [action.to_dict() for action in self.valid_actions],
+                "extras": dict(self.extras),
+            }
+        )
 
 
 @dataclass(frozen=True)

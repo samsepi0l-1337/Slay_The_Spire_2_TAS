@@ -7,7 +7,6 @@ from sts2_tas.live import is_cleared, pick_action, reward_between, run_live, sho
 from sts2_tas.qstar import QStarPolicy
 from sts2_tas.telemetry_schema import MacroAction, TelemetrySnapshot
 
-
 FIXTURE = Path(__file__).parent / "fixtures" / "telemetry-combat.json"
 
 
@@ -93,7 +92,14 @@ def test_run_live_updates_qstar_weights_from_real_transitions(tmp_path: Path) ->
     model = tmp_path / "qstar.json"
     output = tmp_path / "live.jsonl"
 
-    result = run_live(iter([first, second]), model, output, send_command=lambda action, _screen: sent.append(action), search_depth=1, max_steps=8)
+    result = run_live(
+        iter([first, second]),
+        model,
+        output,
+        send_command=lambda action, _screen: sent.append(action),
+        search_depth=1,
+        max_steps=8,
+    )
 
     assert result["algorithm"] == "qstar-live"
     assert result["transitions"] == 1
@@ -226,7 +232,14 @@ def test_run_live_stops_at_max_steps(tmp_path: Path) -> None:
     first = load_snapshot()
     mid = load_snapshot()
     last = load_snapshot()
-    result = run_live(iter([first, mid, last]), tmp_path / "qstar.json", tmp_path / "live.jsonl", search_depth=0, max_steps=1, send_command=lambda _action, _screen: None)
+    result = run_live(
+        iter([first, mid, last]),
+        tmp_path / "qstar.json",
+        tmp_path / "live.jsonl",
+        search_depth=0,
+        max_steps=1,
+        send_command=lambda _action, _screen: None,
+    )
     assert result["transitions"] == 1
 
 

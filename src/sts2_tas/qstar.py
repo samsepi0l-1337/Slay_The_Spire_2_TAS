@@ -53,9 +53,14 @@ class QStarPolicy:
             alpha=float(artifact.get("alpha", DEFAULT_ALPHA)),
             updates=int(artifact.get("updates", 0)),
         )
-        if any(artifact.get(key, expected) != expected for key, expected in (
-            ("feature_dim", FEATURE_DIM), ("feature_version", FEATURE_VERSION), ("hidden_size", HIDDEN_SIZE)
-        )):
+        if any(
+            artifact.get(key, expected) != expected
+            for key, expected in (
+                ("feature_dim", FEATURE_DIM),
+                ("feature_version", FEATURE_VERSION),
+                ("hidden_size", HIDDEN_SIZE),
+            )
+        ):
             policy.updates = 0
             return policy
         state = {
@@ -85,7 +90,10 @@ class QStarPolicy:
             "model_state": self.model.state_dict(),
         }
         if path.suffix == ".json":
-            encoded = {**artifact, "model_state": {key: value.tolist() for key, value in artifact["model_state"].items()}}
+            encoded = {
+                **artifact,
+                "model_state": {key: value.tolist() for key, value in artifact["model_state"].items()},
+            }
             path.write_text(json.dumps(encoded, sort_keys=True))
             return
         torch.save(artifact, path)
@@ -112,7 +120,9 @@ class QStarPolicy:
         with torch.no_grad():
             target_value = reward
             if not terminated and next_snapshot.valid_actions:
-                target_value += self.gamma * max(self.q_value(next_snapshot, nxt) for nxt in next_snapshot.valid_actions)
+                target_value += self.gamma * max(
+                    self.q_value(next_snapshot, nxt) for nxt in next_snapshot.valid_actions
+                )
             target = torch.tensor(target_value, dtype=torch.float32)
         loss = torch.nn.functional.mse_loss(predicted, target)
         self._optimizer.zero_grad()
@@ -191,6 +201,8 @@ def _feature_tensor(snapshot: TelemetrySnapshot, action: MacroAction) -> torch.T
 
 
 def _read_artifact(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text()) if path.suffix == ".json" else torch.load(
-        path, weights_only=True, map_location="cpu"
+    return (
+        json.loads(path.read_text())
+        if path.suffix == ".json"
+        else torch.load(path, weights_only=True, map_location="cpu")
     )
