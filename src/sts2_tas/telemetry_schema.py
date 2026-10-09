@@ -32,6 +32,13 @@ def _require_list(mapping: dict[str, Any], key: str) -> list[Any]:
         raise ValidationError(f"{key} must be a list")
     if any(not isinstance(item, dict) for item in value):
         raise ValidationError(f"{key} entries must be objects")
+    fields = ()
+    if key in {"hand", "draw_pile", "discard_pile", "exhaust_pile"}:
+        fields = ("cost", "damage", "block")
+    elif key == "enemies":
+        fields = ("hp", "block")
+    for index, item in enumerate(value):
+        _validate_optional_ints(item, fields, f"{key}[{index}]")
     return value
 
 
@@ -40,6 +47,12 @@ def _require_int(mapping: dict[str, Any], key: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValidationError(f"{key} must be an integer")
     return value
+
+
+def _validate_optional_ints(data: dict[str, Any], keys: tuple[str, ...], path: str) -> None:
+    for key in keys:
+        if key in data and (not isinstance(data[key], int) or isinstance(data[key], bool)):
+            raise ValidationError(f"{path}.{key} must be an integer")
 
 
 @dataclass(frozen=True)
@@ -175,6 +188,7 @@ class TelemetrySnapshot:
         extras = data.get("extras", {})
         if not isinstance(extras, dict):
             raise ValidationError("extras must be an object")
+        _validate_optional_ints(extras, ("ascension",), "extras")
         timestamp = _require(data, "timestamp")
         if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)):
             raise ValidationError("timestamp must be a finite number")
@@ -229,6 +243,11 @@ class TelemetrySnapshot:
                 raise ValidationError(f"player missing {key}")
             if not isinstance(player[key], int) or isinstance(player[key], bool):
                 raise ValidationError(f"player.{key} must be an integer")
+
+        resources = player.get("resources", {})
+        if not isinstance(resources, dict):
+            raise ValidationError("player.resources must be an object")
+        _validate_optional_ints(resources, ("stars",), "player.resources")
 
     @staticmethod
     def _validate_action_slots(

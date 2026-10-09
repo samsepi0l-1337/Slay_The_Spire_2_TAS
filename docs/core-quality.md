@@ -15,8 +15,12 @@ implement seeded game generation.
 Telemetry object fields, entity-list entries and macro actions reject invalid
 shapes with `ValidationError`. Timestamps must be finite numeric values; boolean
 values are rejected. Macro arguments must match the action shape, including the
-optional `target_slot` for `play_card`. Existing required fields, nonnegative
-integer slots and snapshot choice bounds remain enforced.
+optional `target_slot` for `play_card`. Consumed optional card `cost`, `damage`
+and `block` fields in all four piles, enemy `hp`/`block`,
+`player.resources.stars` and `extras.ascension` must be integers when present.
+`player.resources` must be an object when present. Missing optional fields
+retain their existing defaults, and integer cost sentinels remain accepted.
+Existing required fields, nonnegative integer slots and snapshot choice bounds remain enforced.
 
 Action indices accept integer policy outputs, including NumPy integers, while
 rejecting booleans, floating-point values and nonnumeric objects before state
@@ -46,6 +50,10 @@ this correction does not remove its command sender.
 - Full suite before caller integration: 93 passed, 1 expected Q* execute
   regression failure; all core modules had 100% statement coverage. The one
   uncovered statement was the Q* return after the unavailable execute backend.
+- Nested consumed-field regressions: 14 failed, 1 passed before correction;
+  focused core tests: 67 passed after correction. Full pre-integration suite:
+  111 passed with the same Q* execute expectation failure; core coverage 100%.
+  The frame reader also verifies that rejected values do not advance sequence.
 - Existing core tests are split into runtime and schema files to stay below the
   repository's 400-line file limit.
 
