@@ -121,3 +121,28 @@ def test_qstar_incompatible_checkpoint_resets_all_weights(tmp_path, corruption):
     assert restored.updates == 0
     assert restored.q_value(snapshot, snapshot.valid_actions[0]) == 0.0
     assert all(torch.equal(value, fresh.model.state_dict()[key]) for key, value in restored.model.state_dict().items())
+
+
+@pytest.mark.parametrize("corruption", ["missing_state", "non_dict_state", "non_tensor_value"])
+def test_qstar_malformed_state_resets_model_and_preserves_hyperparameters(tmp_path, corruption):
+    source = QStarPolicy(gamma=0.6, alpha=0.02, updates=9)
+    model = tmp_path / "malformed.json"
+    source.save(model)
+    artifact = json.loads(model.read_text())
+    if corruption == "missing_state":
+        del artifact["model_state"]
+    elif corruption == "non_dict_state":
+        artifact["model_state"] = None
+    else:
+        artifact["model_state"]["net.2.bias"] = "not a tensor"
+    model.write_text(json.dumps(artifact))
+
+    fresh = QStarPolicy(gamma=0.6, alpha=0.02)
+    for loader in (QStarPolicy.load, QStarPolicy.load_or_create):
+        restored = loader(model)
+        assert restored.gamma == 0.6
+        assert restored.alpha == 0.02
+        assert restored.updates == 0
+        assert all(
+            torch.equal(value, fresh.model.state_dict()[key]) for key, value in restored.model.state_dict().items()
+        )

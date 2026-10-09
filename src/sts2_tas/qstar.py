@@ -63,13 +63,13 @@ class QStarPolicy:
         ):
             policy.updates = 0
             return policy
-        state = {
-            key: value if isinstance(value, torch.Tensor) else torch.tensor(value, dtype=torch.float32)
-            for key, value in artifact["model_state"].items()
-        }
         try:
+            state = {
+                key: value if isinstance(value, torch.Tensor) else torch.tensor(value, dtype=torch.float32)
+                for key, value in artifact["model_state"].items()
+            }
             policy.model.load_state_dict(state)
-        except RuntimeError:
+        except (KeyError, AttributeError, TypeError, ValueError, RuntimeError):
             return cls(gamma=policy.gamma, alpha=policy.alpha)
         return policy
 

@@ -17,8 +17,12 @@ and giving repeatable initial weights.
 
 Q* restores compatible checkpoint weights and update counts. Feature dimension,
 feature version, or hidden size mismatches reset the complete model and update
-count. A malformed state dictionary also resets the complete model, discarding
-any tensors copied before Torch reported the mismatch. Legacy artifacts without
+count. Missing or non-object `model_state`, non-convertible tensor values, and
+state dictionary mismatches also reset the complete model, discarding any
+partially copied tensors. Reset sets updates to zero and retains the loaded
+gamma and alpha. `load_or_create` uses the same recovery contract for existing
+files. Unsafe Torch deserialization and unsupported algorithms still raise;
+they are outside the model-state recovery scope. Legacy artifacts without
 metadata retain their previous shape-based compatibility behavior.
 
 Regression coverage lives in `tests/test_ml_quality.py`, including harmless
