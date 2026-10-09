@@ -116,7 +116,7 @@ def run_live(
     frames: Iterator[TelemetrySnapshot],
     model: Path,
     output: Path,
-    send_command: Callable[[MacroAction, str], None] | None = None,
+    send_command: Callable[[MacroAction, str, str], None] | None = None,
     search_depth: int = DEFAULT_SEARCH_DEPTH,
     max_steps: int = DEFAULT_MAX_STEPS,
     until_clear: bool = False,
@@ -190,7 +190,9 @@ def run_live(
         last_key = (snapshot.screen_id, snapshot.phase, snapshot.act, snapshot.floor)
         last_cmd = time.time()
         if send_command is not None:
-            send_command(chosen, snapshot.screen_id)
+            observed_run = snapshot.extras.get("run_instance_id")
+            run_id = observed_run if isinstance(observed_run, str) and observed_run.strip() else snapshot.seed
+            send_command(chosen, snapshot.screen_id, run_id)
             commands += 1
             _write_status(status_path, snapshot, chosen, commands, waiting=False)
             if command_delay_s > 0:
@@ -236,12 +238,12 @@ def frame_stream(reader_stream: TextIO) -> Iterator[TelemetrySnapshot]:
             continue
 
 
-def command_sender(writer: TextIO, execute: bool) -> Callable[[MacroAction, str], None] | None:
+def command_sender(writer: TextIO, execute: bool) -> Callable[[MacroAction, str, str], None] | None:
     if not execute:
         return None
 
-    def send(action: MacroAction, expected_screen_id: str) -> None:
-        payload = MacroActionCommand("live", action, expected_screen_id).to_dict()
+    def send(action: MacroAction, expected_screen_id: str, run_id: str) -> None:
+        payload = MacroActionCommand(run_id, action, expected_screen_id).to_dict()
         writer.write(json.dumps(payload, sort_keys=True) + "\n")
         writer.flush()
 
@@ -250,6 +252,8 @@ def command_sender(writer: TextIO, execute: bool) -> Callable[[MacroAction, str]
 
 def _connect_tcp(address: str, timeout_s: float) -> tuple[TextIO, TextIO]:
     host, port_text = address.rsplit(":", 1)
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
     sock = socket.create_connection((host, int(port_text)), timeout=timeout_s)
     reader = None
     try:

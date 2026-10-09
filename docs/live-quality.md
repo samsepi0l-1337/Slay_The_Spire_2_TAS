@@ -6,8 +6,10 @@ transition. Frames suppressed by command cooldown cannot reuse a consumed action
 A terminal/victory frame ends the run even when no action is pending; `until_clear`
 continues through early terminal frames until victory or the positive step limit.
 
-The send callback receives `(action, expected_screen_id)` from the current
-snapshot. `command_sender` serializes that exact screen in `MacroActionCommand`;
+The send callback receives `(action, expected_screen_id, run_id)` from the current
+snapshot. The run id is its nonblank `extras.run_instance_id`, with seed as the
+fixture/legacy fallback. `command_sender` serializes both observed identifiers in
+`MacroActionCommand`;
 native command sending remains gated by `--execute`. This does not establish an
 execution acknowledgement: a subsequent telemetry frame is still the observable
 transition boundary.
@@ -42,3 +44,6 @@ planning sends no commands and does not update the model or create transitions.
 Pending actions reset when seed or `extras.run_instance_id` changes. Legacy frames
 without a run id retain seed-based identity. `extras.player_authoritative=false`
 prevents placeholder player values from contributing rewards or TD updates.
+
+TCP accepts bracketed IPv6 endpoints such as `tcp:[::1]:9902`; brackets delimit
+the host in the endpoint and are removed before socket address resolution.

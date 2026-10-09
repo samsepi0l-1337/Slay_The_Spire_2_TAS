@@ -68,7 +68,7 @@ def test_run_live_skips_td_on_event_menu_loop(tmp_path: Path) -> None:
         iter([first, second]),
         model,
         tmp_path / "live.jsonl",
-        send_command=lambda _action, _screen: None,
+        send_command=lambda _action, _screen, _run: None,
         search_depth=0,
         max_steps=8,
         until_clear=True,
@@ -96,7 +96,7 @@ def test_run_live_updates_qstar_weights_from_real_transitions(tmp_path: Path) ->
         iter([first, second]),
         model,
         output,
-        send_command=lambda action, _screen: sent.append(action),
+        send_command=lambda action, _screen, _run: sent.append(action),
         search_depth=1,
         max_steps=8,
     )
@@ -221,7 +221,7 @@ def test_run_live_until_clear_skips_early_terminal(tmp_path: Path) -> None:
         max_steps=20,
         until_clear=True,
         command_delay_s=0.001,
-        send_command=lambda _action, _screen: None,
+        send_command=lambda _action, _screen, _run: None,
     )
     assert result["cleared"] is True
     assert result["until_clear"] is True
@@ -238,7 +238,7 @@ def test_run_live_stops_at_max_steps(tmp_path: Path) -> None:
         tmp_path / "live.jsonl",
         search_depth=0,
         max_steps=1,
-        send_command=lambda _action, _screen: None,
+        send_command=lambda _action, _screen, _run: None,
     )
     assert result["transitions"] == 1
 

@@ -49,7 +49,7 @@ def test_frame_stream_and_command_sender_round_trip() -> None:
     assert command_sender(writer, execute=False) is None
     sender = command_sender(writer, execute=True)
     assert sender is not None
-    sender(MacroAction("end_turn", {}), snapshot.screen_id)
+    sender(MacroAction("end_turn", {}), snapshot.screen_id, snapshot.seed)
     assert json.loads(writer.getvalue())["action"]["action_type"] == "end_turn"
 
 
@@ -186,3 +186,14 @@ def test_tcp_close_streams_releases_connection_end_to_end():
         reader.close()
         peer.close()
         listener.close()
+
+
+def test_bracketed_ipv6_transport_round_trip():
+    with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as listener:
+        listener.bind(("::1", 0))
+        listener.listen(1)
+        reader, writer = connect_transport(f"tcp:[::1]:{listener.getsockname()[1]}")
+        peer, _ = listener.accept()
+        with peer, reader, writer:
+            peer.sendall(b"ipv6-loopback\n")
+            assert reader.readline() == "ipv6-loopback\n"
