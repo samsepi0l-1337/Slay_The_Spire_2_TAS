@@ -1,7 +1,9 @@
 # Bridge validation and build boundaries
 
 The fixture producer and game mod share `bridge/Common/MacroCommand.cs`.
-Before dispatch, commands require schema version 1, a nonempty `run_id`, an
+Before dispatch, commands require schema version 1, a `run_id` matching current
+`extras.run_instance_id` (or the snapshot seed when that metadata is absent, null,
+or not a nonblank string), an
 `expected_screen_id` matching the current snapshot, a supported macro type,
 and its exact advertised argument set. Slots must be nonnegative integers;
 missing, extra, duplicate and illegal arguments fail closed. The mod captures
@@ -28,7 +30,11 @@ Event action advertisement and dispatch share the eligible original button indic
 Locked/proceed options are omitted from selectable choices. Compact policy slots map
 back to the same original option index; invalid slots are rejected, never clamped.
 The previous fallback that tried a different model option after a failed click was
-removed. Dialogue/proceed-only event screens retain their slot-zero navigation macro.
+removed. Dialogue/proceed-only event screens retain their slot-zero navigation macro only
+when an actual visible enabled dialogue/proceed/confirm control is available.
+All locked event options without such a control advertise no command; the event
+room remains in the empty waiting contract instead of falling through to generic
+menu actions. Failed event inspection also advertises no command.
 
 A normal mod build does not copy artifacts to the game directory. Intentional
 local installation requires `-p:DeployMod=true`; compile-only checks should keep
@@ -83,3 +89,14 @@ loading/menu contract. This includes an open map while travelable nodes are
 unavailable. The seven Overlay callers share this normalization; HP, seed and
 run-instance metadata remain present while commands are withheld. Actual Godot
 map timing remains unobserved.
+
+## PR review run binding
+
+The native helper and actual TCP fixture tests reproduced stale run commands being
+accepted despite the same screen and action, then passed after validation matched
+the currently observed run identifier. Tests cover stable run identifiers and
+legacy absent/null/empty/malformed metadata seed fallback. Event advertisement
+helper cases cover locked options without navigation, actual navigation without a
+selectable option, and selectable options without an added synthetic slot. These
+helper tests and compilation do not establish actual Godot control visibility or
+queued command timing in the live game.

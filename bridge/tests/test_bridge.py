@@ -48,6 +48,7 @@ class BridgeTests(unittest.TestCase):
             ({"schema_version": 2}, "schema_version"),
             ({"schema_version": True}, "schema_version"),
             ({"run_id": ""}, "run_id"),
+            ({"run_id": "stale-run"}, "run_id"),
             ({"expected_screen_id": "stale"}, "expected_screen_id"),
             ({"action": {"action_type": "unknown", "args": {}}}, "action_type"),
             ({"action": {"action_type": "play_card", "args": {}}}, "hand_slot"),
@@ -105,7 +106,7 @@ class BridgeTests(unittest.TestCase):
                 first = json.loads(stream.readline())
                 snapshot = first["payload"]
                 command = {
-                    "run_id": "bridge-test",
+                    "run_id": snapshot.get("extras", {}).get("run_instance_id") or snapshot["seed"],
                     "schema_version": 1,
                     "expected_screen_id": snapshot["screen_id"],
                 }

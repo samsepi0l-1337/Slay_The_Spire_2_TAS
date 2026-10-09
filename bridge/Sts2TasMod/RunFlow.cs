@@ -39,7 +39,7 @@ public static class RunFlow
                 return Overlay(ScreenAdvance.WorldPhase(), act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), MenuActions(), "world");
             }
             var eventActions = EventReward.EventActions();
-            if (eventActions.Count > 0)
+            if (InEventRoom())
             {
                 return Overlay("event", act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), eventActions, "event");
             }

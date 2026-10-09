@@ -11,7 +11,11 @@ public sealed record MacroCommand(string ActionType, IReadOnlyDictionary<string,
         RequireObject(root);
         if (!root.TryGetProperty("schema_version", out var schema) || schema.ValueKind != JsonValueKind.Number || !schema.TryGetInt32(out var version) || version != 1)
             throw new InvalidOperationException("unsupported schema_version");
-        ReadText(root, "run_id");
+        var expectedRun = snapshot.TryGetProperty("extras", out var extras) && extras.ValueKind == JsonValueKind.Object
+            && extras.TryGetProperty("run_instance_id", out var identity) && identity.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(identity.GetString()) ? identity.GetString() : ReadText(snapshot, "seed");
+        if (ReadText(root, "run_id") != expectedRun)
+            throw new InvalidOperationException("run_id mismatch");
         if (ReadText(root, "expected_screen_id") != ReadText(snapshot, "screen_id"))
             throw new InvalidOperationException("expected_screen_id mismatch");
         var action = root.GetProperty("action");

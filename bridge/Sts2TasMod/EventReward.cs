@@ -20,14 +20,20 @@ internal static class EventReward
         {
             return actions;
         }
-        var count = 1;
+        var count = 0;
         try
         {
-            count = Math.Max(EligibleChoices(EventButtons(NEventRoom.Instance!)).Count, 1);
+            var room = NEventRoom.Instance!;
+            var buttons = EventButtons(room);
+            var navigationAvailable = DialogueHitbox(room) is not null
+                || buttons.Any(CanProceed)
+                || new[] { "NConfirmButton", "NProceedButton" }.Any(type =>
+                    Nodes.FindAll(Nodes.Root(), type).Any(node => Nodes.IsShown(node) && Nodes.Enabled(node)));
+            count = EventChoices.AdvertisedCount(buttons.Select(node => (IsLocked(node), IsProceed(node))), navigationAvailable);
         }
         catch (Exception)
         {
-            count = 1;
+            count = 0;
         }
         for (var slot = 0; slot < count; slot++)
         {
@@ -200,14 +206,14 @@ internal static class EventReward
     {
         foreach (var (node, index) in buttons.Select((node, index) => (node, index)))
         {
-            if (IsProceed(node) && ClickOption(room, node, index, $"IsProceed {index}"))
+            if (CanProceed(node) && ClickOption(room, node, index, $"IsProceed {index}"))
             {
                 return true;
             }
         }
         foreach (var node in Nodes.FindAll(room, "NEventOptionButton"))
         {
-            if (IsProceed(node) && ClickOption(room, node, 0, $"leftover {node.Name}"))
+            if (CanProceed(node) && ClickOption(room, node, 0, $"leftover {node.Name}"))
             {
                 return true;
             }
@@ -267,24 +273,29 @@ internal static class EventReward
         return option?.GetType().GetProperty("IsLocked")?.GetValue(option) is true;
     }
 
-    private static bool AdvanceAncientDialogue(NEventRoom room)
+    private static bool CanProceed(Node node)
+    {
+        return IsProceed(node) && !IsLocked(node) && Nodes.IsShown(node) && Nodes.Enabled(node);
+    }
+
+    private static NClickableControl? DialogueHitbox(NEventRoom room)
     {
         if (room.Layout is not NAncientEventLayout ancient)
-        {
-            return false;
-        }
+            return null;
         var onLast = typeof(NAncientEventLayout)
             .GetProperty("IsDialogueOnLastLine", BindingFlags.NonPublic | BindingFlags.Instance)
             ?.GetValue(ancient) as bool? ?? true;
         if (onLast)
-        {
-            return false;
-        }
+            return null;
         var hitbox = ancient.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
-        if (hitbox is null || !hitbox.IsVisibleInTree() || !hitbox.IsEnabled)
-        {
+        return hitbox is { IsEnabled: true } && hitbox.IsVisibleInTree() ? hitbox : null;
+    }
+
+    private static bool AdvanceAncientDialogue(NEventRoom room)
+    {
+        var hitbox = DialogueHitbox(room);
+        if (hitbox is null)
             return false;
-        }
         try
         {
             hitbox.ForceClick();
