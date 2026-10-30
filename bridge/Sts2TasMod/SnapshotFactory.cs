@@ -1,4 +1,6 @@
 using Godot;
+using Sts2Bridge;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
@@ -18,67 +20,60 @@ public static class SnapshotFactory
         }
         try
         {
-        var state = combat.DebugOnlyGetState();
-        var player = state?.Players.Count > 0 ? state.Players[0] : null;
-        if (state is null || player?.PlayerCombatState is null)
-        {
-            return MenuSnapshot("combat");
-        }
-        var pcs = player.PlayerCombatState;
-        var hand = Cards(pcs.Hand);
-        var enemies = Enemies(state);
-        var playPhase = ReadBool(combat, "IsPlayPhase") ?? pcs.Phase.ToString().Contains("Play", StringComparison.OrdinalIgnoreCase);
-        var actions = LegalActions(pcs.Hand, enemies, playPhase);
-        var run = RunManager.Instance?.DebugOnlyGetState();
-        var act = (ReadInt(run, "CurrentActIndex") ?? 0) + 1;
-        var floor = ReadInt(run, "ActFloor", "TotalFloor") ?? 1;
-        var architect = RunFlow.IsArchitect(run) || enemies.Any(enemy => (enemy["id"]?.ToString() ?? "").Contains("architect", StringComparison.OrdinalIgnoreCase));
-        return new Dictionary<string, object?>
-        {
-            ["game_version"] = "v0.107.1",
-            ["mod_version"] = ModEntry.ModVersion,
-            ["schema_version"] = 1,
-            ["seed"] = "live",
-            ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            ["phase"] = architect || combat.IsOverOrEnding || !player.Creature.IsAlive ? "terminal" : "combat",
-            ["floor"] = floor,
-            ["act"] = act,
-            ["screen_id"] = architect ? "architect" : playPhase ? "combat-play" : "combat",
-            ["player"] = new Dictionary<string, object?>
+            var state = combat.DebugOnlyGetState();
+            var player = state?.Players.Count > 0 ? state.Players[0] : null;
+            if (state is null || player?.PlayerCombatState is null)
             {
-                ["hp"] = ReadInt(player.Creature, "CurrentHp", "Hp") ?? 0,
-                ["max_hp"] = ReadInt(player.Creature, "MaxHp") ?? 0,
-                ["energy"] = ReadInt(pcs, "Energy", "CurrentEnergy") ?? 0,
-                ["block"] = ReadInt(player.Creature, "Block", "CurrentBlock") ?? 0,
-                ["gold"] = ReadInt(player, "Gold") ?? 0,
-                ["powers"] = Array.Empty<object>(),
-                ["resources"] = new Dictionary<string, object?>
-                {
-                    ["stars"] = ReadInt(pcs, "Stars", "Star", "CurrentStars") ?? 0
-                }
-            },
-            ["hand"] = hand,
-            ["draw_pile"] = Cards(pcs.DrawPile),
-            ["discard_pile"] = Cards(pcs.DiscardPile),
-            ["exhaust_pile"] = Cards(pcs.ExhaustPile),
-            ["enemies"] = enemies,
-            ["relics"] = Array.Empty<object>(),
-            ["potions"] = Array.Empty<object>(),
-            ["map_choices"] = Array.Empty<object>(),
-            ["reward_choices"] = Array.Empty<object>(),
-            ["shop_choices"] = Array.Empty<object>(),
-            ["event_choices"] = Array.Empty<object>(),
-            ["rest_choices"] = Array.Empty<object>(),
-            ["valid_actions"] = actions,
-            ["extras"] = new Dictionary<string, object?>
+                return MenuSnapshot("loading");
+            }
+            var pcs = player.PlayerCombatState;
+            var hand = Cards(pcs.Hand);
+            var enemies = Enemies(state);
+            var playPhase = ReadBool(combat, "IsPlayPhase") ?? pcs.Phase.ToString().Contains("Play", StringComparison.OrdinalIgnoreCase);
+            var actions = LegalActions(pcs.Hand, enemies, playPhase);
+            var terminal = combat.IsOverOrEnding || !player.Creature.IsAlive;
+            var waiting = !terminal && actions.Count == 0;
+            var run = RunManager.Instance?.DebugOnlyGetState();
+            var act = (ReadInt(run, "CurrentActIndex") ?? 0) + 1;
+            var floor = ReadInt(run, "ActFloor", "TotalFloor") ?? 1;
+            var architect = RunFlow.IsArchitect(run) || enemies.Any(enemy => (enemy["id"]?.ToString() ?? "").Contains("architect", StringComparison.OrdinalIgnoreCase));
+            return new Dictionary<string, object?>
             {
                 ["game_version"] = "v0.107.1",
-                ["architect"] = architect,
-                ["reached_act3"] = act >= 3,
-                ["act3_boss_cleared"] = act >= 3 && (combat.IsOverOrEnding || enemies.All(enemy => Convert.ToInt32(enemy["hp"]) <= 0)),
-                ["victory"] = RunFlow.IsVictory()
-            }
-        };
+                ["mod_version"] = ModEntry.ModVersion,
+                ["schema_version"] = 1,
+                ["seed"] = run?.Rng.StringSeed ?? "unknown",
+                ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+                ["phase"] = terminal ? "terminal" : waiting ? "menu" : "combat",
+                ["floor"] = floor,
+                ["act"] = act,
+                ["screen_id"] = waiting ? "loading" : architect ? "architect" : playPhase ? "combat-play" : "combat",
+                ["player"] = PlayerData(player),
+                ["hand"] = hand,
+                ["draw_pile"] = Cards(pcs.DrawPile),
+                ["discard_pile"] = Cards(pcs.DiscardPile),
+                ["exhaust_pile"] = Cards(pcs.ExhaustPile),
+                ["enemies"] = enemies,
+                ["relics"] = Array.Empty<object>(),
+                ["potions"] = Array.Empty<object>(),
+                ["map_choices"] = Array.Empty<object>(),
+                ["reward_choices"] = Array.Empty<object>(),
+                ["shop_choices"] = Array.Empty<object>(),
+                ["event_choices"] = Array.Empty<object>(),
+                ["rest_choices"] = Array.Empty<object>(),
+                ["valid_actions"] = terminal || waiting ? [] : actions,
+                ["extras"] = new Dictionary<string, object?>
+                {
+                    ["game_version"] = "v0.107.1",
+                    ["architect"] = architect,
+                    ["loading"] = waiting,
+                    ["player_authoritative"] = true,
+                    ["run_instance_id"] = RunIdentity.For(run),
+                    ["reached_act3"] = act >= 3,
+                    ["act3_boss_cleared"] = RunFlow.IsVictory(),
+                    ["victory"] = RunFlow.IsVictory()
+                }
+            };
         }
         catch (Exception ex)
         {
@@ -111,24 +106,36 @@ public static class SnapshotFactory
         return int.TryParse(digits, out var fromText) ? fromText : null;
     }
 
+    internal static Dictionary<string, object?> PlayerData(Player? player)
+    {
+        return new Dictionary<string, object?>
+        {
+            ["hp"] = player?.Creature.CurrentHp ?? 0,
+            ["max_hp"] = player?.Creature.MaxHp ?? 0,
+            ["energy"] = player?.PlayerCombatState?.Energy ?? 0,
+            ["block"] = player?.Creature.Block ?? 0,
+            ["gold"] = player?.Gold ?? 0,
+            ["powers"] = Array.Empty<object>(),
+            ["resources"] = new Dictionary<string, object?> { ["stars"] = player?.PlayerCombatState?.Stars ?? 0 }
+        };
+    }
+
     private static Dictionary<string, object?> MenuSnapshot(string phase)
     {
+        var run = RunManager.Instance?.DebugOnlyGetState();
+        var player = run?.Players.FirstOrDefault();
         return new Dictionary<string, object?>
         {
             ["game_version"] = "v0.107.1",
             ["mod_version"] = ModEntry.ModVersion,
             ["schema_version"] = 1,
-            ["seed"] = "unknown",
+            ["seed"] = run?.Rng.StringSeed ?? "unknown",
             ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
             ["phase"] = phase == "combat" ? "combat" : "menu",
             ["floor"] = 0,
             ["act"] = 0,
             ["screen_id"] = phase,
-            ["player"] = new Dictionary<string, object?>
-            {
-                ["hp"] = 0, ["max_hp"] = 0, ["energy"] = 0, ["block"] = 0, ["gold"] = 0,
-                ["powers"] = Array.Empty<object>(), ["resources"] = new Dictionary<string, object?>()
-            },
+            ["player"] = PlayerData(player),
             ["hand"] = Array.Empty<object>(),
             ["draw_pile"] = Array.Empty<object>(),
             ["discard_pile"] = Array.Empty<object>(),
@@ -141,8 +148,14 @@ public static class SnapshotFactory
             ["shop_choices"] = Array.Empty<object>(),
             ["event_choices"] = Array.Empty<object>(),
             ["rest_choices"] = Array.Empty<object>(),
-            ["valid_actions"] = phase == "combat" ? new object[] { new Dictionary<string, object?> { ["action_type"] = "end_turn", ["args"] = new Dictionary<string, int>() } } : Array.Empty<object>(),
-            ["extras"] = new Dictionary<string, object?> { ["game_version"] = "v0.107.1" }
+            ["valid_actions"] = Array.Empty<object>(),
+            ["extras"] = new Dictionary<string, object?>
+            {
+                ["game_version"] = "v0.107.1",
+                ["loading"] = true,
+                ["player_authoritative"] = player is not null,
+                ["run_instance_id"] = RunIdentity.For(run)
+            }
         };
     }
 

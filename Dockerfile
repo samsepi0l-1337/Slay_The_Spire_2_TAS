@@ -1,18 +1,15 @@
 FROM python:3.14-slim
+COPY --from=ghcr.io/astral-sh/uv:0.12.24 /uv /uvx /bin/
 
-ENV PIP_NO_CACHE_DIR=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_PYTHON_DOWNLOADS=never
 
 WORKDIR /app
-
-COPY pyproject.toml README.md ./
+COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
-
-RUN python -m pip install --upgrade pip \
-    && pip install --no-cache-dir .
+RUN uv sync --locked --no-dev --no-editable
 
 WORKDIR /workspace
-
-ENTRYPOINT ["sts2-tas"]
+ENTRYPOINT ["/app/.venv/bin/sts2-tas"]
 CMD ["--help"]

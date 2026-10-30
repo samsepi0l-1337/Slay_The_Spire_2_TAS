@@ -1,4 +1,5 @@
 using System.Reflection;
+using Sts2Bridge;
 using System.Threading;
 using Godot;
 using MegaCrit.Sts2.Core.AutoSlay;
@@ -19,18 +20,20 @@ internal static class EventReward
         {
             return actions;
         }
-        var count = 1;
+        var count = 0;
         try
         {
-            var buttons = NEventRoom.Instance!.Layout?.OptionButtons;
-            if (buttons is not null)
-            {
-                count = Math.Max(buttons.Count(), 1);
-            }
+            var room = NEventRoom.Instance!;
+            var buttons = EventButtons(room);
+            var navigationAvailable = DialogueHitbox(room) is not null
+                || buttons.Any(CanProceed)
+                || new[] { "NConfirmButton", "NProceedButton" }.Any(type =>
+                    Nodes.FindAll(Nodes.Root(), type).Any(node => Nodes.IsShown(node) && Nodes.Enabled(node)));
+            count = EventChoices.AdvertisedCount(buttons.Select(node => (IsLocked(node), IsProceed(node))), navigationAvailable);
         }
         catch (Exception)
         {
-            count = 1;
+            count = 0;
         }
         for (var slot = 0; slot < count; slot++)
         {
@@ -83,11 +86,7 @@ internal static class EventReward
         }
         var model = EventModelOf(room);
         var finished = model?.IsFinished == true;
-        var buttons = room.Layout?.OptionButtons?.Cast<Node>().ToList() ?? [];
-        if (buttons.Count == 0)
-        {
-            buttons = Nodes.FindAll(room, "NEventOptionButton").ToList();
-        }
+        var buttons = EventButtons(room);
         GD.Print($"Sts2TasMod event finished={finished} buttons={buttons.Count} options={model?.CurrentOptions.Count}");
         if (!finished && ClickChoice(room, buttons, slot))
         {
@@ -97,12 +96,6 @@ internal static class EventReward
         if (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - _lastEventClickMs < 3000)
         {
             GD.Print("Sts2TasMod event settling");
-            return;
-        }
-        if (!finished && ClickModelOption(room, model, slot + _stuckOption))
-        {
-            _stuckOption += 1;
-            _lastEventClickMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             return;
         }
         if (ClickProceedButtons(room, buttons))
@@ -125,7 +118,6 @@ internal static class EventReward
 
     private static bool _leaving;
     private static long _lastEventClickMs;
-    private static int _stuckOption;
 
     private static async void LeaveFinished(string reason)
     {
@@ -134,7 +126,6 @@ internal static class EventReward
             return;
         }
         _leaving = true;
-        _stuckOption = 0;
         try
         {
             await ClickEventProceedIfNeeded();
@@ -186,37 +177,28 @@ internal static class EventReward
         }
     }
 
-    private static bool ClickModelOption(NEventRoom room, EventModel? model, int slot)
+    private static List<Node> EventButtons(NEventRoom room)
     {
-        if (model is null || model.CurrentOptions.Count == 0)
-        {
-            return false;
-        }
-        var index = Math.Clamp(slot, 0, model.CurrentOptions.Count - 1);
-        try
-        {
-            room.OptionButtonClicked(model.CurrentOptions[index], index);
-            GD.Print($"Sts2TasMod model option {index}/{model.CurrentOptions.Count}");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            GD.PrintErr($"Sts2TasMod model option: {ex.Message}");
-            return false;
-        }
+        var buttons = room.Layout?.OptionButtons?.Cast<Node>().ToList() ?? [];
+        return buttons.Count > 0 ? buttons : Nodes.FindAll(room, "NEventOptionButton").ToList();
+    }
+
+    private static List<(Node node, int index)> EligibleChoices(List<Node> buttons)
+    {
+        var indices = EventChoices.EligibleIndices(buttons.Select(node => (IsLocked(node), IsProceed(node))));
+        return indices.Select(index => (buttons[index], index)).ToList();
     }
 
     private static bool ClickChoice(NEventRoom room, List<Node> buttons, int slot)
     {
-        var choices = buttons
-            .Select((node, index) => (node, index))
-            .Where(pair => !IsLocked(pair.node) && !IsProceed(pair.node))
-            .ToList();
+        var choices = EligibleChoices(buttons);
         if (choices.Count == 0)
         {
             return false;
         }
-        var pick = choices[Math.Clamp(slot, 0, choices.Count - 1)];
+        if (slot < 0 || slot >= choices.Count)
+            throw new InvalidOperationException("event choice_slot out of range");
+        var pick = choices[slot];
         return ClickOption(room, pick.node, pick.index, $"option {pick.index}/{buttons.Count}");
     }
 
@@ -224,14 +206,14 @@ internal static class EventReward
     {
         foreach (var (node, index) in buttons.Select((node, index) => (node, index)))
         {
-            if (IsProceed(node) && ClickOption(room, node, index, $"IsProceed {index}"))
+            if (CanProceed(node) && ClickOption(room, node, index, $"IsProceed {index}"))
             {
                 return true;
             }
         }
         foreach (var node in Nodes.FindAll(room, "NEventOptionButton"))
         {
-            if (IsProceed(node) && ClickOption(room, node, 0, $"leftover {node.Name}"))
+            if (CanProceed(node) && ClickOption(room, node, 0, $"leftover {node.Name}"))
             {
                 return true;
             }
@@ -291,24 +273,29 @@ internal static class EventReward
         return option?.GetType().GetProperty("IsLocked")?.GetValue(option) is true;
     }
 
-    private static bool AdvanceAncientDialogue(NEventRoom room)
+    private static bool CanProceed(Node node)
+    {
+        return IsProceed(node) && !IsLocked(node) && Nodes.IsShown(node) && Nodes.Enabled(node);
+    }
+
+    private static NClickableControl? DialogueHitbox(NEventRoom room)
     {
         if (room.Layout is not NAncientEventLayout ancient)
-        {
-            return false;
-        }
+            return null;
         var onLast = typeof(NAncientEventLayout)
             .GetProperty("IsDialogueOnLastLine", BindingFlags.NonPublic | BindingFlags.Instance)
             ?.GetValue(ancient) as bool? ?? true;
         if (onLast)
-        {
-            return false;
-        }
+            return null;
         var hitbox = ancient.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
-        if (hitbox is null || !hitbox.IsVisibleInTree() || !hitbox.IsEnabled)
-        {
+        return hitbox is { IsEnabled: true } && hitbox.IsVisibleInTree() ? hitbox : null;
+    }
+
+    private static bool AdvanceAncientDialogue(NEventRoom room)
+    {
+        var hitbox = DialogueHitbox(room);
+        if (hitbox is null)
             return false;
-        }
         try
         {
             hitbox.ForceClick();

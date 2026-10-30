@@ -5,22 +5,29 @@ $Repo = "C:\Users\steep\sts2-tas-qstar"
 Set-Location $Repo
 $env:PYTHONPATH = "src"
 
-if (-not (Test-Path (Join-Path $Repo ".git"))) {
-    git init
-    git remote add origin https://github.com/samsepi0l-1337/Slay_The_Spire_2_TAS.git
-}
-git fetch origin main
-git checkout -f -B main origin/main
+if (-not (Test-Path ".git")) { throw "expected an existing repository" }
+$dirty = git status --porcelain
+if ($LASTEXITCODE -ne 0) { throw "git status failed: $LASTEXITCODE" }
+if ($dirty) { throw "working tree has local changes; update it manually" }
+$branch = git branch --show-current
+if ($LASTEXITCODE -ne 0) { throw "branch check failed: $LASTEXITCODE" }
+if ($branch -ne "main") { throw "expected main branch; refusing to switch branches" }
+git pull --ff-only origin main
+if ($LASTEXITCODE -ne 0) { throw "fast-forward update failed: $LASTEXITCODE" }
 
 Write-Output "=== git ==="
 git log -1 --oneline
+if ($LASTEXITCODE -ne 0) { throw "git command failed: $LASTEXITCODE" }
 
 Write-Output "=== uv run pytest ==="
-uv run --extra dev pytest --cov=sts2_tas --cov-fail-under=100 -q
+uv run --locked --extra dev pytest --cov=sts2_tas --cov-fail-under=100 -q
+if ($LASTEXITCODE -ne 0) { throw "uv command failed: $LASTEXITCODE" }
 
 Write-Output "=== build bridge ==="
 dotnet build "bridge\Sts2TelemetryBridge\Sts2TelemetryBridge.csproj" -c Release
-dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release
+if ($LASTEXITCODE -ne 0) { throw "dotnet command failed: $LASTEXITCODE" }
+dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release -p:DeployMod=true
+if ($LASTEXITCODE -ne 0) { throw "dotnet command failed: $LASTEXITCODE" }
 
 $game = Get-Process -Name "SlayTheSpire2" -ErrorAction SilentlyContinue
 if (-not $game) {
@@ -51,13 +58,14 @@ if (-not $game) {
 
 Write-Output "=== uv run run-live $transport ==="
 try {
-    uv run --extra dev python -m sts2_tas.cli run-live `
+    uv run --locked --extra dev python -m sts2_tas.cli run-live `
         --transport $transport `
         --model models\qstar-live.json `
         --output models\qstar-live.jsonl `
         --search-depth 1 `
         --max-steps 8 `
         --execute
+    if ($LASTEXITCODE -ne 0) { throw "uv command failed: $LASTEXITCODE" }
 } finally {
     if ($serve -and -not $serve.HasExited) { Stop-Process -Id $serve.Id -Force }
 }

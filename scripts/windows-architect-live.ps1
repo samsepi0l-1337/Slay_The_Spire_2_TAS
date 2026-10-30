@@ -6,18 +6,17 @@ Set-Location $Repo
 $env:PYTHONPATH = "src"
 
 Write-Output "=== build and deploy Harmony mod ==="
-dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release
-$gameMods = "C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2\mods\Sts2TasMod"
-New-Item -ItemType Directory -Force -Path $gameMods | Out-Null
-Copy-Item "bridge\Sts2TasMod\bin\Release\net9.0\Sts2TasMod.dll" $gameMods -Force
-Copy-Item "bridge\Sts2TasMod\Sts2TasMod.json" $gameMods -Force
+dotnet build "bridge\Sts2TasMod\Sts2TasMod.csproj" -c Release -p:DeployMod=true
+if ($LASTEXITCODE -ne 0) { throw "dotnet command failed: $LASTEXITCODE" }
 
 $exe = "C:\Program Files (x86)\Steam\steamapps\common\Slay the Spire 2\SlayTheSpire2.exe"
 $task = "STS2TasLaunch"
 $tr = "'" + $exe + "'"
 Write-Output "=== launch STS2 on interactive console ==="
 schtasks /Create /TN $task /TR $tr /SC ONCE /ST 23:59 /F /IT | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "schtasks command failed: $LASTEXITCODE" }
 schtasks /Run /TN $task | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "schtasks command failed: $LASTEXITCODE" }
 
 $deadline = (Get-Date).AddMinutes(2)
 $proc = $null
@@ -47,7 +46,7 @@ Write-Output "pipe attached"
 
 New-Item -ItemType Directory -Force -Path "models" | Out-Null
 Write-Output "=== uv run-live until Architect ==="
-uv run --extra dev python -m sts2_tas.cli run-live `
+uv run --locked --extra dev python -m sts2_tas.cli run-live `
     --transport pipe:sts2-tas `
     --model models\qstar-live.json `
     --output models\qstar-live.jsonl `
@@ -55,3 +54,4 @@ uv run --extra dev python -m sts2_tas.cli run-live `
     --max-steps 100000 `
     --until-clear `
     --execute
+if ($LASTEXITCODE -ne 0) { throw "uv command failed: $LASTEXITCODE" }

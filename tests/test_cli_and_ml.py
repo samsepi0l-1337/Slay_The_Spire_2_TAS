@@ -7,7 +7,6 @@ from sts2_tas.bc import BehavioralCloningPolicy, evaluate_behavioral_cloning, tr
 from sts2_tas.cli import main
 from sts2_tas.telemetry_schema import MacroAction
 
-
 FIXTURE = Path(__file__).parent / "fixtures" / "telemetry-combat.json"
 DATASET = Path(__file__).parent / "fixtures" / "ml-train-smoke.jsonl"
 
@@ -190,3 +189,75 @@ def test_run_local_dry_run_loop(tmp_path: Path, capsys) -> None:
     assert output["episodes"] == 1
     assert output["transitions"] == 1
     assert log.exists()
+
+
+def test_cli_reports_input_failure_without_success_json(tmp_path, capsys) -> None:
+    assert main(["bridge-smoke", "--fixture", str(tmp_path / "missing.json")]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "sts2-tas:" in captured.err
+    assert "missing.json" in captured.err
+
+
+def test_cli_reports_unsupported_native_execution(monkeypatch, capsys) -> None:
+    def fail(_self, _action):
+        raise NotImplementedError("native input backend is not implemented")
+
+    monkeypatch.setattr("sts2_tas.cli.MacroExecutor.execute", fail)
+    assert main(["act", "--action-json", '{"action_type":"end_turn","args":{}}', "--execute"]) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "sts2-tas: native input backend is not implemented\n"
+
+
+def test_cli_interrupt_returns_conventional_exit(monkeypatch, capsys) -> None:
+    def interrupt(_args):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("sts2_tas.cli._bridge_smoke", interrupt)
+    assert main(["bridge-smoke", "--fixture", str(FIXTURE)]) == 130
+    assert capsys.readouterr().out == ""
+
+
+def test_cli_command_without_result_does_not_print(monkeypatch, capsys) -> None:
+    monkeypatch.setattr("sts2_tas.cli._bridge_smoke", lambda _args: None)
+    assert main(["bridge-smoke", "--fixture", str(FIXTURE)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_live_cli_closes_writer_even_when_reader_close_fails(monkeypatch, tmp_path) -> None:
+    import io
+
+    class BrokenReader(io.StringIO):
+        def close(self):
+            super().close()
+            raise OSError("reader close failed")
+
+    reader, writer = BrokenReader(), io.StringIO()
+    monkeypatch.setattr("sts2_tas.cli.connect_transport", lambda _spec: (reader, writer))
+    monkeypatch.setattr("sts2_tas.cli.run_live", lambda *_args, **_kwargs: {})
+    assert main(["run-live", "--model", str(tmp_path / "model.json"), "--output", str(tmp_path / "log.jsonl")]) == 1
+    assert reader.closed
+    assert writer.closed
+
+
+def test_live_cli_closes_shared_pipe_once_on_failure(monkeypatch, tmp_path) -> None:
+    import io
+
+    class CountingPipe(io.StringIO):
+        closes = 0
+
+        def close(self):
+            self.closes += 1
+            super().close()
+
+    pipe = CountingPipe()
+    monkeypatch.setattr("sts2_tas.cli.connect_transport", lambda _spec: (pipe, pipe))
+
+    def fail(*_args, **_kwargs):
+        raise ValueError("bad frame")
+
+    monkeypatch.setattr("sts2_tas.cli.run_live", fail)
+    assert main(["run-live", "--model", str(tmp_path / "model.json"), "--output", str(tmp_path / "log.jsonl")]) == 1
+    assert pipe.closed
+    assert pipe.closes == 1

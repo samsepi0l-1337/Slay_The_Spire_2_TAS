@@ -17,15 +17,20 @@ class Sts2Env:
         writer: JsonlTransitionWriter | None = None,
         policy_id: str | None = None,
     ) -> None:
-        self.snapshot = snapshot
-        self.action_space = ActionSpace.from_snapshot(snapshot)
+        self._initial_snapshot = deepcopy(snapshot)
+        self.snapshot = deepcopy(snapshot)
+        self.action_space = ActionSpace.from_snapshot(self.snapshot)
         self.writer = writer
         self.policy_id = policy_id
         self.last_seed: int | None = None
 
-    def reset(self, seed: int | None = None, options: dict[str, Any] | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+    def reset(
+        self, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         del options
         self.last_seed = seed
+        self.snapshot = deepcopy(self._initial_snapshot)
+        self.action_space = ActionSpace.from_snapshot(self.snapshot)
         return self._observe(self.snapshot), {"seed": seed, "valid_action_mask": self.action_masks()}
 
     def step(self, action: int) -> tuple[dict[str, Any], float, bool, bool, dict[str, Any]]:
@@ -153,7 +158,9 @@ class Sts2Env:
                 continue
             if Sts2Env._is_targeted(card):
                 for target_slot in living:
-                    actions.append({"action_type": "play_card", "args": {"hand_slot": hand_slot, "target_slot": target_slot}})
+                    actions.append(
+                        {"action_type": "play_card", "args": {"hand_slot": hand_slot, "target_slot": target_slot}}
+                    )
                 continue
             actions.append({"action_type": "play_card", "args": {"hand_slot": hand_slot}})
         actions.append({"action_type": "end_turn", "args": {}})
@@ -161,7 +168,7 @@ class Sts2Env:
 
     @staticmethod
     def _is_targeted(card: dict[str, Any]) -> bool:
-        return card.get("type") == "attack" or "damage" in card
+        return card.get("type") == "attack" or int(card.get("damage", 0)) > 0
 
     @staticmethod
     def _observe(snapshot: TelemetrySnapshot) -> dict[str, Any]:

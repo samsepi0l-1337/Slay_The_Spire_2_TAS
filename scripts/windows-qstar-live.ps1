@@ -13,13 +13,14 @@ $serve = Start-Process -FilePath $exe -ArgumentList @(
 ) -PassThru -WindowStyle Hidden
 Start-Sleep -Seconds 2
 try {
-    uv run --extra dev python -m sts2_tas.cli run-live `
+    uv run --locked --extra dev python -m sts2_tas.cli run-live `
         --transport tcp:127.0.0.1:28771 `
         --model models\qstar-live.json `
         --output models\qstar-live.jsonl `
         --search-depth 1 `
         --max-steps 8 `
         --execute
+    if ($LASTEXITCODE -ne 0) { throw "uv command failed: $LASTEXITCODE" }
     Write-Output "---model exists---"
     Test-Path "models\qstar-live.json"
     Write-Output "---jsonl---"

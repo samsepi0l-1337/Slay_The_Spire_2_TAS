@@ -10,7 +10,6 @@ public static class PipeHub
 {
     private static NamedPipeServerStream? _pipe;
     private static StreamWriter? _writer;
-    private static StreamReader? _reader;
     private static int _sequence;
     private static readonly object Gate = new();
 
@@ -58,34 +57,51 @@ public static class PipeHub
         {
             try
             {
-                _pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
-                _pipe.WaitForConnection();
-                var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
-                _reader = new StreamReader(_pipe, utf8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
-                _writer = new StreamWriter(_pipe, utf8, bufferSize: 1024, leaveOpen: true) { AutoFlush = true };
-                Publish();
-                string? line;
-                while ((line = _reader.ReadLine()) != null)
-                {
-                    var captured = line;
-                    MainThread.Run(() => CommandRunner.Apply(captured));
-                }
+                ServeConnection(pipeName);
             }
             catch (Exception ex)
             {
                 GD.PrintErr($"Sts2TasMod pipe loop: {ex.Message}");
             }
-            finally
+        }
+    }
+
+    private static void ServeConnection(string pipeName)
+    {
+        using var pipe = new NamedPipeServerStream(pipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
+        pipe.WaitForConnection();
+        var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        using var reader = new StreamReader(pipe, utf8, detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
+        using var writer = new StreamWriter(pipe, utf8, bufferSize: 1024, leaveOpen: true) { AutoFlush = true };
+        lock (Gate)
+        {
+            _pipe = pipe;
+            _writer = writer;
+        }
+        try
+        {
+            Publish();
+            string? line;
+            while ((line = reader.ReadLine()) != null)
             {
-                lock (Gate)
+                var captured = line;
+                MainThread.Run(() =>
                 {
-                    _writer?.Dispose();
-                    _reader?.Dispose();
-                    _pipe?.Dispose();
-                    _writer = null;
-                    _reader = null;
-                    _pipe = null;
-                }
+                    lock (Gate)
+                    {
+                        // A command queued by a disconnected peer must not reach its replacement.
+                        if (ReferenceEquals(_writer, writer))
+                            CommandRunner.Apply(captured);
+                    }
+                });
+            }
+        }
+        finally
+        {
+            lock (Gate)
+            {
+                _writer = null;
+                _pipe = null;
             }
         }
     }
@@ -111,6 +127,7 @@ public static class PipeHub
             }
             catch (IOException)
             {
+                _pipe?.Dispose();
                 _writer = null;
             }
         }

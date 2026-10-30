@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Reflection;
 using Godot;
+using Sts2Bridge;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
@@ -38,13 +39,13 @@ public static class RunFlow
                 return Overlay(ScreenAdvance.WorldPhase(), act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), MenuActions(), "world");
             }
             var eventActions = EventReward.EventActions();
-            if (eventActions.Count > 0)
+            if (InEventRoom())
             {
                 return Overlay("event", act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), eventActions, "event");
             }
             var ui = DetectUi();
-            var events = architect ? [] : MenuActions();
-            var phase = architect ? "terminal" : "event";
+            var events = IsVictory() ? [] : MenuActions();
+            var phase = IsVictory() ? "terminal" : "event";
             return Overlay(phase, act, floor, architect, Array.Empty<object>(), Array.Empty<object>(), events, ui);
         }
         catch (Exception ex)
@@ -190,28 +191,28 @@ public static class RunFlow
         bool loading = false
     )
     {
-        if (loading)
+        var run = RunManager.Instance?.DebugOnlyGetState();
+        var player = run?.Players.FirstOrDefault();
+        var victory = IsVictory();
+        loading |= phase != "terminal" && actions.Count == 0;
+        if (victory || loading)
         {
             actions = [];
-            phase = "menu";
-            ui = "loading";
+            phase = victory ? "terminal" : "menu";
+            ui = victory ? "victory" : "loading";
         }
         return new Dictionary<string, object?>
         {
             ["game_version"] = "v0.107.1",
             ["mod_version"] = ModEntry.ModVersion,
             ["schema_version"] = 1,
-            ["seed"] = "live",
+            ["seed"] = run?.Rng.StringSeed ?? "unknown",
             ["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
-            ["phase"] = architect ? "terminal" : phase,
+            ["phase"] = phase,
             ["floor"] = floor,
             ["act"] = act,
-            ["screen_id"] = architect ? "architect" : loading ? "loading" : phase,
-            ["player"] = new Dictionary<string, object?>
-            {
-                ["hp"] = 1, ["max_hp"] = 1, ["energy"] = 0, ["block"] = 0, ["gold"] = 0,
-                ["powers"] = Array.Empty<object>(), ["resources"] = new Dictionary<string, object?>()
-            },
+            ["screen_id"] = loading && !victory ? "loading" : phase,
+            ["player"] = SnapshotFactory.PlayerData(player),
             ["hand"] = Array.Empty<object>(),
             ["draw_pile"] = Array.Empty<object>(),
             ["discard_pile"] = Array.Empty<object>(),
@@ -230,9 +231,11 @@ public static class RunFlow
                 ["game_version"] = "v0.107.1",
                 ["architect"] = architect,
                 ["reached_act3"] = act >= 3,
-                ["act3_boss_cleared"] = architect || IsVictory(),
-                ["victory"] = IsVictory(),
-                ["loading"] = loading,
+                ["act3_boss_cleared"] = victory,
+                ["victory"] = victory,
+                ["player_authoritative"] = player is not null,
+                ["run_instance_id"] = RunIdentity.For(run),
+                ["loading"] = loading && !victory,
                 ["ui"] = ui
             }
         };
